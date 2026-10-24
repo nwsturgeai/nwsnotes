@@ -147,3 +147,9 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# nwsnotes
+node_modules/
+dist/
+dev-data/
+*.tsbuildinfo
