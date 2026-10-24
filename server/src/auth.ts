@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import type { IncomingMessage } from "node:http";
 import type { NextFunction, Request, Response } from "express";
 
 /*
@@ -50,8 +51,8 @@ export function isValidSessionToken(token: string | undefined, secret: string, n
   return Number(expires) > now;
 }
 
-/** Reads one cookie from the request's Cookie header. */
-export function readCookie(req: Request, name: string): string | undefined {
+/** Reads one cookie from the request's Cookie header (an API request or a WebSocket connection). */
+export function readCookie(req: IncomingMessage, name: string): string | undefined {
   const header = req.headers.cookie;
   if (!header) return undefined;
   for (const part of header.split(";")) {

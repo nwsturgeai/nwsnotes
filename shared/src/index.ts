@@ -24,6 +24,18 @@ export interface ApiErrorBody {
   error: string;
 }
 
+/** Address of the live-updates WebSocket. The website adds `?id=<connection id>`. */
+export const LIVE_UPDATES_PATH = "/ws";
+
+/** Header the website sends with every change, so the server doesn't notify the page that made it. */
+export const CONNECTION_ID_HEADER = "X-Connection-Id";
+
+/** Messages the server sends over the live-updates WebSocket. */
+export interface LiveMessage {
+  /** Notes were changed by another page; reload them. */
+  type: "notes-changed";
+}
+
 export const TITLE_MAX_LENGTH = 500;
 
 /**
