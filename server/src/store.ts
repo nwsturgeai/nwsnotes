@@ -7,6 +7,7 @@ import {
   type CategoryRequest,
   type Note,
   type NotesData,
+  type NoteTitle,
 } from "@nwsnotes/shared";
 
 /** Contents of each save-file. */
@@ -116,7 +117,7 @@ export class NoteStore {
   }
 
   /** Adds a note (title already validated) and saves. Resolves once it is on disk. */
-  add(titleText: string, rawTagIds: unknown): Promise<Note> {
+  add(title: NoteTitle, rawTagIds: unknown): Promise<Note> {
     return this.enqueue(async () => {
       const tagIds = validateTagIds(rawTagIds, this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
@@ -125,7 +126,7 @@ export class NoteStore {
       const timestamp = now.toISOString();
       const note: Note = {
         id: this.notes.reduce((max, n) => Math.max(max, n.id), 0) + 1,
-        titleText,
+        ...title,
         createdDateTime: timestamp,
         lastModifiedDateTime: timestamp,
         tagIds: tagIds.value,

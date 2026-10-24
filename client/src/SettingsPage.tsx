@@ -4,11 +4,13 @@ import { pathFor, type Page } from "./route";
 
 interface Props {
   categories: Category[];
+  stylusMode: boolean;
+  onStylusModeChange: (on: boolean) => void;
   onNavigate: (page: Page) => void;
   onLogout: () => void;
 }
 
-export function SettingsPage({ categories, onNavigate, onLogout }: Props) {
+export function SettingsPage({ categories, stylusMode, onStylusModeChange, onNavigate, onLogout }: Props) {
   function go(event: MouseEvent, target: Page) {
     event.preventDefault();
     onNavigate(target);
@@ -17,6 +19,20 @@ export function SettingsPage({ categories, onNavigate, onLogout }: Props) {
   return (
     <main className="settings-page">
       <h1>Settings</h1>
+
+      <section>
+        <label className="switch">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={stylusMode}
+            onChange={(event) => onStylusModeChange(event.target.checked)}
+          />
+          <span className="switch-track" aria-hidden="true" />
+          <span className="switch-label">Stylus mode</span>
+        </label>
+        <p>Write new notes with a stylus instead of typing them. Remembered on this device only.</p>
+      </section>
 
       <section>
         <h2>Categories</h2>

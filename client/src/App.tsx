@@ -9,6 +9,7 @@ import { LoginPage } from "./LoginPage";
 import { NotesPage } from "./NotesPage";
 import { usePage } from "./route";
 import { SettingsPage } from "./SettingsPage";
+import { useStylusMode } from "./stylusMode";
 import type { TagSelection } from "./TagPickers";
 
 type State =
@@ -20,6 +21,7 @@ type State =
 export function App() {
   const [state, setState] = useState<State>({ screen: "loading" });
   const [page, navigate] = usePage();
+  const [stylusMode, setStylusMode] = useStylusMode();
   const [refreshError, setRefreshError] = useState<string>();
   /** The new-note tag dropdowns' selections; kept until the page is reloaded. */
   const [tagSelection, setTagSelection] = useState<TagSelection>({});
@@ -121,12 +123,19 @@ export function App() {
         <div className="app">
           <Header
             page={page}
+            stylusMode={stylusMode}
             onNavigate={navigate}
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
           />
           {page.name === "settings" ? (
-            <SettingsPage categories={state.data.categories} onNavigate={navigate} onLogout={logout} />
+            <SettingsPage
+              categories={state.data.categories}
+              stylusMode={stylusMode}
+              onStylusModeChange={setStylusMode}
+              onNavigate={navigate}
+              onLogout={logout}
+            />
           ) : page.name === "category" ? (
             <CategoryEditPage
               id={page.id}
@@ -139,6 +148,7 @@ export function App() {
             <NotesPage
               notes={state.data.notes}
               categories={state.data.categories}
+              stylusMode={stylusMode}
               tagSelection={tagSelection}
               onTagSelectionChange={setTagSelection}
               onNoteAdded={addNote}

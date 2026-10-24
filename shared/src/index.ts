@@ -2,7 +2,10 @@
 export interface Note {
   /** Unique id assigned by the server, starting at 1. */
   id: number;
-  titleText: string;
+  /** Set on typed notes. Exactly one of titleText and titleImage is set. */
+  titleText?: string;
+  /** Set on handwritten notes: a PNG data URL, at 2× pixel density. */
+  titleImage?: string;
   /** ISO 8601, UTC, set by the server. */
   createdDateTime: string;
   /** ISO 8601, UTC, set by the server. */
@@ -35,11 +38,11 @@ export interface NotesData {
   categories: Category[];
 }
 
+/** A new note's title: typed text or a handwritten image. */
+export type NoteTitle = { titleText: string; titleImage?: never } | { titleImage: string; titleText?: never };
+
 /** Body of POST /api/notes. */
-export interface NewNoteRequest {
-  titleText: string;
-  tagIds: number[];
-}
+export type NewNoteRequest = NoteTitle & { tagIds: number[] };
 
 /** Body of POST /api/categories and PUT /api/categories/:id. Tags without an id are new. */
 export interface CategoryRequest {
@@ -93,6 +96,47 @@ export function validateTitle(raw: unknown): { ok: true; title: string } | { ok:
     };
   }
   return { ok: true, title };
+}
+
+const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
+/** Every PNG starts with the same 8 bytes, which are "iVBORw0KGgo" in base64. */
+const PNG_BASE64_START = "iVBORw0KGgo";
+/** Maximum length of a handwritten title's data URL, in characters. */
+export const TITLE_IMAGE_MAX_LENGTH = 200 * 1024;
+
+/** Checks a handwritten note's image: a PNG data URL within the size limit. */
+export function validateTitleImage(raw: unknown): Check<string> {
+  if (typeof raw !== "string" || !raw.startsWith(PNG_DATA_URL_PREFIX)) {
+    return { ok: false, error: "The handwritten note must be a PNG image." };
+  }
+  const base64 = raw.slice(PNG_DATA_URL_PREFIX.length);
+  if (!base64.startsWith(PNG_BASE64_START) || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
+    return { ok: false, error: "The handwritten note must be a PNG image." };
+  }
+  if (raw.length > TITLE_IMAGE_MAX_LENGTH) {
+    return {
+      ok: false,
+      error: `The handwritten note is too large (${Math.ceil(raw.length / 1024)} KB); the maximum is ${TITLE_IMAGE_MAX_LENGTH / 1024} KB.`,
+    };
+  }
+  return { ok: true, value: raw };
+}
+
+/** Checks a new note's title: exactly one of typed text or a handwritten image. */
+export function validateNoteTitle(body: unknown): { ok: true; title: NoteTitle } | { ok: false; error: string } {
+  const { titleText, titleImage } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  if (titleText !== undefined && titleImage !== undefined) {
+    return { ok: false, error: "A note can have typed text or a handwritten image, not both." };
+  }
+  if (titleImage !== undefined) {
+    const image = validateTitleImage(titleImage);
+    return image.ok ? { ok: true, title: { titleImage: image.value } } : image;
+  }
+  if (titleText === undefined) {
+    return { ok: false, error: "A note needs typed text or a handwritten image." };
+  }
+  const text = validateTitle(titleText);
+  return text.ok ? { ok: true, title: { titleText: text.title } } : text;
 }
 
 export const NAME_MAX_LENGTH = 40;

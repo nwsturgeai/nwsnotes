@@ -1,8 +1,11 @@
 import type { MouseEvent } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faGear, faSignature } from "@fortawesome/free-solid-svg-icons";
 import { pathFor, type Page } from "./route";
 
 interface Props {
   page: Page;
+  stylusMode: boolean;
   onNavigate: (page: Page) => void;
   /** Set when a background reload of the notes failed. */
   refreshError?: string;
@@ -10,7 +13,7 @@ interface Props {
 }
 
 /** The strip across the top of the app, plus a notice when the notes couldn't be reloaded. */
-export function Header({ page, onNavigate, refreshError, onRetryRefresh }: Props) {
+export function Header({ page, stylusMode, onNavigate, refreshError, onRetryRefresh }: Props) {
   function go(event: MouseEvent, target: Page) {
     event.preventDefault();
     onNavigate(target);
@@ -33,17 +36,25 @@ export function Header({ page, onNavigate, refreshError, onRetryRefresh }: Props
         ) : (
           <span className="app-name">nwsnotes</span>
         )}
-        {page.name === "notes" && (
-          <a
-            href="/settings"
-            className="cog"
-            aria-label="Settings"
-            title="Settings"
-            onClick={(event) => go(event, { name: "settings" })}
-          >
-            <CogIcon />
-          </a>
-        )}
+        <div className="header-icons">
+          {stylusMode && (
+            // Only shows the mode; it isn't a button.
+            <span className="stylus-indicator" role="img" aria-label="Stylus mode is on" title="Stylus mode is on">
+              <FontAwesomeIcon icon={faSignature} />
+            </span>
+          )}
+          {page.name === "notes" && (
+            <a
+              href="/settings"
+              className="cog"
+              aria-label="Settings"
+              title="Settings"
+              onClick={(event) => go(event, { name: "settings" })}
+            >
+              <FontAwesomeIcon icon={faGear} />
+            </a>
+          )}
+        </div>
       </header>
       {refreshError && (
         <div className="refresh-error" role="alert">
@@ -54,25 +65,5 @@ export function Header({ page, onNavigate, refreshError, onRetryRefresh }: Props
         </div>
       )}
     </>
-  );
-}
-
-function CogIcon() {
-  // "settings" icon from Feather (MIT licence).
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width="22"
-      height="22"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
   );
 }
