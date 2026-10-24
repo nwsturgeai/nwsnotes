@@ -1,19 +1,34 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { validateTitle, type Note } from "@nwsnotes/shared";
+import { useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { validateTitle, type Category, type Note, type Tag } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
 interface Props {
   notes: Note[];
+  categories: Category[];
+  /** The dropdowns' selections, kept by the app so they survive visits to settings. */
+  tagSelection: TagSelection;
+  onTagSelectionChange: (selection: TagSelection) => void;
   onNoteAdded: (note: Note) => void;
   onSessionExpired: () => void;
 }
 
-export function NotesPage({ notes, onNoteAdded, onSessionExpired }: Props) {
+export function NotesPage({ notes, categories, tagSelection, onTagSelectionChange, onNoteAdded, onSessionExpired }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+
+  // Each tag id -> the tag, its category, and its place in the display order (category order, then tag order).
+  const tagsById = useMemo(() => {
+    const map = new Map<number, { tag: Tag; category: Category; order: number }>();
+    let order = 0;
+    for (const category of categories) {
+      for (const tag of category.tags) map.set(tag.id, { tag, category, order: order++ });
+    }
+    return map;
+  }, [categories]);
 
   // Newest notes are at the bottom, so keep the list scrolled to the bottom
   // when the page opens and whenever a note is added.
@@ -36,7 +51,8 @@ export function NotesPage({ notes, onNoteAdded, onSessionExpired }: Props) {
     setSaving(true);
     setSaveError(undefined);
     try {
-      const note = await api.addNote({ titleText: check.title });
+      // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
+      const note = await api.addNote({ titleText: check.title, tagIds: selectedTagIds(categories, tagSelection) });
       onNoteAdded(note);
       setTitle("");
     } catch (error) {
@@ -59,9 +75,26 @@ export function NotesPage({ notes, onNoteAdded, onSessionExpired }: Props) {
           <p className="empty">No notes yet. Add your first one below.</p>
         ) : (
           <ul>
-            {notes.map((note) => (
-              <li key={note.id}>{note.titleText}</li>
-            ))}
+            {notes.map((note) => {
+              const tags = note.tagIds
+                .map((id) => tagsById.get(id))
+                .filter((entry) => entry !== undefined)
+                .sort((a, b) => a.order - b.order);
+              return (
+                <li key={note.id}>
+                  {note.titleText}
+                  {tags.length > 0 && (
+                    <ul className="pills">
+                      {tags.map(({ tag, category }) => (
+                        <li key={tag.id} title={category.name}>
+                          {tag.name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -90,6 +123,12 @@ export function NotesPage({ notes, onNoteAdded, onSessionExpired }: Props) {
               {saveError}
             </p>
           )}
+          <TagPickers
+            categories={categories}
+            selection={tagSelection}
+            onChange={onTagSelectionChange}
+            disabled={saving}
+          />
         </form>
       </div>
     </div>

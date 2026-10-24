@@ -1,5 +1,5 @@
 import type { MouseEvent } from "react";
-import type { Page } from "./route";
+import { pathFor, type Page } from "./route";
 
 interface Props {
   page: Page;
@@ -16,23 +16,30 @@ export function Header({ page, onNavigate, refreshError, onRetryRefresh }: Props
     onNavigate(target);
   }
 
+  const back: { page: Page; label: string } | undefined =
+    page.name === "settings"
+      ? { page: { name: "notes" }, label: "← Notes" }
+      : page.name === "category"
+        ? { page: { name: "settings" }, label: "← Settings" }
+        : undefined;
+
   return (
     <>
       <header className="app-header">
-        {page === "settings" ? (
-          <a href="/" className="header-link" onClick={(event) => go(event, "notes")}>
-            ← Notes
+        {back ? (
+          <a href={pathFor(back.page)} className="header-link" onClick={(event) => go(event, back.page)}>
+            {back.label}
           </a>
         ) : (
           <span className="app-name">nwsnotes</span>
         )}
-        {page === "notes" && (
+        {page.name === "notes" && (
           <a
             href="/settings"
             className="cog"
             aria-label="Settings"
             title="Settings"
-            onClick={(event) => go(event, "settings")}
+            onClick={(event) => go(event, { name: "settings" })}
           >
             <CogIcon />
           </a>

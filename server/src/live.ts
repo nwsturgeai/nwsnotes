@@ -42,7 +42,7 @@ export class LiveUpdates {
 
   /** Tells every page except the one that made the change to reload the notes. */
   notifyChanged(senderId: string | undefined): void {
-    const message: LiveMessage = { type: "notes-changed" };
+    const message: LiveMessage = { type: "data-changed" };
     const text = JSON.stringify(message);
     for (const [ws, client] of this.clients) {
       if (senderId && client.id === senderId) continue;
