@@ -79,6 +79,11 @@ Then open https://nwsnotes.duckdns.org and log in.
 - **Viewing the app's logs:** `sudo -iu nwsnotes pm2 logs nwsnotes`
 - **Restarting the app:** `sudo -iu nwsnotes pm2 restart nwsnotes`
 - **Getting a new password:** `sudo bash setup-vm.sh --new-password` (existing sessions stay logged in).
+- **Taking a backup:** click the cog at the top right, then **Download backup**. This downloads the latest save-file, which can be copied straight back into `/var/lib/nwsnotes/data` to restore.
+
+## Installing it as an Android app
+
+Open https://nwsnotes.duckdns.org in Chrome on the phone, log in, then choose **⋮ → Add to Home screen → Install**. The app opens full-screen from its own icon and updates itself after each deployment. Notes are always loaded from the server, so it needs a connection to work.
 
 ## Where things live on the VM
 

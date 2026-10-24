@@ -35,6 +35,7 @@ function dateFromFileName(name: string): Date | undefined {
 export class NoteStore {
   private notes: Note[] = [];
   private lastSaveMs = 0;
+  private latestFileName: string | undefined;
   /** Saves run one at a time, in order. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -52,6 +53,7 @@ export class NoteStore {
       }
       this.notes = content.notes;
       this.lastSaveMs = latest.date.getTime();
+      this.latestFileName = latest.name;
       console.log(`Loaded ${this.notes.length} notes from ${latest.name}`);
     } else {
       console.log(`No save-files in ${this.dataDir}; starting with no notes.`);
@@ -61,6 +63,12 @@ export class NoteStore {
 
   getAll(): Note[] {
     return this.notes;
+  }
+
+  /** The most recent save-file, or undefined if nothing has been saved yet. */
+  latestSaveFile(): { name: string; path: string } | undefined {
+    if (!this.latestFileName) return undefined;
+    return { name: this.latestFileName, path: path.join(this.dataDir, this.latestFileName) };
   }
 
   /** Adds a note (title already validated) and saves. Resolves once it is on disk. */
@@ -87,7 +95,8 @@ export class NoteStore {
     const content: SaveFile = { version: 1, savedDateTime: timestamp, notes };
 
     // Write to a temporary file, then rename, so a crash can't leave a half-written save-file.
-    const finalPath = path.join(this.dataDir, fileNameFor(now));
+    const fileName = fileNameFor(now);
+    const finalPath = path.join(this.dataDir, fileName);
     const tempPath = `${finalPath}.tmp`;
     await writeFile(tempPath, JSON.stringify(content, null, 2), "utf8");
     await rename(tempPath, finalPath);
@@ -95,6 +104,7 @@ export class NoteStore {
     // Only update memory once the save succeeded.
     this.notes = notes;
     this.lastSaveMs = nowMs;
+    this.latestFileName = fileName;
 
     try {
       await this.deleteOldFiles();

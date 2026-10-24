@@ -6,10 +6,9 @@ interface Props {
   notes: Note[];
   onNoteAdded: (note: Note) => void;
   onSessionExpired: () => void;
-  onLogout: () => void;
 }
 
-export function NotesPage({ notes, onNoteAdded, onSessionExpired, onLogout }: Props) {
+export function NotesPage({ notes, onNoteAdded, onSessionExpired }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -92,9 +91,6 @@ export function NotesPage({ notes, onNoteAdded, onSessionExpired, onLogout }: Pr
             </p>
           )}
         </form>
-        <button type="button" className="logout" onClick={onLogout}>
-          Log out
-        </button>
       </div>
     </div>
   );

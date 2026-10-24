@@ -4,16 +4,18 @@ import https from "node:https";
 import path from "node:path";
 import { createApp, createHttpApp } from "./app.js";
 import { loadConfig } from "./config.js";
+import { LiveUpdates } from "./live.js";
 import { NoteStore } from "./store.js";
 
 async function main() {
   const config = loadConfig();
   const store = new NoteStore(config.dataDir);
   await store.init();
-  const app = createApp(config, store);
+  const live = new LiveUpdates(config.sessionSecret);
+  const app = createApp(config, store, live);
 
   if (!config.production) {
-    http.createServer(app).listen(config.httpPort, () => {
+    http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {
       console.log(`Development API on http://localhost:${config.httpPort} (password: "dev")`);
     });
     return;
@@ -29,7 +31,7 @@ async function main() {
 
   if (hasCertificate) {
     const tls = { cert: readFileSync(certFile), key: readFileSync(keyFile) };
-    https.createServer(tls, app).listen(config.httpsPort, () => {
+    https.createServer(tls, app).on("upgrade", live.handleUpgrade).listen(config.httpsPort, () => {
       console.log(`HTTPS on port ${config.httpsPort}`);
     });
   } else {

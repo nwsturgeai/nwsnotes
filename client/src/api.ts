@@ -1,4 +1,5 @@
-import type { ApiErrorBody, LoginRequest, NewNoteRequest, Note } from "@nwsnotes/shared";
+import { CONNECTION_ID_HEADER, type ApiErrorBody, type LoginRequest, type NewNoteRequest, type Note } from "@nwsnotes/shared";
+import { connectionId } from "./live";
 
 /** An API call that failed, with everything needed to show the error in full. */
 export class ApiError extends Error {
@@ -21,13 +22,15 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, url: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
   let response: Response;
   try {
     response = await fetch(url, {
       method,
       credentials: "same-origin",
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (error) {
@@ -56,7 +59,8 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 
 export const api = {
   getNotes: () => request<Note[]>("GET", "/api/notes"),
-  addNote: (body: NewNoteRequest) => request<Note>("POST", "/api/notes", body),
+  addNote: (body: NewNoteRequest) =>
+    request<Note>("POST", "/api/notes", body, { [CONNECTION_ID_HEADER]: connectionId }),
   login: (body: LoginRequest) => request<{ ok: true }>("POST", "/api/login", body),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
 };

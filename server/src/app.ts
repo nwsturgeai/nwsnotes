@@ -3,7 +3,7 @@ import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { validateTitle, type LoginRequest, type NewNoteRequest } from "@nwsnotes/shared";
+import { CONNECTION_ID_HEADER, validateTitle, type LoginRequest, type NewNoteRequest } from "@nwsnotes/shared";
 import {
   SESSION_COOKIE,
   SESSION_LENGTH_MS,
@@ -12,10 +12,11 @@ import {
   verifyPassword,
 } from "./auth.js";
 import type { Config } from "./config.js";
+import type { LiveUpdates } from "./live.js";
 import type { NoteStore } from "./store.js";
 
 /** The main website + API app. */
-export function createApp(config: Config, store: NoteStore) {
+export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -72,7 +73,21 @@ export function createApp(config: Config, store: NoteStore) {
       return;
     }
     const note = await store.add(check.title);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
     res.status(201).json(note);
+  });
+
+  // The latest save-file exactly as it is on disk, as a download (for manual backups).
+  notesRouter.get("/download", (_req, res, next) => {
+    const file = store.latestSaveFile();
+    if (!file) {
+      res.status(404).json({ error: "No notes have been saved yet, so there's nothing to download." });
+      return;
+    }
+    res.set("Cache-Control", "no-store");
+    res.download(file.path, file.name, (error) => {
+      if (error && !res.headersSent) next(error);
+    });
   });
 
   app.use("/api/notes", notesRouter);

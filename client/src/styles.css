@@ -105,13 +105,90 @@ input:disabled {
   color: var(--muted);
 }
 
+/* ---- App frame: header strip, then the current page --------------------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.app-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 3rem;
+  padding: 0 0.75rem 0 1.5rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.app-name {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.header-link {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.header-link:hover {
+  text-decoration: underline;
+}
+
+.cog {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.cog:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.refresh-error {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 1.5rem;
+  background: var(--error-bg);
+  color: var(--error);
+  font-size: 0.9rem;
+}
+
+.refresh-error button {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* ---- Notes page: list in the top 3/4, new note in the bottom 1/4 -------- */
 
 .notes-page {
   display: grid;
+  flex: 1;
   grid-template-rows: 3fr 1fr;
-  height: 100vh;
-  height: 100dvh;
+  min-height: 0;
 }
 
 .note-list {
@@ -139,7 +216,6 @@ input:disabled {
 }
 
 .new-note {
-  position: relative;
   min-height: 0;
   overflow-y: auto;
   padding: 1.25rem 1.5rem;
@@ -162,20 +238,53 @@ input:disabled {
   gap: 0.75rem;
 }
 
-.logout {
-  position: absolute;
-  right: 1.5rem;
-  bottom: 1rem;
-  padding: 0;
-  border: none;
-  background: none;
+/* ---- Settings page ------------------------------------------------------ */
+
+.settings-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+.settings-page > * {
+  max-width: 40rem;
+}
+
+.settings-page h1 {
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+}
+
+.settings-page section {
+  padding: 1rem 0 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.settings-page h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.settings-page p {
+  margin: 0 0 0.75rem;
   color: var(--muted);
-  text-decoration: underline;
+}
+
+.button {
+  display: inline-block;
+  padding: 0.5rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
 }
 
-.logout:hover {
-  color: var(--text);
+.button:hover {
+  border-color: var(--muted);
 }
 
 /* ---- Login page --------------------------------------------------------- */
