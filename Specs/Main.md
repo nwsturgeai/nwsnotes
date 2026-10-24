@@ -34,6 +34,8 @@ For now, phone layout is not important, I will make changes later to address tha
 There will be a header strip across the top of the app.  The app will have a settings page, accessible by clicking a cog icon located on the right-hand edge of the top header strip.
 The settings page will contain the option to log out (that won't be shown on the main notes page).
 The settings page will contain an option to download the latest json file from the server containing all the notes data.  I will use this to manually take backups every few days.
+The header strip should have the same background colour as the "New note" area at the bottom of the page.
+There should be no app title shown at the left of the header - this area will be used for a different feature coming soon.
 
 Any time a new note is entered, the website will send to the API a json blob containing all attributes of the new note.  The API will save a JSON blob to the local disk containing the current state of all notes - previously-added notes and also this new one.  Each save-file should include the timestamp in its filename.  Any and all note files created in the last week should be kept; files older than 1 week apart from the most-recent save-file should be deleted automatically.
 
@@ -61,15 +63,16 @@ Adding or editing a Category should share the same user-interface.
 When adding or editing a Category, the user should be shown a list of all the tags available in that category.  The user can add new tags and rename existing tags.
 Have a "Save" button to save all changes to a category in one go.  And a "Cancel" button to cancel any category edits and return to the last saved state.
 If/when a category is saved, that should cause other tabs viewing the website to be sent the latest data (including the latest categories and tags).
-Categories must contain at least one tag to be able to be saved. 
+Categories must contain at least one tag to be able to be saved.
+It should not be allowed to have a tag with the same text as the category name.
 For now, it will not be possible to delete tags or categories.
 For now, it will not be possible to change the tags a note has after the note has been created.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
 On the main notes page:
 Each note should also display its tags.  These should be shown in a list of pills underneath the note title.  If 2 categories have tags with the same name, there is a possibility that a note has 2 tags with the same text.  This is OK.
-When adding a note, the user can set tags.  There should be a dropdown for each Category.  For single-select categories this can be a simple dropdown with a "(none)" option. For multi-select categories, use a dropdown that opens a check-list.
-The dropdowns should appear underneath the textbox where the note title is entered.
+When adding a note, the user can set tags.  There should be a dropdown for each Category.  For single-select categories this can be a simple dropdown.  The default option for this dropdown (which corresponds to "no tag selected within this category") should be the category name. For multi-select categories, use a dropdown that opens a check-list.  Again, the default text should be the category name.
+The dropdowns should appear underneath the textbox where the note title is entered.  The dropdowns should not have any titles.
 After adding a note, the dropdowns retain their selections so that if the dropdowns aren't changed then a second new note would be given the same tags.
 
 
@@ -83,6 +86,9 @@ When in stylus mode, instead of typing a new note, I want to write the note onto
 Saving the note should capture the image data from the canvas and store that as the note's titleImage.  The canvas should be 80 pixels high.  When saving the image, crop down to just the area of the canvas that has anything written.
 When displaying the list of notes, if a note has a title image (and no title text) then the image should be displayed, and no title text should be displayed.
 Handwritten notes can still have tags the same as typed notes.
+
+The "Clear" button should be shown underneath the "Add" button - this gives more horizontal space for handwriting.
+Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns: when in stylus mode, these controls should not respond to touch inputs - they should only respond to stylus or mouse inputs. Touch inputs should continue to work when not in stylus mode.
 
 
 ## Agreed technical decisions
