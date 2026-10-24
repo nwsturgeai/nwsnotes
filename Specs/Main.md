@@ -7,6 +7,8 @@ The browser code should be written in typescript and should use React.
 This site will be for a single user (me).  I should need a password to log in, this should be a string of 32 random characters.
 The site should be delivered over HTTPS - I have a domain "nwsnotes.duckdns.org" which has a DNS entry pointing to my VM.
 
+The website should have the necessary attributes to be useable as an Android Progressive Web App.
+
 Each note will have the following attributes:
 id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.
 titleText - a string.  May not be empty - notes with empty title should be rejected.  Trim leading/trailing whitespace.  Max length 500 characters.
@@ -20,13 +22,17 @@ For now, if the top 3/4 of the page isn't enough space to show all notes, then s
 There will be an area to enter a new note in the bottom 1/4 of the page - always visible even if there are more notes than fit.
 For now, phone layout is not important, I will make changes later to address that use-case.
 
+There will be a header strip across the top of the app.  The app will have a settings page, accessible by clicking a cog icon located on the right-hand edge of the top header strip.
+The settings page will contain the option to log out (that won't be shown on the main notes page).
+The settings page will contain an option to download the latest json file from the server containing all the notes data.  I will use this to manually take backups every few days.
+
 Any time a new note is entered, the website will send to the API a json blob containing all attributes of the new note.  The API will save a JSON blob to the local disk containing the current state of all notes - previously-added notes and also this new one.  Each save-file should include the timestamp in its filename.  Any and all note files created in the last week should be kept; files older than 1 week apart from the most-recent save-file should be deleted automatically.
 
 Any errors on saving the note should be displayed under the new note title, leaving the typed title available so that retry is possible.
 
 When the website is opened for the first time or refreshed, the site should make a call to the API to retrieve the most recently saved json blob containing all the note data.
 
-I will add a mechanism for backing up the note data later.
+The website should open a websocket connection to the server.  Whenever any data is changed by a particular website connection, the server should use the websocket to notify any other website connections to refresh their data. 
 
 Whilst the page is loading, show text "Loading...".  If there is an error on startup (e.g. the API is unavailable) then show a page with all the details of the error.
 
