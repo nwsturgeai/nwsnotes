@@ -44,13 +44,15 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 
 ### API
 - `GET /api/notes` - returns all notes (the most recent save-file's contents).
-- `POST /api/notes` - body `{ "titleText": "..." }`. The server assigns the id and timestamps, saves a new save-file and returns the created note.
+- `POST /api/notes` - body `{ "titleText": "..." }`. The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
+- `GET /api/notes/download` - returns the most recent save-file exactly as it is on disk (including its `version` and `savedDateTime` fields), as a file download named with the save-file's own name, e.g. `notes-2026-10-24T09-40-12-345Z.json`. A backup can be put straight back into the data folder.
 - `POST /api/login` - body `{ "password": "..." }`. On success sets the session cookie.
 - `POST /api/logout` - clears the session cookie.
 - All `/api/notes` calls require a valid session; otherwise they return HTTP 401 and the website shows the login page.
 
 ### Login
-- A login page with a single password field. On success the server sets a secure, HttpOnly session cookie that lasts 30 days. A "Log out" link is shown on the main screen.
+- A login page with a single password field. On success the server sets a secure, HttpOnly session cookie that lasts 30 days.
+- "Log out" is on the settings page only, not on the main notes screen.
 - The 32-character password is generated once on the VM. Only a hash of it is stored, in `/etc/nwsnotes/config.json` on the VM, never in GitHub.
 - The login endpoint is rate limited.
 
@@ -58,6 +60,26 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 - A single-line text box and an "Add" button. Pressing Enter also adds the note.
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible.
 - When the page loads, the list starts scrolled to the bottom.
+
+### Header and settings page
+- The header strip has a fixed height. The rest of the page below it is split 3/4 note list, 1/4 new-note area.
+- The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
+- The settings page has "Log out" and "Download backup". "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+
+### Live updates (WebSocket)
+- The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
+- The server only accepts the connection if the session cookie is valid and the request's `Origin` is the site's own address, so other websites can't connect using the cookie.
+- Each page load creates a random connection id and sends it with every change it makes (`X-Connection-Id` header). After a change is saved, the server sends `{ "type": "notes-changed" }` to every other open connection; they reload the notes with `GET /api/notes`. The same message will be used later for note editing and deleting.
+- If the connection drops, the website reconnects automatically, waiting a little longer after each failed attempt. After any reconnect, and whenever the app comes back on screen, it reloads the notes in case it missed a message.
+- These background reloads don't show "Loading...", don't clear a title being typed, and keep the list scrolled to the bottom. If one fails, a small notice is shown instead of the full error page.
+- Logging out closes the connection.
+- The server pings each connection regularly so idle connections aren't silently dropped.
+
+### Android app (PWA)
+- A web app manifest with the app name, theme and background colours, `display: standalone`, and PNG icons at 192×192 and 512×512, including a maskable icon.
+- A service worker (built with `vite-plugin-pwa`) caches only the website's own files, never `/api` calls, so notes are always live. When offline, the app opens and shows the normal startup error page.
+- The service worker updates itself automatically after each deployment.
+- Check on the live site that the security headers (helmet's Content Security Policy) allow the manifest, service worker and WebSocket.
 
 ### Save files
 - Folder: `/var/lib/nwsnotes/data` (outside the app's code folder, so deployments never touch it).
