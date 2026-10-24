@@ -1,16 +1,18 @@
 import type { MouseEvent } from "react";
-import type { Category } from "@nwsnotes/shared";
+import { ALL_TAB_NAME, type Category, type Tab } from "@nwsnotes/shared";
 import { pathFor, type Page } from "./route";
+import { TagPills } from "./TagPills";
 
 interface Props {
   categories: Category[];
+  tabs: Tab[];
   stylusMode: boolean;
   onStylusModeChange: (on: boolean) => void;
   onNavigate: (page: Page) => void;
   onLogout: () => void;
 }
 
-export function SettingsPage({ categories, stylusMode, onStylusModeChange, onNavigate, onLogout }: Props) {
+export function SettingsPage({ categories, tabs, stylusMode, onStylusModeChange, onNavigate, onLogout }: Props) {
   function go(event: MouseEvent, target: Page) {
     event.preventDefault();
     onNavigate(target);
@@ -63,8 +65,42 @@ export function SettingsPage({ categories, stylusMode, onStylusModeChange, onNav
       </section>
 
       <section>
+        <h2>Tabs</h2>
+        <p>A tab shows only the notes with the tags it lists. Click a tab to change or delete it.</p>
+        <ul className="category-list">
+          <li>
+            {/* The built-in tab can't be edited, so it isn't a link. */}
+            <span className="tab-entry">
+              <span className="category-name">{ALL_TAB_NAME}</span>
+              <span className="category-tags">Always shows every note</span>
+            </span>
+          </li>
+          {tabs.map((tab) => {
+            const page: Page = { name: "tab", id: tab.id };
+            return (
+              <li key={tab.id}>
+                <a href={pathFor(page)} onClick={(event) => go(event, page)}>
+                  <span className="category-name">{tab.name}</span>
+                  <div className="category-tags">
+                    <TagPills tagIds={tab.categories.flatMap((filter) => filter.tagIds)} categories={categories} />
+                  </div>
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+        <a
+          className="button"
+          href={pathFor({ name: "tab", id: "new" })}
+          onClick={(event) => go(event, { name: "tab", id: "new" })}
+        >
+          Add tab
+        </a>
+      </section>
+
+      <section>
         <h2>Backup</h2>
-        <p>Download the latest save-file from the server. It contains all your notes, categories and tags.</p>
+        <p>Download the latest save-file from the server. It contains all your notes, categories, tags and tabs.</p>
         {/* A plain link: the session cookie is sent with it, and the server names the file. */}
         <a className="button" href="/api/notes/download" download>
           Download backup

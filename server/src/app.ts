@@ -117,6 +117,41 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
 
   app.use("/api/categories", categoriesRouter);
 
+  // --- Tabs (saved filters) -------------------------------------------------
+
+  const tabsRouter = express.Router();
+  tabsRouter.use(requireSession(config.sessionSecret));
+
+  tabsRouter.post("/", async (req, res) => {
+    const tab = await store.addTab(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.status(201).json(tab);
+  });
+
+  tabsRouter.put("/:id", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no tab with id ${req.params.id}.` });
+      return;
+    }
+    const tab = await store.updateTab(id, req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(tab);
+  });
+
+  tabsRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no tab with id ${req.params.id}.` });
+      return;
+    }
+    await store.deleteTab(id);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json({ ok: true });
+  });
+
+  app.use("/api/tabs", tabsRouter);
+
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Unknown API address." });
   });

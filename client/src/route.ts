@@ -5,7 +5,9 @@ export type Page =
   | { name: "notes" }
   | { name: "settings" }
   /** Adding (id "new") or editing a category. */
-  | { name: "category"; id: number | "new" };
+  | { name: "category"; id: number | "new" }
+  /** Adding (id "new") or editing a tab. */
+  | { name: "tab"; id: number | "new" };
 
 export function pathFor(page: Page): string {
   switch (page.name) {
@@ -15,13 +17,18 @@ export function pathFor(page: Page): string {
       return "/settings";
     case "category":
       return `/settings/categories/${page.id}`;
+    case "tab":
+      return `/settings/tabs/${page.id}`;
   }
 }
 
 function pageFromPath(pathname: string): Page {
   if (pathname === "/settings") return { name: "settings" };
-  const match = /^\/settings\/categories\/(new|\d+)$/.exec(pathname);
-  if (match) return { name: "category", id: match[1] === "new" ? "new" : Number(match[1]) };
+  const match = /^\/settings\/(categories|tabs)\/(new|\d+)$/.exec(pathname);
+  if (match) {
+    const id = match[2] === "new" ? "new" : Number(match[2]);
+    return match[1] === "tabs" ? { name: "tab", id } : { name: "category", id };
+  }
   return { name: "notes" };
 }
 

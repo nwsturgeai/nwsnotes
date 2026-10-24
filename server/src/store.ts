@@ -2,12 +2,14 @@ import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/pro
 import path from "node:path";
 import {
   validateCategory,
+  validateTab,
   validateTagIds,
   type Category,
   type CategoryRequest,
   type Note,
   type NotesData,
   type NoteTitle,
+  type Tab,
 } from "@nwsnotes/shared";
 
 /** Contents of each save-file. */
@@ -16,6 +18,8 @@ interface SaveFile {
   savedDateTime: string;
   notes: Note[];
   categories: Category[];
+  /** Missing in files saved before tabs existed. */
+  tabs?: Tab[];
 }
 
 /** Save-files written before tags existed. */
@@ -55,7 +59,7 @@ function dateFromFileName(name: string): Date | undefined {
 }
 
 /** Reads a save-file of either version as the current version. */
-function parseSaveFile(name: string, text: string): SaveFile {
+function parseSaveFile(name: string, text: string): Required<SaveFile> {
   const content = JSON.parse(text) as SaveFile | SaveFileV1;
   if (!Array.isArray(content.notes)) {
     throw new Error(`Save-file ${name} has no "notes" list.`);
@@ -66,21 +70,24 @@ function parseSaveFile(name: string, text: string): SaveFile {
       savedDateTime: content.savedDateTime,
       notes: content.notes.map((note) => ({ ...note, tagIds: [] })),
       categories: [],
+      tabs: [],
     };
   }
   if (content.version !== 2 || !Array.isArray(content.categories)) {
     throw new Error(`Save-file ${name} has an unknown format (version ${String((content as { version?: unknown }).version)}).`);
   }
-  return content;
+  // Files saved before tabs existed have no "tabs" list.
+  return { ...content, tabs: Array.isArray(content.tabs) ? content.tabs : [] };
 }
 
 /**
- * Keeps all notes and categories in memory and writes a complete, timestamped
+ * Keeps all notes, categories and tabs in memory and writes a complete, timestamped
  * save-file to disk every time anything changes.
  */
 export class NoteStore {
   private notes: Note[] = [];
   private categories: Category[] = [];
+  private tabs: Tab[] = [];
   private lastSaveMs = 0;
   private latestFileName: string | undefined;
   /** Changes run one at a time, in order. */
@@ -97,9 +104,12 @@ export class NoteStore {
       const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
       this.notes = content.notes;
       this.categories = content.categories;
+      this.tabs = content.tabs;
       this.lastSaveMs = latest.date.getTime();
       this.latestFileName = latest.name;
-      console.log(`Loaded ${this.notes.length} notes and ${this.categories.length} categories from ${latest.name}`);
+      console.log(
+        `Loaded ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from ${latest.name}`,
+      );
     } else {
       console.log(`No save-files in ${this.dataDir}; starting with no notes.`);
     }
@@ -107,7 +117,7 @@ export class NoteStore {
   }
 
   getAll(): NotesData {
-    return { notes: this.notes, categories: this.categories };
+    return { notes: this.notes, categories: this.categories, tabs: this.tabs };
   }
 
   /** The most recent save-file, or undefined if nothing has been saved yet. */
@@ -131,7 +141,7 @@ export class NoteStore {
         lastModifiedDateTime: timestamp,
         tagIds: tagIds.value,
       };
-      await this.save(now, [...this.notes, note], this.categories);
+      await this.save(now, { notes: [...this.notes, note] });
       return note;
     });
   }
@@ -148,7 +158,7 @@ export class NoteStore {
         multiSelect: check.category.multiSelect,
         tags: this.withTagIds(check.category.tags),
       };
-      await this.save(this.nextSaveTime(), this.notes, [...this.categories, category]);
+      await this.save(this.nextSaveTime(), { categories: [...this.categories, category] });
       return category;
     });
   }
@@ -168,8 +178,42 @@ export class NoteStore {
         tags: this.withTagIds(check.category.tags).sort((a, b) => a.id - b.id),
       };
       const categories = this.categories.map((c) => (c.id === id ? category : c));
-      await this.save(this.nextSaveTime(), this.notes, categories);
+      await this.save(this.nextSaveTime(), { categories });
       return category;
+    });
+  }
+
+  /** Checks and adds a new tab, then saves. */
+  addTab(raw: unknown): Promise<Tab> {
+    return this.enqueue(async () => {
+      const check = validateTab(raw, this.tabs, this.categories);
+      if (!check.ok) throw new RequestError(400, check.error);
+
+      const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab };
+      await this.save(this.nextSaveTime(), { tabs: [...this.tabs, tab] });
+      return tab;
+    });
+  }
+
+  /** Checks and replaces a tab's name and filters, then saves. */
+  updateTab(id: number, raw: unknown): Promise<Tab> {
+    return this.enqueue(async () => {
+      const existing = this.tabs.find((t) => t.id === id);
+      if (!existing) throw new RequestError(404, `There is no tab with id ${id}.`);
+      const check = validateTab(raw, this.tabs, this.categories, existing);
+      if (!check.ok) throw new RequestError(400, check.error);
+
+      const tab: Tab = { id, ...check.tab };
+      await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) });
+      return tab;
+    });
+  }
+
+  /** Deletes a tab, then saves. Notes aren't changed. */
+  deleteTab(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      if (!this.tabs.some((t) => t.id === id)) throw new RequestError(404, `There is no tab with id ${id}.`);
+      await this.save(this.nextSaveTime(), { tabs: this.tabs.filter((t) => t.id !== id) });
     });
   }
 
@@ -191,8 +235,12 @@ export class NoteStore {
     return new Date(Math.max(Date.now(), this.lastSaveMs + 1));
   }
 
-  private async save(now: Date, notes: Note[], categories: Category[]): Promise<void> {
-    const content: SaveFile = { version: 2, savedDateTime: now.toISOString(), notes, categories };
+  /** Saves the current data with `change` applied (only the lists given are replaced). */
+  private async save(now: Date, change: Partial<NotesData>): Promise<void> {
+    const notes = change.notes ?? this.notes;
+    const categories = change.categories ?? this.categories;
+    const tabs = change.tabs ?? this.tabs;
+    const content: SaveFile = { version: 2, savedDateTime: now.toISOString(), notes, categories, tabs };
 
     // Write to a temporary file, then rename, so a crash can't leave a half-written save-file.
     const fileName = fileNameFor(now);
@@ -204,6 +252,7 @@ export class NoteStore {
     // Only update memory once the save succeeded.
     this.notes = notes;
     this.categories = categories;
+    this.tabs = tabs;
     this.lastSaveMs = now.getTime();
     this.latestFileName = fileName;
 
