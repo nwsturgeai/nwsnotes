@@ -46,10 +46,10 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 ## Tags
 
 Tags will be arranged into Categories.  Each Category will have the following attributes:
-id - a unique integer id.  Should be auto-created, starting at 1, each new category takes the next id value.  Ids should be unique across all categories, so the note only needs to store the tag id, not the category id.
+id - a unique integer id.  Should be auto-created, starting at 1, each new category takes the next id value.
 name - required, trimmed, at most 40 characters, unique
 multiSelect - a boolean.  If true then a note can be tagged with multiple tags from this category.  If false then a note can be tagged with at most one tag from this category.
-tags - a list of all the available tags within this category.  Each tag has a unique integer id (auto-generated) and a string giving the tag name.  Tag names can be at most 40 characters long.  Tag names must be unique within their category.
+tags - a list of all the available tags within this category.  Each tag has a unique integer id (auto-generated) and a string giving the tag name.  Tag names can be at most 40 characters long.  Tag names must be unique within their category.  Tag ids should be unique across all categories, so the note only needs to store the tag id, not the category id.
 
 All the categories (including all the tags within them) will also be saved into the same one json file (which also contains the note data) on the vm local disk.  Every time any category is added or changed, a new copy of the json file should be saved.
 
@@ -62,9 +62,10 @@ If/when a category is saved, that should cause other tabs viewing the website to
 Categories must contain at least one tag to be able to be saved. 
 For now, it will not be possible to delete tags or categories.
 For now, it will not be possible to change the tags a note has after the note has been created.
+After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
 On the main notes page:
-Each note should also display its tags.  These should be shown in a list of pills underneath the note title.
+Each note should also display its tags.  These should be shown in a list of pills underneath the note title.  If 2 categories have tags with the same name, there is a possibility that a note has 2 tags with the same text.  This is OK.
 When adding a note, the user can set tags.  There should be a dropdown for each Category.  For single-select categories this can be a simple dropdown with a "(none)" option. For multi-select categories, use a dropdown that opens a check-list.
 The dropdowns should appear underneath the textbox where the note title is entered.
 After adding a note, the dropdowns retain their selections so that if the dropdowns aren't changed then a second new note would be given the same tags.
