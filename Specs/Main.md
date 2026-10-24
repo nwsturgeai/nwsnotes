@@ -78,12 +78,15 @@ After adding a note, the dropdowns retain their selections so that if the dropdo
 - Node.js 24 (LTS). No automated tests for now.
 
 ### API
-- `GET /api/notes` - returns all notes (the most recent save-file's contents).
-- `POST /api/notes` - body `{ "titleText": "..." }`. The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
+- `GET /api/notes` - returns `{ "notes": [...], "categories": [...] }`: all notes and all categories with their tags (the most recent save-file's contents).
+- `POST /api/notes` - body `{ "titleText": "...", "tagIds": [3, 7] }` (`tagIds` may be empty). The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
+- `POST /api/categories` - body `{ "name": "...", "multiSelect": false, "tags": [{ "name": "..." }] }`. The server assigns the category and tag ids, saves a new save-file and returns the created category.
+- `PUT /api/categories/:id` - body as above, but existing tags include their `id` (`{ "id": 3, "name": "..." }`); tags without an `id` are new. Saves a new save-file and returns the updated category.
+- Changes send the `X-Connection-Id` header too, and the server checks every rule in "Tags" below, returning HTTP 400 with a clear message if one is broken.
 - `GET /api/notes/download` - returns the most recent save-file exactly as it is on disk (including its `version` and `savedDateTime` fields), as a file download named with the save-file's own name, e.g. `notes-2026-10-24T09-40-12-345Z.json`. A backup can be put straight back into the data folder.
 - `POST /api/login` - body `{ "password": "..." }`. On success sets the session cookie.
 - `POST /api/logout` - clears the session cookie.
-- All `/api/notes` calls require a valid session; otherwise they return HTTP 401 and the website shows the login page.
+- All `/api/notes` and `/api/categories` calls require a valid session; otherwise they return HTTP 401 and the website shows the login page.
 
 ### Login
 - A login page with a single password field. On success the server sets a secure, HttpOnly session cookie that lasts 30 days.
@@ -96,6 +99,28 @@ After adding a note, the dropdowns retain their selections so that if the dropdo
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible.
 - When the page loads, the list starts scrolled to the bottom.
 
+### Tags
+- Shared types in `shared/`: `Tag { id, name }`, `Category { id, name, multiSelect, tags: Tag[] }`, and `Note` gains `tagIds: number[]`. The name and tag rules are checked by shared functions used by both the website and the server, like the note title.
+- Ids: a new category gets the highest category id + 1; a new tag gets the highest tag id across all categories + 1. Both start at 1.
+- Category and tag names are trimmed, can't be empty and are at most 40 characters. Category names must be unique, and tag names unique within their category; both checks ignore upper/lower case ("Work" and "work" count as the same).
+- `multiSelect` can be changed from false to true, but not back. A note's `tagIds` must all exist, with at most one from each single-select category.
+- Categories, tags within a category, and the dropdowns all appear in the order they were created (id order). A note's pills appear in category order, then tag order.
+- Renaming a tag changes it on every note that has it, because notes store only the tag id.
+
+### Category editing
+- The settings page has a Categories section listing each category's name with its tags, and an "Add category" button.
+- Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (locked once the category has been saved as multi-select), one text box per tag for renaming, and an "Add tag" button that adds an empty tag row.
+- Empty new tag rows are ignored when saving. Emptying an existing tag's name is an error, as tags can't be deleted.
+- "Save" sends the whole category in one call and returns to the settings page. If saving fails, the error is shown on the page and the edits are kept so you can retry.
+- "Cancel" discards the edits and returns to the settings page; for a new category nothing is created.
+- If another page saves the same category while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
+
+### Tags on the notes page
+- Each note shows its tags as small pills under the title, showing the tag name only.
+- Under the title text box there is one dropdown per category, labelled with the category name. Single-select categories use a normal dropdown with "(none)" first. Multi-select categories use a button showing the chosen tag names (or "(none)") that opens a check-list.
+- After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown set to "(none)".
+- If there are more dropdowns than fit, the bottom 1/4 area scrolls.
+
 ### Header and settings page
 - The header strip has a fixed height. The rest of the page below it is split 3/4 note list, 1/4 new-note area.
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
@@ -104,7 +129,7 @@ After adding a note, the dropdowns retain their selections so that if the dropdo
 ### Live updates (WebSocket)
 - The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
 - The server only accepts the connection if the session cookie is valid and the request's `Origin` is the site's own address, so other websites can't connect using the cookie.
-- Each page load creates a random connection id and sends it with every change it makes (`X-Connection-Id` header). After a change is saved, the server sends `{ "type": "notes-changed" }` to every other open connection; they reload the notes with `GET /api/notes`. The same message will be used later for note editing and deleting.
+- Each page load creates a random connection id and sends it with every change it makes (`X-Connection-Id` header). After a change is saved (a note added, or a category added or edited), the server sends `{ "type": "data-changed" }` to every other open connection; they reload the notes and categories with `GET /api/notes`. The same message will be used later for note editing and deleting.
 - If the connection drops, the website reconnects automatically, waiting a little longer after each failed attempt. After any reconnect, and whenever the app comes back on screen, it reloads the notes in case it missed a message.
 - These background reloads don't show "Loading...", don't clear a title being typed, and keep the list scrolled to the bottom. If one fails, a small notice is shown instead of the full error page.
 - Logging out closes the connection.
@@ -121,6 +146,7 @@ After adding a note, the dropdowns retain their selections so that if the dropdo
 - Filename format: `notes-2026-10-24T09-40-12-345Z.json` (UTC timestamp, no colons).
 - Files are written to a temporary name and then renamed, so a crash mid-save can't leave a corrupt file.
 - Retention cleanup runs after each save and when the server starts.
+- Contents: `{ "version": 2, "savedDateTime": "...", "notes": [...], "categories": [...] }`. A version 1 file (from before tags) loads with no categories and every note's `tagIds` empty; the next save writes version 2.
 
 ### Hosting (Ubuntu VM)
 - App code lives in `/opt/nwsnotes`, run by a dedicated `nwsnotes` user under pm2. pm2 starts the app on boot.
