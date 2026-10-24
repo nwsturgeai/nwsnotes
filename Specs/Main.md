@@ -9,6 +9,7 @@ The browser code should be written in typescript and should use React.
 This site will be for a single user (me).  I should need a password to log in, this should be a string of 32 random characters.
 The site should be delivered over HTTPS - I have a domain "nwsnotes.duckdns.org" which has a DNS entry pointing to my VM.
 Use fontawesome icons.
+The app should always be rendered with black/dark text on white/light backgrounds.  In other words, ignore if the device is set to "dark mode".
 
 The website should have the necessary attributes to be useable as an Android Progressive Web App.
 
@@ -24,9 +25,9 @@ timestamps should be set by the server.  Dates should be stored in ISO 8601 form
 Tags - can have multiple.  More details below.  The note should reference/store the ids of the tags it is tagged with.
 
 The main app screen will show:
-A list of all notes in the top 3/4 of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
-For now, if the top 3/4 of the page isn't enough space to show all notes, then scroll vertically to see the rest.  Only the top 3/4 of the screen should scroll.
-There will be an area to enter a new note in the bottom 1/4 of the page - always visible even if there are more notes than fit.
+A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
+If there isn't enough space to show all notes, then scroll vertically to see the rest.
+There will be an area to enter a new note at the bottom of the page - always visible even if there are more notes than fit.  This area at the bottom should not scroll when the list of notes scrolls.  This area should be fixed height, 150px tall.
 There should be no "New note" heading.
 For now, phone layout is not important, I will make changes later to address that use-case.
 
@@ -119,6 +120,17 @@ Notes that are "filtered out" remain in the system, they are just hidden.  They 
 When the currently-selected Tab has a Category filter containing a single Tag: the new-note area should have that one Tag automatically selected in the corresponding dropdown.  It should not be possible to change this selection.
 Changing tab should cause all new-note dropdowns to reset, either to "unselected", or to the single value from the corresponding Tab Category filter.
 
+
+## Editing Notes
+
+On the Notes page, in the notes-list area: each note should have an "edit" icon.  The icon should be shown on the right-hand side of the screen.
+When the edit icon is clicked for a note, the Add-Note section changes into edit-mode.  For text-notes, the text control is shown with the current title of the note.  For image-notes, the canvas needs to be shown and the image needs to be loaded into the canvas.  Text-editing or image-editing becomes enabled according to the type of the note being edited and disregards whether stylus-mode is enabled or not.
+In edit-mode, the "Add" button becomes an "Update" button, and a new "Cancel" button also appears.
+Pressing Update causes any changes to the note to be saved to the server and the notes list updated to reflect the changes.  The Add-Note section reverts to its normal "Add" behaviour.
+Pressing Cancel causes any changes to be discarded and the Add-Note section reverts to its normal "Add" behaviour.
+Using a finger to touch-draw on the canvas should work like an eraser, rubbing out any "writing" underneath the finger.  Let's start by trying a 32 pixels diameter for this imaginary eraser.
+Whilst in edit mode it should not be possible to switch to a different Tab.
+Tag selections for a note can be updated in edit mode to have any new tag values.  Updating a note with new Tag selections can therefore cause the note to disappear from the current Tab - this is correct and wanted.
 
 
 ## Agreed technical decisions
