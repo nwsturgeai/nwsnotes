@@ -8,6 +8,7 @@ The server side API will be coded in typescript and will execute using nodejs.
 The browser code should be written in typescript and should use React.
 This site will be for a single user (me).  I should need a password to log in, this should be a string of 32 random characters.
 The site should be delivered over HTTPS - I have a domain "nwsnotes.duckdns.org" which has a DNS entry pointing to my VM.
+Use fontawesome icons.
 
 The website should have the necessary attributes to be useable as an Android Progressive Web App.
 
@@ -16,6 +17,7 @@ The website should have the necessary attributes to be useable as an Android Pro
 Each note will have the following attributes:
 id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.
 titleText - a string.  May not be empty - notes with empty title should be rejected.  Trim leading/trailing whitespace.  Max length 500 characters.
+titleImage - a string containing the base64 image data if the note has been created from stylus handwriting.  Exactly one of titleText and titleImage should be populated on each note.
 createdDateTime
 lastModifiedDateTime - for now I will not yet add note-editing or note-deleting capability, those will come in future.
 timestamps should be set by the server.  Dates should be stored in ISO 8601 format, UTC timezone.
@@ -69,6 +71,18 @@ Each note should also display its tags.  These should be shown in a list of pill
 When adding a note, the user can set tags.  There should be a dropdown for each Category.  For single-select categories this can be a simple dropdown with a "(none)" option. For multi-select categories, use a dropdown that opens a check-list.
 The dropdowns should appear underneath the textbox where the note title is entered.
 After adding a note, the dropdowns retain their selections so that if the dropdowns aren't changed then a second new note would be given the same tags.
+
+
+## Stylus support
+
+I will be using this website on an android device that has a stylus.
+It should be possible to put the site into stylus mode.  This should be a toggle setting at the top of the settings page.
+This new setting should be saved into browser local storage so that if the site is reloaded, this setting is remembered on this device.
+When in stylus mode, a small icon (use fa-signature) should be displayed next to the settings cog at the right of the top header.
+When in stylus mode, instead of typing a new note, I want to write the note onto an HTML canvas element.  In other words, when in stylus mode, whilst the stylus is "touched down" within the canvas, the website should capture the points that the stylus tip moves over, and should colour those black.  This should give the user the sense that they are writing onto the canvas.
+Saving the note should capture the image data from the canvas and store that as the note's titleImage.  The canvas should be 80 pixels high.  When saving the image, crop down to just the area of the canvas that has anything written.
+When displaying the list of notes, if a note has a title image (and no title text) then the image should be displayed, and no title text should be displayed.
+Handwritten notes can still have tags the same as typed notes.
 
 
 ## Agreed technical decisions
