@@ -34,6 +34,8 @@ For now, phone layout is not important, I will make changes later to address tha
 There will be a header strip across the top of the app.  The app will have a settings page, accessible by clicking a cog icon located on the right-hand edge of the top header strip.
 The settings page will contain the option to log out (that won't be shown on the main notes page).
 The settings page will contain an option to download the latest json file from the server containing all the notes data.  I will use this to manually take backups every few days.
+The header strip should have the same background colour as the "New note" area at the bottom of the page.
+There should be no app title shown at the left of the header - this area will be used for a different feature coming soon.
 
 Any time a new note is entered, the website will send to the API a json blob containing all attributes of the new note.  The API will save a JSON blob to the local disk containing the current state of all notes - previously-added notes and also this new one.  Each save-file should include the timestamp in its filename.  Any and all note files created in the last week should be kept; files older than 1 week apart from the most-recent save-file should be deleted automatically.
 
@@ -61,15 +63,16 @@ Adding or editing a Category should share the same user-interface.
 When adding or editing a Category, the user should be shown a list of all the tags available in that category.  The user can add new tags and rename existing tags.
 Have a "Save" button to save all changes to a category in one go.  And a "Cancel" button to cancel any category edits and return to the last saved state.
 If/when a category is saved, that should cause other tabs viewing the website to be sent the latest data (including the latest categories and tags).
-Categories must contain at least one tag to be able to be saved. 
+Categories must contain at least one tag to be able to be saved.
+It should not be allowed to have a tag with the same text as the category name.
 For now, it will not be possible to delete tags or categories.
 For now, it will not be possible to change the tags a note has after the note has been created.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
 On the main notes page:
 Each note should also display its tags.  These should be shown in a list of pills underneath the note title.  If 2 categories have tags with the same name, there is a possibility that a note has 2 tags with the same text.  This is OK.
-When adding a note, the user can set tags.  There should be a dropdown for each Category.  For single-select categories this can be a simple dropdown with a "(none)" option. For multi-select categories, use a dropdown that opens a check-list.
-The dropdowns should appear underneath the textbox where the note title is entered.
+When adding a note, the user can set tags.  There should be a dropdown for each Category.  Single-select and multi-select categories both use the same kind of dropdown: a button that opens a list.  For single-select categories, the list's first option (which corresponds to "no tag selected within this category") is the category name, and choosing an option replaces any previous choice.  For multi-select categories, the list is a check-list.  In both cases, the button shows the category name when no tag is chosen.
+The dropdowns should appear underneath the textbox where the note title is entered.  The dropdowns should not have any titles.
 After adding a note, the dropdowns retain their selections so that if the dropdowns aren't changed then a second new note would be given the same tags.
 
 
@@ -83,6 +86,9 @@ When in stylus mode, instead of typing a new note, I want to write the note onto
 Saving the note should capture the image data from the canvas and store that as the note's titleImage.  The canvas should be 80 pixels high.  When saving the image, crop down to just the area of the canvas that has anything written.
 When displaying the list of notes, if a note has a title image (and no title text) then the image should be displayed, and no title text should be displayed.
 Handwritten notes can still have tags the same as typed notes.
+
+The "Clear" button should be shown underneath the "Add" button - this gives more horizontal space for handwriting.
+Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns: when in stylus mode, these controls should not respond to touch inputs - they should only respond to stylus or mouse inputs. Touch inputs should continue to work when not in stylus mode.
 
 
 ## Agreed technical decisions
@@ -120,11 +126,12 @@ Handwritten notes can still have tags the same as typed notes.
 - **Canvas:** while stylus mode is on, the title text box is hidden and a canvas takes its place, as wide as the text box would be and 80 CSS pixels high. To type a note instead, switch stylus mode off. Writing past the canvas edge is cut off.
 - **What draws:** only a stylus (`pointerType` "pen") and, for testing on a computer, a mouse. Fingers and palms touching the canvas are ignored. The page doesn't scroll while writing on the canvas (`touch-action: none`).
 - **Ink:** black, a fixed width of about 2.5 CSS pixels, with rounded ends and joins. No pressure sensitivity.
-- **Buttons:** "Add" saves the note and "Clear" wipes the canvas. Adding with nothing written shows "Nothing has been written yet." After a successful save the canvas clears. If saving fails, the error appears under the canvas and the writing is kept so you can retry. The tag dropdowns work exactly as for typed notes.
+- **Buttons:** "Clear" sits underneath "Add", leaving more width for the canvas; both buttons are the same width. "Add" saves the note and "Clear" wipes the canvas. Adding with nothing written shows "Nothing has been written yet." After a successful save the canvas clears. If saving fails, the error appears under the canvas and the writing is kept so you can retry. The tag dropdowns work exactly as for typed notes.
 - **Saved image:** black ink on a transparent background, cropped to the written area plus a 4-pixel margin, as a PNG data URL (`data:image/png;base64,...`). The canvas always works at 2× pixel density, so ink is crisp on tablets and every image is shown at half its pixel size (the size it was written).
 - **Dark mode:** the canvas and handwritten notes in the list sit on a light "paper" background in both light and dark themes, so the black ink always shows.
 - **Notes list:** a handwritten note shows its image at the size it was written, with the alt text "Handwritten note", and its tag pills underneath as usual.
 - **Server checks:** exactly one of `titleText` and `titleImage`; the image must be a PNG data URL of at most 200 KB (counting the data URL's characters). The server's request size limit rises from 20 KB to 256 KB to allow for this.
+- **Ignoring finger touches:** in stylus mode, finger taps on Add, Clear, the tag dropdown buttons and the lists they open do nothing; a stylus or mouse works as normal. Fingers can still scroll the new-note area if it overflows. Outside stylus mode, touch works everywhere as before. This can only be partly tested on a computer, so it is to be checked on the Android device: a palm or finger resting on the controls mustn't open a dropdown or add a note.
 - **Screen rotation:** if the canvas size changes (e.g. the device is rotated), anything written but not yet added is cleared.
 - **Image size (accepted):** every save writes all notes, images included, to a new save-file, and a week of save-files is kept. As a guide, 1,000 handwritten notes at about 4 KB each make each save-file about 4 MB. This is accepted for now; if it becomes a problem, images can later be stored as separate files.
 
@@ -132,6 +139,7 @@ Handwritten notes can still have tags the same as typed notes.
 - Shared types in `shared/`: `Tag { id, name }`, `Category { id, name, multiSelect, tags: Tag[] }`, and `Note` gains `tagIds: number[]`. The name and tag rules are checked by shared functions used by both the website and the server, like the note title.
 - Ids: a new category gets the highest category id + 1; a new tag gets the highest tag id across all categories + 1. Both start at 1.
 - Category and tag names are trimmed, can't be empty and are at most 40 characters. Category names must be unique, and tag names unique within their category; both checks ignore upper/lower case ("Work" and "work" count as the same).
+- A tag can't have the same name as its own category (ignoring upper/lower case), as the category name is what an unset dropdown shows. Tags in other categories may share it. Categories saved before this rule still load and work; saving one that breaks it is refused, with a message naming the clashing tag, until the tag or the category is renamed.
 - `multiSelect` can be changed from false to true, but not back. A note's `tagIds` must all exist, with at most one from each single-select category.
 - Categories, tags within a category, and the dropdowns all appear in the order they were created (id order). A note's pills appear in category order, then tag order.
 - Renaming a tag changes it on every note that has it, because notes store only the tag id.
@@ -146,12 +154,16 @@ Handwritten notes can still have tags the same as typed notes.
 
 ### Tags on the notes page
 - Each note shows its tags as small pills under the title, showing the tag name only.
-- Under the title text box there is one dropdown per category, labelled with the category name. Single-select categories use a normal dropdown with "(none)" first. Multi-select categories use a button showing the chosen tag names (or "(none)") that opens a check-list.
-- After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown set to "(none)".
+- Under the title text box there is one dropdown per category, with no visible title. Every dropdown is the app's own button-and-list control, not the browser's built-in dropdown, so single- and multi-select look and behave alike (and the app controls which inputs they respond to).
+- The button shows the chosen tag names, or the category name in grey when no tag is chosen. Hovering shows the category name (useful once a tag is chosen), and screen readers announce it as the button's label.
+- Single-select: the list shows the category name first (meaning no tag), then the tags, with the chosen one marked. Choosing an option replaces the previous choice and closes the list.
+- Multi-select: the list is a check-list of the tags; it stays open while ticking, and closes when clicking elsewhere or pressing Escape.
+- After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
 - If there are more dropdowns than fit, the bottom 1/4 area scrolls.
 
 ### Header and settings page
-- The header strip has a fixed height. The rest of the page below it is split 3/4 note list, 1/4 new-note area.
+- The header strip has a fixed height and the same background colour as the new-note area. The rest of the page below it is split 3/4 note list, 1/4 new-note area.
+- No app title is shown at the left of the header (that space is kept for a later feature). The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes". The "New note" label above the text box or canvas also stays.
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
 - The settings page has "Log out" and "Download backup". "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
 

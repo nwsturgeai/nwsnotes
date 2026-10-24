@@ -228,6 +228,13 @@ export function validateCategory(
     if (tags.slice(0, index).some((earlier) => sameName(earlier.name, tag.name))) {
       return { ok: false, error: `There is more than one tag called "${tag.name}".` };
     }
+    // An unset dropdown shows the category name, so a tag with that name would look the same.
+    if (sameName(tag.name, name.value)) {
+      return {
+        ok: false,
+        error: `The tag "${tag.name}" has the same name as the category. Rename the tag or the category.`,
+      };
+    }
   }
   if (tags.length === 0) {
     return { ok: false, error: "A category needs at least one tag." };
