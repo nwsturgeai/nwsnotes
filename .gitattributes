@@ -1,0 +1,3 @@
+# Keep Linux line endings for files that run on the VM, even in a Windows checkout.
+*.sh text eol=lf
+*.yml text eol=lf
