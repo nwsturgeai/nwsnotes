@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Category, Note, NotesData } from "@nwsnotes/shared";
+import type { Category, Note, NotesData, Tab } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { CategoryEditPage } from "./CategoryEditPage";
 import { ErrorPage } from "./ErrorPage";
@@ -10,6 +10,7 @@ import { NotesPage } from "./NotesPage";
 import { usePage } from "./route";
 import { SettingsPage } from "./SettingsPage";
 import { useStylusMode } from "./stylusMode";
+import { TabEditPage } from "./TabEditPage";
 import type { TagSelection } from "./TagPickers";
 
 type State =
@@ -23,8 +24,10 @@ export function App() {
   const [page, navigate] = usePage();
   const [stylusMode, setStylusMode] = useStylusMode();
   const [refreshError, setRefreshError] = useState<string>();
-  /** The new-note tag dropdowns' selections; kept until the page is reloaded. */
+  /** The new-note tag dropdowns' selections; kept until the page is reloaded or the tab changes. */
   const [tagSelection, setTagSelection] = useState<TagSelection>({});
+  /** The selected tab's id, or undefined for "All" (selected when the page opens). */
+  const [selectedTabId, setSelectedTabId] = useState<number>();
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
   const refreshInProgress = useRef(false);
@@ -100,6 +103,33 @@ export function App() {
     [applySaved],
   );
 
+  const saveTab = useCallback(
+    (tab: Tab) =>
+      applySaved((data) => ({
+        ...data,
+        tabs: data.tabs.some((t) => t.id === tab.id) ? data.tabs.map((t) => (t.id === tab.id ? tab : t)) : [...data.tabs, tab],
+      })),
+    [applySaved],
+  );
+
+  const deleteTab = useCallback(
+    (id: number) => applySaved((data) => ({ ...data, tabs: data.tabs.filter((t) => t.id !== id) })),
+    [applySaved],
+  );
+
+  /** Changing tab resets the new-note dropdowns (the tab's locked tags are applied on top). */
+  const selectTab = useCallback((id: number | undefined) => {
+    setSelectedTabId(id);
+    setTagSelection({});
+  }, []);
+
+  const tabs = state.screen === "notes" ? state.data.tabs : [];
+  const selectedTab = tabs.find((tab) => tab.id === selectedTabId);
+  // If the selected tab is deleted (here or on another page), go back to "All".
+  useEffect(() => {
+    if (selectedTabId !== undefined && state.screen === "notes" && !selectedTab) selectTab(undefined);
+  }, [selectedTabId, selectedTab, state.screen, selectTab]);
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
@@ -124,6 +154,9 @@ export function App() {
           <Header
             page={page}
             stylusMode={stylusMode}
+            tabs={tabs}
+            selectedTabId={selectedTab?.id}
+            onSelectTab={selectTab}
             onNavigate={navigate}
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
@@ -131,6 +164,7 @@ export function App() {
           {page.name === "settings" ? (
             <SettingsPage
               categories={state.data.categories}
+              tabs={tabs}
               stylusMode={stylusMode}
               onStylusModeChange={setStylusMode}
               onNavigate={navigate}
@@ -144,10 +178,21 @@ export function App() {
               onClose={() => navigate({ name: "settings" })}
               onSessionExpired={sessionExpired}
             />
+          ) : page.name === "tab" ? (
+            <TabEditPage
+              id={page.id}
+              tabs={tabs}
+              categories={state.data.categories}
+              onSaved={saveTab}
+              onDeleted={deleteTab}
+              onClose={() => navigate({ name: "settings" })}
+              onSessionExpired={sessionExpired}
+            />
           ) : (
             <NotesPage
               notes={state.data.notes}
               categories={state.data.categories}
+              selectedTab={selectedTab}
               stylusMode={stylusMode}
               tagSelection={tagSelection}
               onTagSelectionChange={setTagSelection}

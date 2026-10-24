@@ -7,6 +7,8 @@ import {
   type NewNoteRequest,
   type Note,
   type NotesData,
+  type Tab,
+  type TabRequest,
 } from "@nwsnotes/shared";
 import { connectionId } from "./live";
 
@@ -75,6 +77,9 @@ export const api = {
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
+  addTab: (body: TabRequest) => request<Tab>("POST", "/api/tabs", body, changeHeaders()),
+  updateTab: (id: number, body: TabRequest) => request<Tab>("PUT", `/api/tabs/${id}`, body, changeHeaders()),
+  deleteTab: (id: number) => request<{ ok: true }>("DELETE", `/api/tabs/${id}`, undefined, changeHeaders()),
   login: (body: LoginRequest) => request<{ ok: true }>("POST", "/api/login", body),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
 };

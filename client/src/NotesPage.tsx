@@ -1,12 +1,23 @@
 import { useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { validateTitle, validateTitleImage, type Category, type Note, type NoteTitle, type Tag } from "@nwsnotes/shared";
+import {
+  noteMatchesTab,
+  validateTitle,
+  validateTitleImage,
+  type Category,
+  type Note,
+  type NoteTitle,
+  type Tab,
+} from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
-import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
+import { constraintsFor, missingRequiredCategory, selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
+import { TagPills } from "./TagPills";
 
 interface Props {
   notes: Note[];
   categories: Category[];
+  /** The selected tab, or undefined for "All". Only matching notes are listed. */
+  selectedTab: Tab | undefined;
   /** In stylus mode, new notes are written on a canvas instead of typed. */
   stylusMode: boolean;
   /** The dropdowns' selections, kept by the app so they survive visits to settings. */
@@ -19,6 +30,7 @@ interface Props {
 export function NotesPage({
   notes,
   categories,
+  selectedTab,
   stylusMode,
   tagSelection,
   onTagSelectionChange,
@@ -49,22 +61,20 @@ export function NotesPage({
     }
   }
 
-  // Each tag id -> the tag, its category, and its place in the display order (category order, then tag order).
-  const tagsById = useMemo(() => {
-    const map = new Map<number, { tag: Tag; category: Category; order: number }>();
-    let order = 0;
-    for (const category of categories) {
-      for (const tag of category.tags) map.set(tag.id, { tag, category, order: order++ });
-    }
-    return map;
-  }, [categories]);
+  // Hidden notes aren't changed, just not listed.
+  const visibleNotes = useMemo(
+    () => (selectedTab ? notes.filter((note) => noteMatchesTab(note, selectedTab)) : notes),
+    [notes, selectedTab],
+  );
+  /** What the selected tab requires of new notes, so they always match it and stay visible. */
+  const constraints = useMemo(() => constraintsFor(selectedTab), [selectedTab]);
 
   // Newest notes are at the bottom, so keep the list scrolled to the bottom
-  // when the page opens and whenever a note is added.
+  // when the page opens, whenever a note is added, and when the tab changes.
   useLayoutEffect(() => {
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
-  }, [notes.length]);
+  }, [visibleNotes.length, selectedTab?.id]);
 
   /** The title to save, or undefined (with the error shown) if there isn't a valid one. */
   function newTitle(): NoteTitle | undefined {
@@ -92,12 +102,18 @@ export function NotesPage({
 
     const noteTitle = newTitle();
     if (!noteTitle) return;
+    const missing = missingRequiredCategory(categories, tagSelection, constraints);
+    if (missing) {
+      setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
+      return;
+    }
 
     setSaving(true);
     setSaveError(undefined);
     try {
       // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
-      const note = await api.addNote({ ...noteTitle, tagIds: selectedTagIds(categories, tagSelection) });
+      const tagIds = selectedTagIds(categories, tagSelection, constraints);
+      const note = await api.addNote({ ...noteTitle, tagIds });
       onNoteAdded(note);
       if (stylusMode) padRef.current?.clear();
       else setTitle("");
@@ -118,30 +134,16 @@ export function NotesPage({
   return (
     <div className="notes-page">
       <div className="note-list" ref={listRef}>
-        {notes.length === 0 ? (
-          <p className="empty">No notes yet. Add your first one below.</p>
+        {visibleNotes.length === 0 ? (
+          <p className="empty">{selectedTab ? "No notes in this tab yet." : "No notes yet. Add your first one below."}</p>
         ) : (
           <ul>
-            {notes.map((note) => {
-              const tags = note.tagIds
-                .map((id) => tagsById.get(id))
-                .filter((entry) => entry !== undefined)
-                .sort((a, b) => a.order - b.order);
-              return (
-                <li key={note.id}>
-                  {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
-                  {tags.length > 0 && (
-                    <ul className="pills">
-                      {tags.map(({ tag, category }) => (
-                        <li key={tag.id} title={category.name}>
-                          {tag.name}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
+            {visibleNotes.map((note) => (
+              <li key={note.id}>
+                {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
+                <TagPills tagIds={note.tagIds} categories={categories} />
+              </li>
+            ))}
           </ul>
         )}
       </div>
@@ -154,7 +156,7 @@ export function NotesPage({
           }}
           onClickCapture={ignoreTouchInStylusMode}
         >
-          <label htmlFor={stylusMode ? undefined : "new-note-title"}>New note</label>
+          {/* No "New note" heading; the text box is labelled for screen readers instead. */}
           <div className="new-note-row">
             {stylusMode ? (
               <StylusPad ref={padRef} disabled={saving} onInk={() => setSaveError(undefined)} />
@@ -163,6 +165,7 @@ export function NotesPage({
                 id="new-note-title"
                 ref={inputRef}
                 type="text"
+                aria-label="New note"
                 value={title}
                 placeholder="Type a note title and press Enter"
                 autoComplete="off"
@@ -201,6 +204,8 @@ export function NotesPage({
             selection={tagSelection}
             onChange={onTagSelectionChange}
             disabled={saving}
+            constraints={constraints}
+            tabName={selectedTab?.name}
           />
         </form>
       </div>

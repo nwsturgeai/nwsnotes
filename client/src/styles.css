@@ -133,7 +133,68 @@ input:disabled {
 }
 
 .header-icons {
+  flex: none;
   margin-left: auto;
+}
+
+/* ---- Tabs in the header, styled like a browser's ----------------------- */
+
+.tab-strip {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  align-self: stretch;
+  gap: 0.15rem;
+  min-width: 0;
+  /* Sit on the header's bottom border, so the selected tab can cover it. */
+  margin: 0 0.5rem -1px -0.75rem;
+}
+
+/* Every tab has the same width and shrinks equally when space runs out. */
+.tab {
+  flex: 0 1 9rem;
+  min-width: 0;
+  height: 2.3rem;
+  padding: 0 0.75rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.tab-name {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tab:hover:not(.selected) {
+  background: var(--line);
+  color: var(--text);
+}
+
+/* The selected tab looks to be in front, joined to the note list below. */
+.tab.selected {
+  position: relative;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tab.selected::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: var(--surface);
 }
 
 .header-link {
@@ -357,14 +418,16 @@ a:focus-visible {
 
 /* ---- Tags: pills on notes, dropdowns under the new-note title ----------- */
 
-.note-list .pills {
+.pills {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-  margin-top: 0.35rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.note-list .pills li {
+.pills li {
   padding: 0.05rem 0.55rem;
   border: none;
   border-radius: 999px;
@@ -402,13 +465,33 @@ a:focus-visible {
   color: var(--muted);
 }
 
+/* Fixed by the selected tab. */
+.tag-dropdown-button.locked {
+  cursor: default;
+  background: var(--bg);
+}
+
+.tag-dropdown-button.locked::after {
+  content: none;
+}
+
+.lock-icon {
+  margin: 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.75em;
+}
+
+.tag-dropdown-list label.locked {
+  cursor: default;
+}
+
 /* No tag chosen: the button shows the category name, in grey. */
 .tag-dropdown-button.unset,
 .tag-option.unset {
   color: var(--muted);
 }
 
-/* Positioned on the window (left/bottom set by TagPickers.tsx), opening upwards. */
+/* Positioned on the window (left and top or bottom set by TagPickers.tsx). */
 .tag-dropdown-list {
   position: fixed;
   z-index: 10;
@@ -424,7 +507,7 @@ a:focus-visible {
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
 }
 
-.new-note .tag-dropdown-list label,
+.tag-dropdown-list label,
 .tag-option {
   display: flex;
   align-items: center;
@@ -507,7 +590,8 @@ a:focus-visible {
   border-top: 1px solid var(--line);
 }
 
-.category-list a {
+.category-list a,
+.tab-entry {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -588,6 +672,11 @@ a:focus-visible {
   display: flex;
   gap: 0.75rem;
   margin-top: 1rem;
+}
+
+.button.danger {
+  margin-left: auto;
+  color: var(--error);
 }
 
 /* ---- Login page --------------------------------------------------------- */

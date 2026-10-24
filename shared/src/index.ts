@@ -32,10 +32,32 @@ export interface Category {
   tags: Tag[];
 }
 
+/** One category in a tab's filter: a note matches it if it has at least one of these tags. */
+export interface TabFilter {
+  categoryId: number;
+  /** One or more tags from that category. */
+  tagIds: number[];
+}
+
+/** A named filter. Notes are shown when they match every category in `categories`. */
+export interface Tab {
+  /** Unique id assigned by the server, starting at 1. The built-in "All" tab isn't stored and has no id. */
+  id: number;
+  name: string;
+  categories: TabFilter[];
+}
+
+/** Body of POST /api/tabs and PUT /api/tabs/:id. */
+export interface TabRequest {
+  name: string;
+  categories: TabFilter[];
+}
+
 /** Response of GET /api/notes. */
 export interface NotesData {
   notes: Note[];
   categories: Category[];
+  tabs: Tab[];
 }
 
 /** A new note's title: typed text or a handwritten image. */
@@ -146,8 +168,8 @@ export function sameName(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
 
-/** Trims and checks a category or tag name. `what` is e.g. "The category name". */
-function validateName(raw: unknown, what: string): Check<string> {
+/** Trims and checks a category, tag or tab name. `what` is e.g. "The category name". */
+function validateName(raw: unknown, what: string, maxLength = NAME_MAX_LENGTH): Check<string> {
   if (typeof raw !== "string") {
     return { ok: false, error: `${what} must be text.` };
   }
@@ -155,8 +177,8 @@ function validateName(raw: unknown, what: string): Check<string> {
   if (name.length === 0) {
     return { ok: false, error: `${what} can't be empty.` };
   }
-  if (name.length > NAME_MAX_LENGTH) {
-    return { ok: false, error: `${what} "${name}" is ${name.length} characters long; the maximum is ${NAME_MAX_LENGTH}.` };
+  if (name.length > maxLength) {
+    return { ok: false, error: `${what} "${name}" is ${name.length} characters long; the maximum is ${maxLength}.` };
   }
   return { ok: true, value: name };
 }
@@ -265,4 +287,75 @@ export function validateTagIds(raw: unknown, categories: Category[]): Check<numb
     }
   }
   return { ok: true, value: tagIds };
+}
+
+/** Name of the built-in tab, which shows every note. It can't be used for another tab. */
+export const ALL_TAB_NAME = "All";
+export const TAB_NAME_MAX_LENGTH = 20;
+
+/** True if a note has, for every category in the tab, at least one of that category's filter tags. */
+export function noteMatchesTab(note: Note, tab: Tab): boolean {
+  return tab.categories.every((filter) => filter.tagIds.some((id) => note.tagIds.includes(id)));
+}
+
+/**
+ * Checks a tab being added (`existing` undefined) or edited, against all current tabs and categories.
+ * Returns the cleaned request: name trimmed, filters in category order with their tags in tag order.
+ */
+export function validateTab(
+  raw: unknown,
+  tabs: Tab[],
+  categories: Category[],
+  existing?: Tab,
+): { ok: true; tab: TabRequest } | { ok: false; error: string } {
+  if (typeof raw !== "object" || raw === null) {
+    return { ok: false, error: "The tab is missing." };
+  }
+  const input = raw as Partial<Record<keyof TabRequest, unknown>>;
+
+  const name = validateName(input.name, "The tab name", TAB_NAME_MAX_LENGTH);
+  if (!name.ok) return name;
+  if (sameName(name.value, ALL_TAB_NAME)) {
+    return { ok: false, error: `The name "${ALL_TAB_NAME}" is used by the built-in tab that shows every note.` };
+  }
+  const clash = tabs.find((other) => other.id !== existing?.id && sameName(other.name, name.value));
+  if (clash) {
+    return { ok: false, error: `There is already a tab called "${clash.name}".` };
+  }
+
+  if (!Array.isArray(input.categories)) {
+    return { ok: false, error: "The tab's filters are missing." };
+  }
+  const filters: TabFilter[] = [];
+  for (const rawFilter of input.categories as unknown[]) {
+    const filter = (typeof rawFilter === "object" && rawFilter !== null ? rawFilter : {}) as Partial<
+      Record<keyof TabFilter, unknown>
+    >;
+    const category = categories.find((c) => c.id === filter.categoryId);
+    if (!category) {
+      return { ok: false, error: `Category ${String(filter.categoryId)} doesn't exist.` };
+    }
+    if (filters.some((f) => f.categoryId === category.id)) {
+      return { ok: false, error: `The category "${category.name}" appears twice.` };
+    }
+    if (!Array.isArray(filter.tagIds) || filter.tagIds.length === 0) {
+      return { ok: false, error: `Choose at least one "${category.name}" tag, or leave that category out.` };
+    }
+    const tagIds = filter.tagIds as unknown[];
+    for (const [index, id] of tagIds.entries()) {
+      if (!category.tags.some((tag) => tag.id === id)) {
+        return { ok: false, error: `Tag ${String(id)} isn't in the category "${category.name}".` };
+      }
+      if (tagIds.indexOf(id) !== index) {
+        return { ok: false, error: `Tag ${String(id)} appears twice in "${category.name}".` };
+      }
+    }
+    filters.push({ categoryId: category.id, tagIds: (tagIds as number[]).slice().sort((a, b) => a - b) });
+  }
+  if (filters.length === 0) {
+    return { ok: false, error: `A tab needs at least one tag; otherwise it would show the same notes as "${ALL_TAB_NAME}".` };
+  }
+  filters.sort((a, b) => a.categoryId - b.categoryId);
+
+  return { ok: true, tab: { name: name.value, categories: filters } };
 }
