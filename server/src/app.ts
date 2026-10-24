@@ -78,6 +78,22 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.status(201).json(note);
   });
 
+  notesRouter.put("/:id", async (req: Request<{ id: string }, object, { tagIds?: unknown } | undefined>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
+      return;
+    }
+    const check = validateNoteTitle(req.body);
+    if (!check.ok) {
+      res.status(400).json({ error: check.error });
+      return;
+    }
+    const note = await store.updateNote(id, check.title, req.body?.tagIds);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(note);
+  });
+
   // The latest save-file exactly as it is on disk, as a download (for manual backups).
   notesRouter.get("/download", (_req, res, next) => {
     const file = store.latestSaveFile();

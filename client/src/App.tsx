@@ -28,6 +28,11 @@ export function App() {
   const [tagSelection, setTagSelection] = useState<TagSelection>({});
   /** The selected tab's id, or undefined for "All" (selected when the page opens). */
   const [selectedTabId, setSelectedTabId] = useState<number>();
+  /**
+   * The note being edited, as it was when editing started (live updates don't change an open edit).
+   * While set, the tabs, the Settings cog and the other notes' edit icons are blocked.
+   */
+  const [editingNote, setEditingNote] = useState<Note>();
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
   const refreshInProgress = useRef(false);
@@ -117,6 +122,13 @@ export function App() {
     [applySaved],
   );
 
+  const updateNote = useCallback(
+    (note: Note) => applySaved((data) => ({ ...data, notes: data.notes.map((n) => (n.id === note.id ? note : n)) })),
+    [applySaved],
+  );
+
+  const endEdit = useCallback(() => setEditingNote(undefined), []);
+
   /** Changing tab resets the new-note dropdowns (the tab's locked tags are applied on top). */
   const selectTab = useCallback((id: number | undefined) => {
     setSelectedTabId(id);
@@ -157,6 +169,7 @@ export function App() {
             tabs={tabs}
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
+            editing={editingNote !== undefined}
             onNavigate={navigate}
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
@@ -196,7 +209,11 @@ export function App() {
               stylusMode={stylusMode}
               tagSelection={tagSelection}
               onTagSelectionChange={setTagSelection}
+              editingNote={editingNote}
+              onEditStart={setEditingNote}
+              onEditEnd={endEdit}
               onNoteAdded={addNote}
+              onNoteUpdated={updateNote}
               onSessionExpired={sessionExpired}
             />
           )}

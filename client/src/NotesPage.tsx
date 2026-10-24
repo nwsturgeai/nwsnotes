@@ -1,4 +1,14 @@
-import { useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPen } from "@fortawesome/free-solid-svg-icons";
 import {
   noteMatchesTab,
   validateTitle,
@@ -20,11 +30,26 @@ interface Props {
   selectedTab: Tab | undefined;
   /** In stylus mode, new notes are written on a canvas instead of typed. */
   stylusMode: boolean;
-  /** The dropdowns' selections, kept by the app so they survive visits to settings. */
+  /** The dropdowns' selections for new notes, kept by the app so they survive visits to settings and edits. */
   tagSelection: TagSelection;
   onTagSelectionChange: (selection: TagSelection) => void;
+  /** The note being edited, if any. The app keeps this so it can block changing tab meanwhile. */
+  editingNote: Note | undefined;
+  onEditStart: (note: Note) => void;
+  onEditEnd: () => void;
   onNoteAdded: (note: Note) => void;
+  onNoteUpdated: (note: Note) => void;
   onSessionExpired: () => void;
+}
+
+/** A note's tags as dropdown selections: category id -> tag ids. */
+function selectionFor(note: Note, categories: Category[]): TagSelection {
+  return Object.fromEntries(
+    categories.map((category) => [
+      category.id,
+      category.tags.filter((tag) => note.tagIds.includes(tag.id)).map((tag) => tag.id),
+    ]),
+  );
 }
 
 export function NotesPage({
@@ -34,25 +59,34 @@ export function NotesPage({
   stylusMode,
   tagSelection,
   onTagSelectionChange,
+  editingNote,
+  onEditStart,
+  onEditEnd,
   onNoteAdded,
+  onNoteUpdated,
   onSessionExpired,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const padRef = useRef<StylusPadHandle>(null);
   const [title, setTitle] = useState("");
+  /** The tags chosen while editing a note (the new-note choices are kept separately and come back afterwards). */
+  const [editSelection, setEditSelection] = useState<TagSelection>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
 
+  /** The canvas is shown in stylus mode, and when editing a handwritten note whatever the mode. */
+  const showCanvas = editingNote ? editingNote.titleImage !== undefined : stylusMode;
+
   /**
-   * In stylus mode, finger and palm taps on the new-note controls (Add, Clear, the tag dropdowns and
-   * their lists) do nothing, so a hand resting on the screen while writing can't press anything.
-   * Only taps are stopped: fingers can still scroll the area. Keyboard use isn't affected.
+   * While the canvas is showing, finger and palm taps on the new-note controls (Add/Update, Cancel,
+   * Clear, the tag dropdowns and their lists) do nothing, so a hand resting on the screen while writing
+   * can't press anything. Only taps are stopped: fingers can still scroll the area. Keyboard use isn't affected.
    */
-  function ignoreTouchInStylusMode(event: ReactMouseEvent) {
-    if (!stylusMode) return;
+  function ignoreTouchWhileWriting(event: ReactMouseEvent) {
+    if (!showCanvas) return;
     const click = event.nativeEvent as Partial<PointerEvent>;
     const pointerType = "pointerType" in click ? click.pointerType : lastPointerType.current;
     if (pointerType === "touch") {
@@ -76,9 +110,47 @@ export function NotesPage({
     if (list) list.scrollTop = list.scrollHeight;
   }, [visibleNotes.length, selectedTab?.id]);
 
+  function startEdit(note: Note) {
+    // Any new note that was being typed or written is discarded.
+    setTitle(note.titleText ?? "");
+    setEditSelection(selectionFor(note, categories));
+    setSaveError(undefined);
+    onEditStart(note);
+    if (note.titleText !== undefined) {
+      requestAnimationFrame(() => {
+        const input = inputRef.current;
+        input?.focus();
+        input?.setSelectionRange(input.value.length, input.value.length);
+      });
+    }
+  }
+
+  /** Back to adding notes, with an empty title box or canvas. */
+  function finishEdit() {
+    setTitle("");
+    setEditSelection({});
+    setSaveError(undefined);
+    onEditEnd();
+  }
+
+  // Escape cancels an edit (unless it's closing an open tag list).
+  useEffect(() => {
+    if (!editingNote) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving && !document.querySelector(".tag-dropdown-list")) finishEdit();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
+
+  // Leaving the page (e.g. with the back button) cancels an edit, so the tabs aren't left blocked.
+  const onEditEndRef = useRef(onEditEnd);
+  onEditEndRef.current = onEditEnd;
+  useEffect(() => () => onEditEndRef.current(), []);
+
   /** The title to save, or undefined (with the error shown) if there isn't a valid one. */
   function newTitle(): NoteTitle | undefined {
-    if (stylusMode) {
+    if (showCanvas) {
       const pad = padRef.current;
       if (!pad?.hasInk()) {
         setSaveError("Nothing has been written yet.");
@@ -96,38 +168,46 @@ export function NotesPage({
     return check.ok ? { titleText: check.title } : undefined;
   }
 
-  async function addNote(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
 
     const noteTitle = newTitle();
     if (!noteTitle) return;
-    const missing = missingRequiredCategory(categories, tagSelection, constraints);
-    if (missing) {
-      setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
-      return;
+    // The tab's rules only apply to new notes; an edited note can be given any tags.
+    if (!editingNote) {
+      const missing = missingRequiredCategory(categories, tagSelection, constraints);
+      if (missing) {
+        setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
+        return;
+      }
     }
 
     setSaving(true);
     setSaveError(undefined);
     try {
-      // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
-      const tagIds = selectedTagIds(categories, tagSelection, constraints);
-      const note = await api.addNote({ ...noteTitle, tagIds });
-      onNoteAdded(note);
-      if (stylusMode) padRef.current?.clear();
-      else setTitle("");
+      if (editingNote) {
+        const tagIds = selectedTagIds(categories, editSelection);
+        onNoteUpdated(await api.updateNote(editingNote.id, { ...noteTitle, tagIds }));
+        finishEdit();
+      } else {
+        // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
+        const tagIds = selectedTagIds(categories, tagSelection, constraints);
+        onNoteAdded(await api.addNote({ ...noteTitle, tagIds }));
+        if (showCanvas) padRef.current?.clear();
+        else setTitle("");
+      }
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
         return;
       }
-      // The typed title or the writing is kept, so the note can be added again.
+      // The typed title or the writing is kept, so it can be saved again.
       setSaveError(`The note wasn't saved: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSaving(false);
       // Focus after the input is re-enabled.
-      if (!stylusMode) requestAnimationFrame(() => inputRef.current?.focus());
+      if (!showCanvas) requestAnimationFrame(() => inputRef.current?.focus());
     }
   }
 
@@ -139,33 +219,53 @@ export function NotesPage({
         ) : (
           <ul>
             {visibleNotes.map((note) => (
-              <li key={note.id}>
-                {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
-                <TagPills tagIds={note.tagIds} categories={categories} />
+              <li key={note.id} className={note.id === editingNote?.id ? "editing" : undefined}>
+                <div className="note-body">
+                  {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
+                  <TagPills tagIds={note.tagIds} categories={categories} />
+                </div>
+                <button
+                  type="button"
+                  className="note-edit"
+                  aria-label={note.id === editingNote?.id ? "Editing this note" : "Edit note"}
+                  title={editingNote ? "Finish or cancel the current edit first" : "Edit note"}
+                  // Only one note can be edited at a time.
+                  disabled={editingNote !== undefined || saving}
+                  onClick={() => startEdit(note)}
+                >
+                  <FontAwesomeIcon icon={faPen} />
+                </button>
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      <div className="new-note">
+      <div className={editingNote ? "new-note editing" : "new-note"}>
         <form
-          onSubmit={addNote}
+          onSubmit={submit}
           onPointerDownCapture={(event) => {
             lastPointerType.current = event.pointerType;
           }}
-          onClickCapture={ignoreTouchInStylusMode}
+          onClickCapture={ignoreTouchWhileWriting}
         >
           {/* No "New note" heading; the text box is labelled for screen readers instead. */}
           <div className="new-note-row">
-            {stylusMode ? (
-              <StylusPad ref={padRef} disabled={saving} onInk={() => setSaveError(undefined)} />
+            {showCanvas ? (
+              <StylusPad
+                // A fresh pad for each note edited (loaded with its image), and an empty one for new notes.
+                key={editingNote ? `edit-${editingNote.id}` : "new"}
+                ref={padRef}
+                disabled={saving}
+                initialImage={editingNote?.titleImage}
+                onInk={() => setSaveError(undefined)}
+              />
             ) : (
               <input
                 id="new-note-title"
                 ref={inputRef}
                 type="text"
-                aria-label="New note"
+                aria-label={editingNote ? "Note title" : "New note"}
                 value={title}
                 placeholder="Type a note title and press Enter"
                 autoComplete="off"
@@ -177,9 +277,14 @@ export function NotesPage({
             {/* Clear sits under Add, leaving more width for handwriting. */}
             <div className="new-note-buttons">
               <button type="submit" disabled={saving}>
-                {saving ? "Adding…" : "Add"}
+                {editingNote ? (saving ? "Updating…" : "Update") : saving ? "Adding…" : "Add"}
               </button>
-              {stylusMode && (
+              {editingNote && (
+                <button type="button" className="button" disabled={saving} onClick={finishEdit}>
+                  Cancel
+                </button>
+              )}
+              {showCanvas && (
                 <button
                   type="button"
                   className="button"
@@ -199,14 +304,18 @@ export function NotesPage({
               {saveError}
             </p>
           )}
-          <TagPickers
-            categories={categories}
-            selection={tagSelection}
-            onChange={onTagSelectionChange}
-            disabled={saving}
-            constraints={constraints}
-            tabName={selectedTab?.name}
-          />
+          {editingNote ? (
+            <TagPickers categories={categories} selection={editSelection} onChange={setEditSelection} disabled={saving} />
+          ) : (
+            <TagPickers
+              categories={categories}
+              selection={tagSelection}
+              onChange={onTagSelectionChange}
+              disabled={saving}
+              constraints={constraints}
+              tabName={selectedTab?.name}
+            />
+          )}
         </form>
       </div>
     </div>

@@ -74,6 +74,7 @@ const changeHeaders = () => ({ [CONNECTION_ID_HEADER]: connectionId });
 export const api = {
   getNotes: () => request<NotesData>("GET", "/api/notes"),
   addNote: (body: NewNoteRequest) => request<Note>("POST", "/api/notes", body, changeHeaders()),
+  updateNote: (id: number, body: NewNoteRequest) => request<Note>("PUT", `/api/notes/${id}`, body, changeHeaders()),
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
