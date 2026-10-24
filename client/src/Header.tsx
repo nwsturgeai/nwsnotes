@@ -29,12 +29,11 @@ export function Header({ page, stylusMode, onNavigate, refreshError, onRetryRefr
   return (
     <>
       <header className="app-header">
-        {back ? (
+        {/* On the notes page the left of the header is left empty, for a later feature. */}
+        {back && (
           <a href={pathFor(back.page)} className="header-link" onClick={(event) => go(event, back.page)}>
             {back.label}
           </a>
-        ) : (
-          <span className="app-name">nwsnotes</span>
         )}
         <div className="header-icons">
           {stylusMode && (

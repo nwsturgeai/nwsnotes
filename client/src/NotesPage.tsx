@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { validateTitle, validateTitleImage, type Category, type Note, type NoteTitle, type Tag } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
@@ -31,6 +31,23 @@ export function NotesPage({
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+  /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
+  const lastPointerType = useRef("");
+
+  /**
+   * In stylus mode, finger and palm taps on the new-note controls (Add, Clear, the tag dropdowns and
+   * their lists) do nothing, so a hand resting on the screen while writing can't press anything.
+   * Only taps are stopped: fingers can still scroll the area. Keyboard use isn't affected.
+   */
+  function ignoreTouchInStylusMode(event: ReactMouseEvent) {
+    if (!stylusMode) return;
+    const click = event.nativeEvent as Partial<PointerEvent>;
+    const pointerType = "pointerType" in click ? click.pointerType : lastPointerType.current;
+    if (pointerType === "touch") {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
 
   // Each tag id -> the tag, its category, and its place in the display order (category order, then tag order).
   const tagsById = useMemo(() => {
@@ -130,7 +147,13 @@ export function NotesPage({
       </div>
 
       <div className="new-note">
-        <form onSubmit={addNote}>
+        <form
+          onSubmit={addNote}
+          onPointerDownCapture={(event) => {
+            lastPointerType.current = event.pointerType;
+          }}
+          onClickCapture={ignoreTouchInStylusMode}
+        >
           <label htmlFor={stylusMode ? undefined : "new-note-title"}>New note</label>
           <div className="new-note-row">
             {stylusMode ? (
@@ -148,22 +171,25 @@ export function NotesPage({
                 onChange={(event) => setTitle(event.target.value)}
               />
             )}
-            <button type="submit" disabled={saving}>
-              {saving ? "Adding…" : "Add"}
-            </button>
-            {stylusMode && (
-              <button
-                type="button"
-                className="button"
-                disabled={saving}
-                onClick={() => {
-                  padRef.current?.clear();
-                  setSaveError(undefined);
-                }}
-              >
-                Clear
+            {/* Clear sits under Add, leaving more width for handwriting. */}
+            <div className="new-note-buttons">
+              <button type="submit" disabled={saving}>
+                {saving ? "Adding…" : "Add"}
               </button>
-            )}
+              {stylusMode && (
+                <button
+                  type="button"
+                  className="button"
+                  disabled={saving}
+                  onClick={() => {
+                    padRef.current?.clear();
+                    setSaveError(undefined);
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           {saveError && (
             <p className="save-error" role="alert">

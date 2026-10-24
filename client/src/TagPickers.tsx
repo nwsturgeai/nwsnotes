@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck } from "@fortawesome/free-solid-svg-icons";
 import type { Category } from "@nwsnotes/shared";
 
 /** The tags chosen in each category's dropdown: category id -> tag ids. */
@@ -19,64 +21,50 @@ interface Props {
   disabled: boolean;
 }
 
-/** One dropdown per category, for choosing a new note's tags. */
+/** One dropdown per category, for choosing a new note's tags. They have no titles: an unset one shows its category name. */
 export function TagPickers({ categories, selection, onChange, disabled }: Props) {
   if (categories.length === 0) return null;
 
-  function set(categoryId: number, tagIds: number[]) {
-    onChange({ ...selection, [categoryId]: tagIds });
-  }
-
   return (
     <div className="tag-pickers">
-      {categories.map((category) => {
-        const chosen = selection[category.id] ?? [];
-        return category.multiSelect ? (
-          <MultiSelectPicker
-            key={category.id}
-            category={category}
-            chosen={chosen}
-            disabled={disabled}
-            onChange={(tagIds) => set(category.id, tagIds)}
-          />
-        ) : (
-          <label key={category.id} className="tag-picker">
-            <span>{category.name}</span>
-            <select
-              value={chosen[0] ?? ""}
-              disabled={disabled}
-              onChange={(event) => set(category.id, event.target.value === "" ? [] : [Number(event.target.value)])}
-            >
-              <option value="">(none)</option>
-              {category.tags.map((tag) => (
-                <option key={tag.id} value={tag.id}>
-                  {tag.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        );
-      })}
+      {categories.map((category) => (
+        <TagDropdown
+          key={category.id}
+          category={category}
+          chosen={selection[category.id] ?? []}
+          disabled={disabled}
+          onChange={(tagIds) => onChange({ ...selection, [category.id]: tagIds })}
+        />
+      ))}
     </div>
   );
 }
 
-interface MultiSelectProps {
+interface DropdownProps {
   category: Category;
   chosen: number[];
   disabled: boolean;
   onChange: (tagIds: number[]) => void;
 }
 
-/** A button showing the chosen tags, which opens a check-list. */
-function MultiSelectPicker({ category, chosen, disabled, onChange }: MultiSelectProps) {
-  /** Where the open check-list sits. It is positioned on the window, so the scrolling new-note area can't clip it. */
+/**
+ * A button showing the chosen tags (or the category name when none is chosen) that opens a list.
+ * Single-select: choosing an option replaces the choice and closes the list. Multi-select: a check-list.
+ * Built by the app rather than using the browser's own dropdown, so both kinds look and behave alike
+ * and the app decides which inputs they respond to (see NotesPage's stylus-mode touch handling).
+ */
+function TagDropdown({ category, chosen, disabled, onChange }: DropdownProps) {
+  /** Where the open list sits. It is positioned on the window, so the scrolling new-note area can't clip it. */
   const [position, setPosition] = useState<{ left: number; bottom: number }>();
   const open = position !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const names = category.tags.filter((tag) => chosen.includes(tag.id)).map((tag) => tag.name);
-  const listId = `tag-picker-${category.id}`;
+  const listId = `tag-dropdown-${category.id}`;
+
+  function close() {
+    setPosition(undefined);
+  }
 
   function toggleOpen() {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -87,7 +75,6 @@ function MultiSelectPicker({ category, chosen, disabled, onChange }: MultiSelect
   // Close when clicking elsewhere, pressing Escape, scrolling or resizing.
   useEffect(() => {
     if (!open) return;
-    const close = () => setPosition(undefined);
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) close();
     };
@@ -109,46 +96,71 @@ function MultiSelectPicker({ category, chosen, disabled, onChange }: MultiSelect
     };
   }, [open]);
 
+  function choose(tagId: number | undefined) {
+    onChange(tagId === undefined ? [] : [tagId]);
+    close();
+    buttonRef.current?.focus();
+  }
+
   function toggle(tagId: number, checked: boolean) {
     onChange(checked ? [...chosen, tagId] : chosen.filter((id) => id !== tagId));
   }
 
   return (
-    <div className="tag-picker" ref={rootRef}>
-      <span id={`${listId}-label`}>{category.name}</span>
+    <div className="tag-dropdown" ref={rootRef}>
       <button
         ref={buttonRef}
         type="button"
-        className="multi-select-button"
+        className={names.length > 0 ? "tag-dropdown-button" : "tag-dropdown-button unset"}
+        title={category.name}
+        aria-label={`${category.name}: ${names.length > 0 ? names.join(", ") : "no tag"}`}
         aria-haspopup="true"
         aria-expanded={open}
-        aria-labelledby={`${listId}-label`}
         aria-controls={listId}
         disabled={disabled}
         onClick={toggleOpen}
       >
-        {names.length > 0 ? names.join(", ") : "(none)"}
+        {names.length > 0 ? names.join(", ") : category.name}
       </button>
       {open && (
         <div
-          className="multi-select-list"
+          className="tag-dropdown-list"
           id={listId}
           role="group"
-          aria-labelledby={`${listId}-label`}
+          aria-label={category.name}
           style={{ left: position.left, bottom: position.bottom }}
         >
-          {category.tags.map((tag) => (
-            <label key={tag.id}>
-              <input
-                type="checkbox"
-                checked={chosen.includes(tag.id)}
-                onChange={(event) => toggle(tag.id, event.target.checked)}
-              />
-              {tag.name}
-            </label>
-          ))}
+          {category.multiSelect ? (
+            category.tags.map((tag) => (
+              <label key={tag.id}>
+                <input
+                  type="checkbox"
+                  checked={chosen.includes(tag.id)}
+                  onChange={(event) => toggle(tag.id, event.target.checked)}
+                />
+                {tag.name}
+              </label>
+            ))
+          ) : (
+            <>
+              <Option label={category.name} unset chosen={chosen.length === 0} onChoose={() => choose(undefined)} />
+              {category.tags.map((tag) => (
+                <Option key={tag.id} label={tag.name} chosen={chosen.includes(tag.id)} onChoose={() => choose(tag.id)} />
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+/** One option in a single-select list, with a tick when it's the current choice. */
+function Option({ label, unset, chosen, onChoose }: { label: string; unset?: boolean; chosen: boolean; onChoose: () => void }) {
+  return (
+    <button type="button" className={unset ? "tag-option unset" : "tag-option"} aria-pressed={chosen} onClick={onChoose}>
+      <span className="tag-option-tick">{chosen && <FontAwesomeIcon icon={faCheck} />}</span>
+      {label}
+    </button>
   );
 }
