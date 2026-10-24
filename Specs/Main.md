@@ -8,6 +8,7 @@ The server side API will be coded in typescript and will execute using nodejs.
 The browser code should be written in typescript and should use React.
 This site will be for a single user (me).  I should need a password to log in, this should be a string of 32 random characters.
 The site should be delivered over HTTPS - I have a domain "nwsnotes.duckdns.org" which has a DNS entry pointing to my VM.
+Use fontawesome icons.
 
 The website should have the necessary attributes to be useable as an Android Progressive Web App.
 
@@ -16,6 +17,7 @@ The website should have the necessary attributes to be useable as an Android Pro
 Each note will have the following attributes:
 id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.
 titleText - a string.  May not be empty - notes with empty title should be rejected.  Trim leading/trailing whitespace.  Max length 500 characters.
+titleImage - a string containing the base64 image data if the note has been created from stylus handwriting.  Exactly one of titleText and titleImage should be populated on each note.
 createdDateTime
 lastModifiedDateTime - for now I will not yet add note-editing or note-deleting capability, those will come in future.
 timestamps should be set by the server.  Dates should be stored in ISO 8601 format, UTC timezone.
@@ -71,15 +73,28 @@ The dropdowns should appear underneath the textbox where the note title is enter
 After adding a note, the dropdowns retain their selections so that if the dropdowns aren't changed then a second new note would be given the same tags.
 
 
+## Stylus support
+
+I will be using this website on an android device that has a stylus.
+It should be possible to put the site into stylus mode.  This should be a toggle setting at the top of the settings page.
+This new setting should be saved into browser local storage so that if the site is reloaded, this setting is remembered on this device.
+When in stylus mode, a small icon (use fa-signature) should be displayed next to the settings cog at the right of the top header.
+When in stylus mode, instead of typing a new note, I want to write the note onto an HTML canvas element.  In other words, when in stylus mode, whilst the stylus is "touched down" within the canvas, the website should capture the points that the stylus tip moves over, and should colour those black.  This should give the user the sense that they are writing onto the canvas.
+Saving the note should capture the image data from the canvas and store that as the note's titleImage.  The canvas should be 80 pixels high.  When saving the image, crop down to just the area of the canvas that has anything written.
+When displaying the list of notes, if a note has a title image (and no title text) then the image should be displayed, and no title text should be displayed.
+Handwritten notes can still have tags the same as typed notes.
+
+
 ## Agreed technical decisions
 
 ### Code and tooling
 - One repository with npm workspaces: `client/` (React + TypeScript, built with Vite), `server/` (Express + TypeScript) and `shared/` (TypeScript types used by both, e.g. `Note`).
 - Node.js 24 (LTS). No automated tests for now.
+- Icons: Font Awesome Free (solid icons), installed from npm (`@fortawesome/fontawesome-svg-core`, `@fortawesome/free-solid-svg-icons`, `@fortawesome/react-fontawesome`) and bundled into the app, not loaded from a CDN, so the security headers and offline start-up keep working. All the app's icons use it, including the settings cog (`fa-gear`).
 
 ### API
 - `GET /api/notes` - returns `{ "notes": [...], "categories": [...] }`: all notes and all categories with their tags (the most recent save-file's contents).
-- `POST /api/notes` - body `{ "titleText": "...", "tagIds": [3, 7] }` (`tagIds` may be empty). The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
+- `POST /api/notes` - body `{ "titleText": "...", "tagIds": [3, 7] }` (`tagIds` may be empty), or `{ "titleImage": "data:image/png;base64,...", "tagIds": [...] }` for a handwritten note. Exactly one of `titleText` and `titleImage` must be given. The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
 - `POST /api/categories` - body `{ "name": "...", "multiSelect": false, "tags": [{ "name": "..." }] }`. The server assigns the category and tag ids, saves a new save-file and returns the created category.
 - `PUT /api/categories/:id` - body as above, but existing tags include their `id` (`{ "id": 3, "name": "..." }`); tags without an `id` are new. Saves a new save-file and returns the updated category.
 - Changes send the `X-Connection-Id` header too, and the server checks every rule in "Tags" below, returning HTTP 400 with a clear message if one is broken.
@@ -98,6 +113,20 @@ After adding a note, the dropdowns retain their selections so that if the dropdo
 - A single-line text box and an "Add" button. Pressing Enter also adds the note.
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible.
 - When the page loads, the list starts scrolled to the bottom.
+- In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
+
+### Stylus mode
+- **Setting:** a "Stylus mode" switch at the top of the settings page, stored in the browser's local storage, so each device remembers its own setting. While it's on, an `fa-signature` icon sits just left of the cog in the header. The icon only shows the mode (tooltip "Stylus mode is on"); clicking it does nothing.
+- **Canvas:** while stylus mode is on, the title text box is hidden and a canvas takes its place, as wide as the text box would be and 80 CSS pixels high. To type a note instead, switch stylus mode off. Writing past the canvas edge is cut off.
+- **What draws:** only a stylus (`pointerType` "pen") and, for testing on a computer, a mouse. Fingers and palms touching the canvas are ignored. The page doesn't scroll while writing on the canvas (`touch-action: none`).
+- **Ink:** black, a fixed width of about 2.5 CSS pixels, with rounded ends and joins. No pressure sensitivity.
+- **Buttons:** "Add" saves the note and "Clear" wipes the canvas. Adding with nothing written shows "Nothing has been written yet." After a successful save the canvas clears. If saving fails, the error appears under the canvas and the writing is kept so you can retry. The tag dropdowns work exactly as for typed notes.
+- **Saved image:** black ink on a transparent background, cropped to the written area plus a 4-pixel margin, as a PNG data URL (`data:image/png;base64,...`). The canvas always works at 2× pixel density, so ink is crisp on tablets and every image is shown at half its pixel size (the size it was written).
+- **Dark mode:** the canvas and handwritten notes in the list sit on a light "paper" background in both light and dark themes, so the black ink always shows.
+- **Notes list:** a handwritten note shows its image at the size it was written, with the alt text "Handwritten note", and its tag pills underneath as usual.
+- **Server checks:** exactly one of `titleText` and `titleImage`; the image must be a PNG data URL of at most 200 KB (counting the data URL's characters). The server's request size limit rises from 20 KB to 256 KB to allow for this.
+- **Screen rotation:** if the canvas size changes (e.g. the device is rotated), anything written but not yet added is cleared.
+- **Image size (accepted):** every save writes all notes, images included, to a new save-file, and a week of save-files is kept. As a guide, 1,000 handwritten notes at about 4 KB each make each save-file about 4 MB. This is accepted for now; if it becomes a problem, images can later be stored as separate files.
 
 ### Tags
 - Shared types in `shared/`: `Tag { id, name }`, `Category { id, name, multiSelect, tags: Tag[] }`, and `Note` gains `tagIds: number[]`. The name and tag rules are checked by shared functions used by both the website and the server, like the note title.
@@ -146,7 +175,7 @@ After adding a note, the dropdowns retain their selections so that if the dropdo
 - Filename format: `notes-2026-10-24T09-40-12-345Z.json` (UTC timestamp, no colons).
 - Files are written to a temporary name and then renamed, so a crash mid-save can't leave a corrupt file.
 - Retention cleanup runs after each save and when the server starts.
-- Contents: `{ "version": 2, "savedDateTime": "...", "notes": [...], "categories": [...] }`. A version 1 file (from before tags) loads with no categories and every note's `tagIds` empty; the next save writes version 2.
+- Contents: `{ "version": 2, "savedDateTime": "...", "notes": [...], "categories": [...] }`. A version 1 file (from before tags) loads with no categories and every note's `tagIds` empty; the next save writes version 2. Handwritten notes add `titleImage` in place of `titleText`; the file stays version 2, as existing files are still valid.
 
 ### Hosting (Ubuntu VM)
 - App code lives in `/opt/nwsnotes`, run by a dedicated `nwsnotes` user under pm2. pm2 starts the app on boot.

@@ -3,7 +3,7 @@ import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { CONNECTION_ID_HEADER, validateTitle, type LoginRequest, type NewNoteRequest } from "@nwsnotes/shared";
+import { CONNECTION_ID_HEADER, validateNoteTitle, type LoginRequest } from "@nwsnotes/shared";
 import {
   SESSION_COOKIE,
   SESSION_LENGTH_MS,
@@ -20,7 +20,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
-  app.use(express.json({ limit: "20kb" }));
+  // Large enough for a handwritten note's image (at most 200 KB).
+  app.use(express.json({ limit: "256kb" }));
 
   const cookieOptions = {
     httpOnly: true,
@@ -66,8 +67,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.json(store.getAll());
   });
 
-  notesRouter.post("/", async (req: Request<object, object, Partial<NewNoteRequest>>, res) => {
-    const check = validateTitle(req.body?.titleText);
+  notesRouter.post("/", async (req: Request<object, object, { tagIds?: unknown } | undefined>, res) => {
+    const check = validateNoteTitle(req.body);
     if (!check.ok) {
       res.status(400).json({ error: check.error });
       return;
