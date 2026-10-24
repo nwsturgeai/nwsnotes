@@ -1,3 +1,5 @@
+## Introduction and high-level
+
 I want to create an app for managing my notes.
 This app will be delivered as a website.
 I have created a VM in DigitalOcean to host the server side of my website.
@@ -9,18 +11,23 @@ The site should be delivered over HTTPS - I have a domain "nwsnotes.duckdns.org"
 
 The website should have the necessary attributes to be useable as an Android Progressive Web App.
 
+## Notes and main screen
+
 Each note will have the following attributes:
 id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.
 titleText - a string.  May not be empty - notes with empty title should be rejected.  Trim leading/trailing whitespace.  Max length 500 characters.
 createdDateTime
 lastModifiedDateTime - for now I will not yet add note-editing or note-deleting capability, those will come in future.
 timestamps should be set by the server.  Dates should be stored in ISO 8601 format, UTC timezone.
+Tags - can have multiple.  More details below.  The note should reference/store the ids of the tags it is tagged with.
 
 The main app screen will show:
 A list of all notes in the top 3/4 of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
 For now, if the top 3/4 of the page isn't enough space to show all notes, then scroll vertically to see the rest.  Only the top 3/4 of the screen should scroll.
 There will be an area to enter a new note in the bottom 1/4 of the page - always visible even if there are more notes than fit.
 For now, phone layout is not important, I will make changes later to address that use-case.
+
+## Settings and lifecycle
 
 There will be a header strip across the top of the app.  The app will have a settings page, accessible by clicking a cog icon located on the right-hand edge of the top header strip.
 The settings page will contain the option to log out (that won't be shown on the main notes page).
@@ -35,6 +42,25 @@ When the website is opened for the first time or refreshed, the site should make
 The website should open a websocket connection to the server.  Whenever any data is changed by a particular website connection, the server should use the websocket to notify any other website connections to refresh their data. 
 
 Whilst the page is loading, show text "Loading...".  If there is an error on startup (e.g. the API is unavailable) then show a page with all the details of the error.
+
+## Tags
+
+Tags will be arranged into Categories.  Each Category will have the following attributes:
+Id - a unique integer id.  Should be auto-created, starting at 1, each new category takes the next id value.
+MultiSelect - a boolean.  If true then a note can be tagged with multiple tags from this category.  If false then a note can be tagged with at most one tag from this category.
+Tags - a list of all the available tags within this category.  Each tag has a unique integer id (auto-generated) and a string giving the tag name.  Tag names can be at most 40 characters long.
+
+All the categories (including all the tags within them) will also be saved into the json file on the vm local disk.  Every time any category is added or changed, a new copy of the json file should be saved.
+
+The settings page will have a Categories section showing a list of Categories.  There will also be a button to add a new Category.
+Clicking on one of the Categories in the list will allow that Category to be edited.
+Adding or editing a Category should share the same user-interface.
+When adding or editing a Category, the user should be shown a list of all the tags available in that category.  The user can add new tags and rename existing tags.  
+
+On the main notes page:
+Each note should also display its tags.  These should be shown in a list of pills underneath the note title.
+When adding a note, the user can set tags.  There should be a dropdown for each Category.
+
 
 ## Agreed technical decisions
 
