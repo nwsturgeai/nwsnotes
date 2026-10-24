@@ -21,6 +21,8 @@ interface Props {
   disabled: boolean;
   /** Called when a new stroke starts. */
   onInk?: () => void;
+  /** A handwritten note's image (PNG data URL) to start from, when editing it. */
+  initialImage?: string;
 }
 
 interface Point {
@@ -32,18 +34,52 @@ interface Point {
  * A canvas to write a note on. Only a stylus (or a mouse, for testing on a computer) draws;
  * fingers and palms are ignored.
  */
-export function StylusPad({ ref, disabled, onInk }: Props) {
+export function StylusPad({ ref, disabled, onInk, initialImage }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** The stroke being drawn: which pointer, and where it last was. */
   const stroke = useRef<{ pointerId: number; last: Point }>(undefined);
   /** The area written on so far, in CSS pixels. */
   const bounds = useRef<{ minX: number; minY: number; maxX: number; maxY: number }>(undefined);
+  /** True once anything has been drawn or cleared since `initialImage` was loaded. */
+  const changedSinceLoad = useRef(false);
 
   function clear() {
     const canvas = canvasRef.current;
     canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
     bounds.current = undefined;
     stroke.current = undefined;
+    changedSinceLoad.current = true;
+  }
+
+  /**
+   * Draws a saved image at the top-left of the canvas, at the size it was written,
+   * or shrunk to fit if it's wider than the canvas (so nothing is lost on Update).
+   */
+  function loadImage(dataUrl: string) {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas || changedSinceLoad.current) return;
+      const scale = Math.min(1, canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      const context = canvas.getContext("2d")!;
+      context.setTransform(1, 0, 0, 1, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, width, height);
+      // The saved image already includes the crop margin, so the writing sits inside it;
+      // this keeps the image the same size if it's updated without changes.
+      const margin = CROP_MARGIN * scale;
+      const right = width / INK_SCALE;
+      const bottom = height / INK_SCALE;
+      bounds.current = {
+        minX: Math.min(margin, right / 2),
+        minY: Math.min(margin, bottom / 2),
+        maxX: Math.max(right - margin, right / 2),
+        maxY: Math.max(bottom - margin, bottom / 2),
+      };
+    };
+    image.src = dataUrl;
   }
 
   useImperativeHandle(ref, () => ({
@@ -64,7 +100,8 @@ export function StylusPad({ ref, disabled, onInk }: Props) {
     clear,
   }));
 
-  // Keep the canvas's pixel size matched to its box. A size change (e.g. rotating the device) clears it.
+  // Keep the canvas's pixel size matched to its box. A size change (e.g. rotating the device) clears
+  // any new writing; a note being edited is reloaded if it hasn't been changed yet.
   useEffect(() => {
     const canvas = canvasRef.current!;
     const resize = () => {
@@ -76,11 +113,13 @@ export function StylusPad({ ref, disabled, onInk }: Props) {
       canvas.height = height;
       bounds.current = undefined;
       stroke.current = undefined;
+      if (initialImage && !changedSinceLoad.current) loadImage(initialImage);
     };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
     return () => observer.disconnect();
+    // The pad is remounted (keyed) for each note it edits, so this runs once per image.
   }, []);
 
   function pen(): CanvasRenderingContext2D {
@@ -125,6 +164,7 @@ export function StylusPad({ ref, disabled, onInk }: Props) {
     context.fill();
     include(point);
     stroke.current = { pointerId: event.pointerId, last: point };
+    changedSinceLoad.current = true;
     onInk?.();
   }
 

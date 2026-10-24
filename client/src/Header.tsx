@@ -11,11 +11,16 @@ interface Props {
   /** The selected tab's id, or undefined for the built-in "All" tab. */
   selectedTabId: number | undefined;
   onSelectTab: (id: number | undefined) => void;
+  /** While a note is being edited, the tabs and the Settings cog are blocked. */
+  editing: boolean;
   onNavigate: (page: Page) => void;
   /** Set when a background reload of the notes failed. */
   refreshError?: string;
   onRetryRefresh: () => void;
 }
+
+/** Why the tabs and the cog can't be used while a note is being edited. */
+const BLOCKED_HINT = "Finish or cancel the edit first";
 
 /** The strip across the top of the app, plus a notice when the notes couldn't be reloaded. */
 export function Header({
@@ -24,6 +29,7 @@ export function Header({
   tabs,
   selectedTabId,
   onSelectTab,
+  editing,
   onNavigate,
   refreshError,
   onRetryRefresh,
@@ -44,7 +50,7 @@ export function Header({
     <>
       <header className="app-header">
         {page.name === "notes" && (
-          <TabStrip tabs={tabs} selectedTabId={selectedTabId} onSelectTab={onSelectTab} />
+          <TabStrip tabs={tabs} selectedTabId={selectedTabId} onSelectTab={onSelectTab} editing={editing} />
         )}
         {back && (
           <a href={pathFor(back.page)} className="header-link" onClick={(event) => go(event, back.page)}>
@@ -61,10 +67,11 @@ export function Header({
           {page.name === "notes" && (
             <a
               href="/settings"
-              className="cog"
+              className={editing ? "cog blocked" : "cog"}
               aria-label="Settings"
-              title="Settings"
-              onClick={(event) => go(event, { name: "settings" })}
+              aria-disabled={editing || undefined}
+              title={editing ? BLOCKED_HINT : "Settings"}
+              onClick={(event) => (editing ? event.preventDefault() : go(event, { name: "settings" }))}
             >
               <FontAwesomeIcon icon={faGear} />
             </a>
@@ -87,7 +94,12 @@ export function Header({
  * The tabs, styled like a browser's: the selected one looks to be in front, joined to the note list.
  * If they don't all fit, every tab shrinks equally and long names are cut short (hover for the full name).
  */
-function TabStrip({ tabs, selectedTabId, onSelectTab }: Pick<Props, "tabs" | "selectedTabId" | "onSelectTab">) {
+function TabStrip({
+  tabs,
+  selectedTabId,
+  onSelectTab,
+  editing,
+}: Pick<Props, "tabs" | "selectedTabId" | "onSelectTab" | "editing">) {
   const all: { id: number | undefined; name: string }[] = [{ id: undefined, name: ALL_TAB_NAME }, ...tabs];
   return (
     <div className="tab-strip" role="tablist" aria-label="Tabs">
@@ -100,8 +112,11 @@ function TabStrip({ tabs, selectedTabId, onSelectTab }: Pick<Props, "tabs" | "se
             role="tab"
             className={selected ? "tab selected" : "tab"}
             aria-selected={selected}
-            title={tab.name}
-            onClick={() => onSelectTab(tab.id)}
+            aria-disabled={(editing && !selected) || undefined}
+            title={editing && !selected ? `${tab.name}: ${BLOCKED_HINT.toLowerCase()}` : tab.name}
+            onClick={() => {
+              if (!editing) onSelectTab(tab.id);
+            }}
           >
             <span className="tab-name">{tab.name}</span>
           </button>

@@ -12,33 +12,15 @@
   --focus: #6fa594;
   --pill-bg: #e3ece8;
   --pill-text: #2f5d50;
-  /* Not changed in dark mode: handwriting is black ink. */
   --paper: #fffdf7;
+  --editing-bg: #eef5f2;
+  /* Always light, whatever the device's dark-mode setting. */
   color-scheme: light;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #171a19;
-    --surface: #202423;
-    --text: #e7e9e6;
-    --muted: #9aa19d;
-    --line: #333937;
-    --accent: #5f9c88;
-    --accent-hover: #73b09c;
-    --accent-text: #0e1211;
-    --error: #f08c80;
-    --error-bg: #3a2120;
-    --focus: #5f9c88;
-    --pill-bg: #27403a;
-    --pill-text: #b9dccf;
-    color-scheme: dark;
-  }
 }
 
 * {
@@ -173,9 +155,16 @@ input:disabled {
   text-overflow: ellipsis;
 }
 
-.tab:hover:not(.selected) {
+.tab:hover:not(.selected, [aria-disabled]) {
   background: var(--line);
   color: var(--text);
+}
+
+/* Blocked while a note is being edited. */
+.tab[aria-disabled],
+.cog.blocked {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* The selected tab looks to be in front, joined to the note list below. */
@@ -228,7 +217,7 @@ input:disabled {
   color: var(--accent);
 }
 
-.cog:hover {
+.cog:hover:not(.blocked) {
   color: var(--text);
   background: var(--bg);
 }
@@ -263,10 +252,11 @@ a:focus-visible {
 
 /* ---- Notes page: list in the top 3/4, new note in the bottom 1/4 -------- */
 
+/* The list fills the page above a fixed-height new-note area. */
 .notes-page {
   display: grid;
   flex: 1;
-  grid-template-rows: 3fr 1fr;
+  grid-template-rows: 1fr 150px;
   min-height: 0;
 }
 
@@ -283,9 +273,47 @@ a:focus-visible {
 }
 
 .note-list li {
-  padding: 0.7rem 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.7rem 0.75rem 0.7rem 1.5rem;
   border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
+}
+
+.note-list li.editing {
+  background: var(--editing-bg);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.note-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The edit icon, at the right-hand side of each note. */
+.note-edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.note-edit:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.note-edit:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .empty {
@@ -294,10 +322,11 @@ a:focus-visible {
   color: var(--muted);
 }
 
+/* Fixed at 150px by .notes-page; anything that doesn't fit scrolls inside it. */
 .new-note {
   min-height: 0;
   overflow-y: auto;
-  padding: 1.25rem 1.5rem;
+  padding: 0.7rem 1.5rem;
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
@@ -318,17 +347,21 @@ a:focus-visible {
   gap: 0.75rem;
 }
 
+/* Buttons stack two high (Clear under Add); a third (editing a handwritten note) starts a second column. */
 .new-note-buttons {
-  display: flex;
+  display: grid;
   flex: none;
-  flex-direction: column;
-  gap: 0.4rem;
-  width: 5.5rem;
+  grid-template-rows: auto auto;
+  grid-auto-columns: 5.5rem;
+  grid-auto-flow: column;
+  gap: 0.3rem;
 }
 
-/* Add and Clear are the same width. */
+/* All the same width, and short enough that two fit beside the 80px canvas. */
 .new-note-buttons button {
   width: 100%;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
 }
 
 /* ---- Stylus mode: writing canvas and handwritten notes ------------------ */
@@ -439,8 +472,8 @@ a:focus-visible {
 .tag-pickers {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.6rem 1rem;
-  margin-top: 0.75rem;
+  gap: 0.5rem 1rem;
+  margin-top: 0.5rem;
 }
 
 .tag-dropdown-button {

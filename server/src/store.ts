@@ -146,6 +146,39 @@ export class NoteStore {
     });
   }
 
+  /**
+   * Replaces a note's title (already validated) and tags, then saves. The note keeps its id, its
+   * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
+   */
+  updateNote(id: number, title: NoteTitle, rawTagIds: unknown): Promise<Note> {
+    return this.enqueue(async () => {
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
+      const wasHandwritten = existing.titleImage !== undefined;
+      if (wasHandwritten !== (title.titleImage !== undefined)) {
+        throw new RequestError(
+          400,
+          wasHandwritten
+            ? "This note is handwritten, so it must be updated with a new image, not text."
+            : "This note is typed, so it must be updated with new text, not an image.",
+        );
+      }
+      const tagIds = validateTagIds(rawTagIds, this.categories);
+      if (!tagIds.ok) throw new RequestError(400, tagIds.error);
+
+      const now = this.nextSaveTime();
+      const note: Note = {
+        id,
+        ...title,
+        createdDateTime: existing.createdDateTime,
+        lastModifiedDateTime: now.toISOString(),
+        tagIds: tagIds.value,
+      };
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) });
+      return note;
+    });
+  }
+
   /** Checks and adds a new category, then saves. */
   addCategory(raw: unknown): Promise<Category> {
     return this.enqueue(async () => {
