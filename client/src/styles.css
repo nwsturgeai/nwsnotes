@@ -1,0 +1,266 @@
+:root {
+  --bg: #f6f4ef;
+  --surface: #ffffff;
+  --text: #1f2421;
+  --muted: #6b716d;
+  --line: #e2ded5;
+  --accent: #2f5d50;
+  --accent-hover: #244a40;
+  --accent-text: #ffffff;
+  --error: #a3261b;
+  --error-bg: #fbeceb;
+  --focus: #6fa594;
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171a19;
+    --surface: #202423;
+    --text: #e7e9e6;
+    --muted: #9aa19d;
+    --line: #333937;
+    --accent: #5f9c88;
+    --accent-hover: #73b09c;
+    --accent-text: #0e1211;
+    --error: #f08c80;
+    --error-bg: #3a2120;
+    --focus: #5f9c88;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button[type="submit"],
+.error-page > button {
+  padding: 0.6rem 1.25rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button[type="submit"]:hover:not(:disabled),
+.error-page > button:hover {
+  background: var(--accent-hover);
+}
+
+button:disabled,
+input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.save-error {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* ---- Loading ------------------------------------------------------------ */
+
+.loading {
+  margin: 0;
+  padding: 2rem;
+  color: var(--muted);
+}
+
+/* ---- Notes page: list in the top 3/4, new note in the bottom 1/4 -------- */
+
+.notes-page {
+  display: grid;
+  grid-template-rows: 3fr 1fr;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.note-list {
+  overflow-y: auto;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.note-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.note-list li {
+  padding: 0.7rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 0;
+  padding: 2rem 1.5rem;
+  color: var(--muted);
+}
+
+.new-note {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.new-note form {
+  max-width: 48rem;
+}
+
+.new-note label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 600;
+}
+
+.new-note-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.logout {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.logout:hover {
+  color: var(--text);
+}
+
+/* ---- Login page --------------------------------------------------------- */
+
+.login-page {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 1.5rem;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 22rem;
+  padding: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.login-card h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+
+.login-card label {
+  font-weight: 600;
+}
+
+.login-card button {
+  margin-top: 0.5rem;
+}
+
+/* ---- Error page --------------------------------------------------------- */
+
+.error-page {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.error-page h1 {
+  margin-top: 0;
+  color: var(--error);
+}
+
+.error-message {
+  font-size: 1.15rem;
+}
+
+.error-page h2 {
+  margin-top: 2rem;
+  font-size: 1.1rem;
+}
+
+.error-page dl {
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+
+.error-page dl > div {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.error-page dt {
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.error-page dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.error-page pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
