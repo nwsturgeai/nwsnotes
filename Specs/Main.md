@@ -46,20 +46,28 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 ## Tags
 
 Tags will be arranged into Categories.  Each Category will have the following attributes:
-Id - a unique integer id.  Should be auto-created, starting at 1, each new category takes the next id value.
-MultiSelect - a boolean.  If true then a note can be tagged with multiple tags from this category.  If false then a note can be tagged with at most one tag from this category.
-Tags - a list of all the available tags within this category.  Each tag has a unique integer id (auto-generated) and a string giving the tag name.  Tag names can be at most 40 characters long.
+id - a unique integer id.  Should be auto-created, starting at 1, each new category takes the next id value.  Ids should be unique across all categories, so the note only needs to store the tag id, not the category id.
+name - required, trimmed, at most 40 characters, unique
+multiSelect - a boolean.  If true then a note can be tagged with multiple tags from this category.  If false then a note can be tagged with at most one tag from this category.
+tags - a list of all the available tags within this category.  Each tag has a unique integer id (auto-generated) and a string giving the tag name.  Tag names can be at most 40 characters long.  Tag names must be unique within their category.
 
-All the categories (including all the tags within them) will also be saved into the json file on the vm local disk.  Every time any category is added or changed, a new copy of the json file should be saved.
+All the categories (including all the tags within them) will also be saved into the same one json file (which also contains the note data) on the vm local disk.  Every time any category is added or changed, a new copy of the json file should be saved.
 
 The settings page will have a Categories section showing a list of Categories.  There will also be a button to add a new Category.
 Clicking on one of the Categories in the list will allow that Category to be edited.
 Adding or editing a Category should share the same user-interface.
-When adding or editing a Category, the user should be shown a list of all the tags available in that category.  The user can add new tags and rename existing tags.  
+When adding or editing a Category, the user should be shown a list of all the tags available in that category.  The user can add new tags and rename existing tags.
+Have a "Save" button to save all changes to a category in one go.  And a "Cancel" button to cancel any category edits and return to the last saved state.
+If/when a category is saved, that should cause other tabs viewing the website to be sent the latest data (including the latest categories and tags).
+Categories must contain at least one tag to be able to be saved. 
+For now, it will not be possible to delete tags or categories.
+For now, it will not be possible to change the tags a note has after the note has been created.
 
 On the main notes page:
 Each note should also display its tags.  These should be shown in a list of pills underneath the note title.
-When adding a note, the user can set tags.  There should be a dropdown for each Category.
+When adding a note, the user can set tags.  There should be a dropdown for each Category.  For single-select categories this can be a simple dropdown with a "(none)" option. For multi-select categories, use a dropdown that opens a check-list.
+The dropdowns should appear underneath the textbox where the note title is entered.
+After adding a note, the dropdowns retain their selections so that if the dropdowns aren't changed then a second new note would be given the same tags.
 
 
 ## Agreed technical decisions
