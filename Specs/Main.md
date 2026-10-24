@@ -27,6 +27,7 @@ The main app screen will show:
 A list of all notes in the top 3/4 of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
 For now, if the top 3/4 of the page isn't enough space to show all notes, then scroll vertically to see the rest.  Only the top 3/4 of the screen should scroll.
 There will be an area to enter a new note in the bottom 1/4 of the page - always visible even if there are more notes than fit.
+There should be no "New note" heading.
 For now, phone layout is not important, I will make changes later to address that use-case.
 
 ## Settings and lifecycle
@@ -91,6 +92,35 @@ The "Clear" button should be shown underneath the "Add" button - this gives more
 Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns: when in stylus mode, these controls should not respond to touch inputs - they should only respond to stylus or mouse inputs. Touch inputs should continue to work when not in stylus mode.
 
 
+## Tabs
+
+A Tab is a definition of a filter; when viewing a Tab you only see the notes that match the filter.
+
+A Tab has the following attributes:
+Name: unique string, max length 20 characters.
+Categories: an array of structures, each containing a category id and one or more tag ids.
+
+The Settings page will have a new section "Tabs".  This allows Tab definitions to be added, edited and deleted.  WIthin the section will be a list of existing tabs, and a button to create a new tab.
+Existing tabs should show their name and the associated tag ids (rendered as pills the same as for notes in the Notes page).
+When creating or editing a tab, dropdowns for all the Categories are shown, the same as the dropdowns shown when adding a new Note.
+After the user begins to add or edit a tab, there should be "Save" and "Cancel" buttons.
+
+The first Tab should be called "All" and should have no filters.  This Tab cannot be edited or deleted.
+
+Tab definitions should be stored in the same json file as notes and Category definitions.
+Tab updates should cause other instances of the website to reload their data.
+
+On the Notes page, towards the left of the header strip, the tabs should render.  They should be styled similarly to the tabs at the top of a typical web browser.  One tab is always selected - the All tab is selected when the page first opens.
+
+Clicking on one of the Tabs causes that tab to become selected and appear to be in the foreground.
+The only notes that are shown on the page are the notes that match the filter for the currently-selected Tab.  For each Category specified in the Tab definition, a note matches the filter if the note is tagged with at least one of the Tags in that filter definition Category object.
+Notes that are "filtered out" remain in the system, they are just hidden.  They will be shown again when one of the other Tabs is selected.  The All tab will always show all notes.
+
+When the currently-selected Tab has a Category filter containing a single Tag: the new-note area should have that one Tag automatically selected in the corresponding dropdown.  It should not be possible to change this selection.
+Changing tab should cause all new-note dropdowns to reset, either to "unselected", or to the single value from the corresponding Tab Category filter.
+
+
+
 ## Agreed technical decisions
 
 ### Code and tooling
@@ -99,15 +129,17 @@ Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns
 - Icons: Font Awesome Free (solid icons), installed from npm (`@fortawesome/fontawesome-svg-core`, `@fortawesome/free-solid-svg-icons`, `@fortawesome/react-fontawesome`) and bundled into the app, not loaded from a CDN, so the security headers and offline start-up keep working. All the app's icons use it, including the settings cog (`fa-gear`).
 
 ### API
-- `GET /api/notes` - returns `{ "notes": [...], "categories": [...] }`: all notes and all categories with their tags (the most recent save-file's contents).
+- `GET /api/notes` - returns `{ "notes": [...], "categories": [...], "tabs": [...] }`: all notes, all categories with their tags, and all tabs (the most recent save-file's contents).
 - `POST /api/notes` - body `{ "titleText": "...", "tagIds": [3, 7] }` (`tagIds` may be empty), or `{ "titleImage": "data:image/png;base64,...", "tagIds": [...] }` for a handwritten note. Exactly one of `titleText` and `titleImage` must be given. The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
 - `POST /api/categories` - body `{ "name": "...", "multiSelect": false, "tags": [{ "name": "..." }] }`. The server assigns the category and tag ids, saves a new save-file and returns the created category.
 - `PUT /api/categories/:id` - body as above, but existing tags include their `id` (`{ "id": 3, "name": "..." }`); tags without an `id` are new. Saves a new save-file and returns the updated category.
-- Changes send the `X-Connection-Id` header too, and the server checks every rule in "Tags" below, returning HTTP 400 with a clear message if one is broken.
+- `POST /api/tabs` - body `{ "name": "...", "categories": [{ "categoryId": 1, "tagIds": [1, 6] }] }`. The server assigns the id, saves a new save-file and returns the created tab.
+- `PUT /api/tabs/:id` - same body; replaces the tab's name and filters. `DELETE /api/tabs/:id` deletes it. Both save a new save-file.
+- Changes send the `X-Connection-Id` header too, and the server checks every rule in "Tags" and "Tabs" below, returning HTTP 400 with a clear message if one is broken.
 - `GET /api/notes/download` - returns the most recent save-file exactly as it is on disk (including its `version` and `savedDateTime` fields), as a file download named with the save-file's own name, e.g. `notes-2026-10-24T09-40-12-345Z.json`. A backup can be put straight back into the data folder.
 - `POST /api/login` - body `{ "password": "..." }`. On success sets the session cookie.
 - `POST /api/logout` - clears the session cookie.
-- All `/api/notes` and `/api/categories` calls require a valid session; otherwise they return HTTP 401 and the website shows the login page.
+- All `/api/notes`, `/api/categories` and `/api/tabs` calls require a valid session; otherwise they return HTTP 401 and the website shows the login page.
 
 ### Login
 - A login page with a single password field. On success the server sets a secure, HttpOnly session cookie that lasts 30 days.
@@ -116,7 +148,7 @@ Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns
 - The login endpoint is rate limited.
 
 ### New-note area
-- A single-line text box and an "Add" button. Pressing Enter also adds the note.
+- A single-line text box and an "Add" button. Pressing Enter also adds the note. There is no "New note" heading; the text box keeps its placeholder text and an accessible label.
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible.
 - When the page loads, the list starts scrolled to the bottom.
 - In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
@@ -160,17 +192,47 @@ Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns
 - Multi-select: the list is a check-list of the tags; it stays open while ticking, and closes when clicking elsewhere or pressing Escape.
 - After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
 - If there are more dropdowns than fit, the bottom 1/4 area scrolls.
+- Changing tab resets every dropdown (see "Tabs on the notes page"); adding a note still keeps the selections.
+
+### Tabs
+- Shared type: `Tab { id, name, categories: { categoryId, tagIds }[] }`, checked by a shared function used by both the website and the server, like categories.
+- **"All" is built in:** it isn't stored, always comes first, has no filters, and can't be edited or deleted. No other tab can be called "All".
+- **Ids:** a new tab gets the highest existing tab id + 1, starting at 1, like categories. Ids are only for the app's own use.
+- **Names:** trimmed, can't be empty, at most 20 characters, and unique ignoring upper/lower case.
+- **Filters:** each entry names an existing category and one or more of that category's tags, and no category can appear twice. A tab needs at least one tag in total; otherwise it would just repeat "All".
+- **Matching:** a note is shown when, for every category the tab lists, it has at least one of that entry's tags. So categories combine with "and", and tags within one category combine with "or".
+- **Order:** "All" first, then tabs in the order they were created. No reordering for now.
+- Deleting a tab never changes any notes.
+
+### Tab editing
+- The settings page has a Tabs section listing "All" (not clickable, marked "Always shows every note") and then each tab's name with its tags as pills, plus an "Add tab" button.
+- Adding and editing use the same page, at `/settings/tabs/new` and `/settings/tabs/<id>`, so the back button works. It has a name text box and one dropdown per category, like the new-note dropdowns, except that every one is a check-list (even for single-select categories), as a tab can match any of several tags from one category.
+- "Save" and "Cancel" work as for categories. Editing an existing tab also has a "Delete" button, which first asks "Delete the tab "<name>"?".
+- If another page saves the same tab while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
+
+### Tabs on the notes page
+- The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it.
+- **Too many to fit:** all tabs shrink equally so they always fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
+- **Selected tab:** "All" is selected when the page opens or is reloaded. The selection is kept while moving around the app (e.g. to Settings and back). If another page deletes the selected tab, "All" is selected; if it edits it, the filter updates straight away.
+- Only notes matching the selected tab are listed; an empty result shows "No notes in this tab yet." Changing tab scrolls the list to the bottom.
+- Tabs respond to touch in stylus mode too; the touch-ignoring rule only covers the new-note controls.
+- **New-note dropdowns under a tab,** for each category the selected tab lists, so that new notes always match the tab and stay visible:
+  - *One tag in the filter:* that tag is chosen and locked. For a single-select category the whole dropdown is locked. For a multi-select category the tag is ticked and locked, and other tags can still be ticked.
+  - *Several tags in the filter:* one of them must be chosen. A single-select dropdown offers only those tags, with no "no tag" option. A multi-select dropdown offers all the category's tags (extra tags don't stop the note matching), but at least one of the tab's tags must be ticked.
+  - "Add" with a required tag missing shows "Choose a <category> tag: this tab only shows notes with one."
+  - Categories the tab doesn't list work as before.
+- Changing tab resets every dropdown: to no tag, or to the locked tag for one-tag filters.
 
 ### Header and settings page
 - The header strip has a fixed height and the same background colour as the new-note area. The rest of the page below it is split 3/4 note list, 1/4 new-note area.
-- No app title is shown at the left of the header (that space is kept for a later feature). The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes". The "New note" label above the text box or canvas also stays.
+- No app title is shown at the left of the header; on the notes page that space holds the tabs. The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes".
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
-- The settings page has "Log out" and "Download backup". "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+- The settings page has, in order: Stylus mode, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
 
 ### Live updates (WebSocket)
 - The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
 - The server only accepts the connection if the session cookie is valid and the request's `Origin` is the site's own address, so other websites can't connect using the cookie.
-- Each page load creates a random connection id and sends it with every change it makes (`X-Connection-Id` header). After a change is saved (a note added, or a category added or edited), the server sends `{ "type": "data-changed" }` to every other open connection; they reload the notes and categories with `GET /api/notes`. The same message will be used later for note editing and deleting.
+- Each page load creates a random connection id and sends it with every change it makes (`X-Connection-Id` header). After a change is saved (a note added, a category added or edited, or a tab added, edited or deleted), the server sends `{ "type": "data-changed" }` to every other open connection; they reload the notes, categories and tabs with `GET /api/notes`. The same message will be used later for note editing and deleting.
 - If the connection drops, the website reconnects automatically, waiting a little longer after each failed attempt. After any reconnect, and whenever the app comes back on screen, it reloads the notes in case it missed a message.
 - These background reloads don't show "Loading...", don't clear a title being typed, and keep the list scrolled to the bottom. If one fails, a small notice is shown instead of the full error page.
 - Logging out closes the connection.
@@ -187,7 +249,7 @@ Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns
 - Filename format: `notes-2026-10-24T09-40-12-345Z.json` (UTC timestamp, no colons).
 - Files are written to a temporary name and then renamed, so a crash mid-save can't leave a corrupt file.
 - Retention cleanup runs after each save and when the server starts.
-- Contents: `{ "version": 2, "savedDateTime": "...", "notes": [...], "categories": [...] }`. A version 1 file (from before tags) loads with no categories and every note's `tagIds` empty; the next save writes version 2. Handwritten notes add `titleImage` in place of `titleText`; the file stays version 2, as existing files are still valid.
+- Contents: `{ "version": 2, "savedDateTime": "...", "notes": [...], "categories": [...] }`. A version 1 file (from before tags) loads with no categories and every note's `tagIds` empty; the next save writes version 2. Handwritten notes add `titleImage` in place of `titleText`; the file stays version 2, as existing files are still valid. Tabs are saved as a `"tabs": [...]` list in the same file (still version 2); a file without it loads with no tabs, so only "All" shows.
 
 ### Hosting (Ubuntu VM)
 - App code lives in `/opt/nwsnotes`, run by a dedicated `nwsnotes` user under pm2. pm2 starts the app on boot.
