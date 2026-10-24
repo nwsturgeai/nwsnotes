@@ -1,12 +1,37 @@
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Note } from "@nwsnotes/shared";
+import {
+  validateCategory,
+  validateTagIds,
+  type Category,
+  type CategoryRequest,
+  type Note,
+  type NotesData,
+} from "@nwsnotes/shared";
 
 /** Contents of each save-file. */
 interface SaveFile {
-  version: 1;
+  version: 2;
   savedDateTime: string;
   notes: Note[];
+  categories: Category[];
+}
+
+/** Save-files written before tags existed. */
+interface SaveFileV1 {
+  version: 1;
+  savedDateTime: string;
+  notes: Omit<Note, "tagIds">[];
+}
+
+/** An error caused by the request, reported to the website with this HTTP status. */
+export class RequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
 }
 
 const FILE_PATTERN = /^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
@@ -28,15 +53,36 @@ function dateFromFileName(name: string): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+/** Reads a save-file of either version as the current version. */
+function parseSaveFile(name: string, text: string): SaveFile {
+  const content = JSON.parse(text) as SaveFile | SaveFileV1;
+  if (!Array.isArray(content.notes)) {
+    throw new Error(`Save-file ${name} has no "notes" list.`);
+  }
+  if (content.version === 1) {
+    return {
+      version: 2,
+      savedDateTime: content.savedDateTime,
+      notes: content.notes.map((note) => ({ ...note, tagIds: [] })),
+      categories: [],
+    };
+  }
+  if (content.version !== 2 || !Array.isArray(content.categories)) {
+    throw new Error(`Save-file ${name} has an unknown format (version ${String((content as { version?: unknown }).version)}).`);
+  }
+  return content;
+}
+
 /**
- * Keeps all notes in memory and writes a complete, timestamped save-file
- * to disk every time a note is added.
+ * Keeps all notes and categories in memory and writes a complete, timestamped
+ * save-file to disk every time anything changes.
  */
 export class NoteStore {
   private notes: Note[] = [];
+  private categories: Category[] = [];
   private lastSaveMs = 0;
   private latestFileName: string | undefined;
-  /** Saves run one at a time, in order. */
+  /** Changes run one at a time, in order. */
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly dataDir: string) {}
@@ -47,22 +93,20 @@ export class NoteStore {
     const files = await this.listSaveFiles();
     const latest = files.at(-1);
     if (latest) {
-      const content = JSON.parse(await readFile(path.join(this.dataDir, latest.name), "utf8")) as SaveFile;
-      if (!Array.isArray(content.notes)) {
-        throw new Error(`Save-file ${latest.name} has no "notes" list.`);
-      }
+      const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
       this.notes = content.notes;
+      this.categories = content.categories;
       this.lastSaveMs = latest.date.getTime();
       this.latestFileName = latest.name;
-      console.log(`Loaded ${this.notes.length} notes from ${latest.name}`);
+      console.log(`Loaded ${this.notes.length} notes and ${this.categories.length} categories from ${latest.name}`);
     } else {
       console.log(`No save-files in ${this.dataDir}; starting with no notes.`);
     }
     await this.deleteOldFiles();
   }
 
-  getAll(): Note[] {
-    return this.notes;
+  getAll(): NotesData {
+    return { notes: this.notes, categories: this.categories };
   }
 
   /** The most recent save-file, or undefined if nothing has been saved yet. */
@@ -72,27 +116,82 @@ export class NoteStore {
   }
 
   /** Adds a note (title already validated) and saves. Resolves once it is on disk. */
-  add(titleText: string): Promise<Note> {
-    const result = this.queue.then(() => this.addNow(titleText));
-    // Keep the queue going even if this save fails.
+  add(titleText: string, rawTagIds: unknown): Promise<Note> {
+    return this.enqueue(async () => {
+      const tagIds = validateTagIds(rawTagIds, this.categories);
+      if (!tagIds.ok) throw new RequestError(400, tagIds.error);
+
+      const now = this.nextSaveTime();
+      const timestamp = now.toISOString();
+      const note: Note = {
+        id: this.notes.reduce((max, n) => Math.max(max, n.id), 0) + 1,
+        titleText,
+        createdDateTime: timestamp,
+        lastModifiedDateTime: timestamp,
+        tagIds: tagIds.value,
+      };
+      await this.save(now, [...this.notes, note], this.categories);
+      return note;
+    });
+  }
+
+  /** Checks and adds a new category, then saves. */
+  addCategory(raw: unknown): Promise<Category> {
+    return this.enqueue(async () => {
+      const check = validateCategory(raw, this.categories);
+      if (!check.ok) throw new RequestError(400, check.error);
+
+      const category: Category = {
+        id: this.categories.reduce((max, c) => Math.max(max, c.id), 0) + 1,
+        name: check.category.name,
+        multiSelect: check.category.multiSelect,
+        tags: this.withTagIds(check.category.tags),
+      };
+      await this.save(this.nextSaveTime(), this.notes, [...this.categories, category]);
+      return category;
+    });
+  }
+
+  /** Checks and applies changes to a category (renamed tags keep their ids), then saves. */
+  updateCategory(id: number, raw: unknown): Promise<Category> {
+    return this.enqueue(async () => {
+      const existing = this.categories.find((c) => c.id === id);
+      if (!existing) throw new RequestError(404, `There is no category with id ${id}.`);
+      const check = validateCategory(raw, this.categories, existing);
+      if (!check.ok) throw new RequestError(400, check.error);
+
+      const category: Category = {
+        id,
+        name: check.category.name,
+        multiSelect: check.category.multiSelect,
+        tags: this.withTagIds(check.category.tags).sort((a, b) => a.id - b.id),
+      };
+      const categories = this.categories.map((c) => (c.id === id ? category : c));
+      await this.save(this.nextSaveTime(), this.notes, categories);
+      return category;
+    });
+  }
+
+  /** Gives new tags the next ids; tag ids are unique across all categories. */
+  private withTagIds(tags: CategoryRequest["tags"]): Category["tags"] {
+    let nextId = this.categories.flatMap((c) => c.tags).reduce((max, t) => Math.max(max, t.id), 0) + 1;
+    return tags.map((tag) => ({ id: tag.id ?? nextId++, name: tag.name }));
+  }
+
+  private enqueue<T>(change: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(change);
+    // Keep the queue going even if this change fails.
     this.queue = result.catch(() => undefined);
     return result;
   }
 
-  private async addNow(titleText: string): Promise<Note> {
-    // Save-file names must be unique and in order, so never reuse or go back in time.
-    const nowMs = Math.max(Date.now(), this.lastSaveMs + 1);
-    const now = new Date(nowMs);
-    const timestamp = now.toISOString();
-    const nextId = this.notes.reduce((max, note) => Math.max(max, note.id), 0) + 1;
-    const note: Note = {
-      id: nextId,
-      titleText,
-      createdDateTime: timestamp,
-      lastModifiedDateTime: timestamp,
-    };
-    const notes = [...this.notes, note];
-    const content: SaveFile = { version: 1, savedDateTime: timestamp, notes };
+  /** Save-file names must be unique and in order, so never reuse a time or go back in time. */
+  private nextSaveTime(): Date {
+    return new Date(Math.max(Date.now(), this.lastSaveMs + 1));
+  }
+
+  private async save(now: Date, notes: Note[], categories: Category[]): Promise<void> {
+    const content: SaveFile = { version: 2, savedDateTime: now.toISOString(), notes, categories };
 
     // Write to a temporary file, then rename, so a crash can't leave a half-written save-file.
     const fileName = fileNameFor(now);
@@ -103,16 +202,16 @@ export class NoteStore {
 
     // Only update memory once the save succeeded.
     this.notes = notes;
-    this.lastSaveMs = nowMs;
+    this.categories = categories;
+    this.lastSaveMs = now.getTime();
     this.latestFileName = fileName;
 
     try {
       await this.deleteOldFiles();
     } catch (error) {
-      // The note is saved; a failed tidy-up shouldn't be reported as a failed save.
+      // The change is saved; a failed tidy-up shouldn't be reported as a failed save.
       console.error("Couldn't delete old save-files:", error);
     }
-    return note;
   }
 
   /** Save-files sorted oldest first. */

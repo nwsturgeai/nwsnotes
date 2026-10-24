@@ -1,4 +1,13 @@
-import { CONNECTION_ID_HEADER, type ApiErrorBody, type LoginRequest, type NewNoteRequest, type Note } from "@nwsnotes/shared";
+import {
+  CONNECTION_ID_HEADER,
+  type ApiErrorBody,
+  type Category,
+  type CategoryRequest,
+  type LoginRequest,
+  type NewNoteRequest,
+  type Note,
+  type NotesData,
+} from "@nwsnotes/shared";
 import { connectionId } from "./live";
 
 /** An API call that failed, with everything needed to show the error in full. */
@@ -57,10 +66,15 @@ async function request<T>(method: string, url: string, body?: unknown, extraHead
   }
 }
 
+/** Changes send this page's connection id, so the server doesn't notify this page about them. */
+const changeHeaders = () => ({ [CONNECTION_ID_HEADER]: connectionId });
+
 export const api = {
-  getNotes: () => request<Note[]>("GET", "/api/notes"),
-  addNote: (body: NewNoteRequest) =>
-    request<Note>("POST", "/api/notes", body, { [CONNECTION_ID_HEADER]: connectionId }),
+  getNotes: () => request<NotesData>("GET", "/api/notes"),
+  addNote: (body: NewNoteRequest) => request<Note>("POST", "/api/notes", body, changeHeaders()),
+  addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
+  updateCategory: (id: number, body: CategoryRequest) =>
+    request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
   login: (body: LoginRequest) => request<{ ok: true }>("POST", "/api/login", body),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
 };

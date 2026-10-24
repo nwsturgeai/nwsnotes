@@ -47,7 +47,7 @@ export function useLiveUpdates(enabled: boolean, onChanged: () => void) {
         } catch {
           return;
         }
-        if (message.type === "notes-changed") onChangedRef.current();
+        if (message.type === "data-changed") onChangedRef.current();
       };
       ws.onclose = () => {
         if (socket !== ws) return;

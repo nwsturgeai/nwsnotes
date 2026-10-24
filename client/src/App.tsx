@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Note } from "@nwsnotes/shared";
+import type { Category, Note, NotesData } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { CategoryEditPage } from "./CategoryEditPage";
 import { ErrorPage } from "./ErrorPage";
 import { Header } from "./Header";
 import { useLiveUpdates } from "./live";
@@ -8,17 +9,20 @@ import { LoginPage } from "./LoginPage";
 import { NotesPage } from "./NotesPage";
 import { usePage } from "./route";
 import { SettingsPage } from "./SettingsPage";
+import type { TagSelection } from "./TagPickers";
 
 type State =
   | { screen: "loading" }
   | { screen: "login" }
-  | { screen: "notes"; notes: Note[] }
+  | { screen: "notes"; data: NotesData }
   | { screen: "error"; error: unknown; when: Date };
 
 export function App() {
   const [state, setState] = useState<State>({ screen: "loading" });
   const [page, navigate] = usePage();
   const [refreshError, setRefreshError] = useState<string>();
+  /** The new-note tag dropdowns' selections; kept until the page is reloaded. */
+  const [tagSelection, setTagSelection] = useState<TagSelection>({});
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
   const refreshInProgress = useRef(false);
@@ -27,8 +31,8 @@ export function App() {
     setState({ screen: "loading" });
     setRefreshError(undefined);
     try {
-      const notes = await api.getNotes();
-      setState({ screen: "notes", notes });
+      const data = await api.getNotes();
+      setState({ screen: "notes", data });
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         setState({ screen: "login" });
@@ -38,15 +42,15 @@ export function App() {
     }
   }, []);
 
-  /** Reloads the notes in the background: no "Loading...", and a failure only shows a notice. */
+  /** Reloads notes and categories in the background: no "Loading...", and a failure only shows a notice. */
   const refreshNotes = useCallback(async () => {
     const thisRefresh = ++latestRefresh.current;
     refreshInProgress.current = true;
     try {
-      const notes = await api.getNotes();
+      const data = await api.getNotes();
       if (thisRefresh !== latestRefresh.current) return;
       setRefreshError(undefined);
-      setState((prev) => (prev.screen === "notes" ? { screen: "notes", notes } : prev));
+      setState((prev) => (prev.screen === "notes" ? { screen: "notes", data } : prev));
     } catch (error) {
       if (thisRefresh !== latestRefresh.current) return;
       if (error instanceof ApiError && error.isUnauthorized) {
@@ -65,27 +69,45 @@ export function App() {
 
   useLiveUpdates(state.screen === "notes", refreshNotes);
 
-  const addNote = useCallback(
-    (note: Note) => {
-      setState((prev) =>
-        prev.screen === "notes" && !prev.notes.some((existing) => existing.id === note.id)
-          ? { screen: "notes", notes: [...prev.notes, note] }
-          : prev,
-      );
-      // A reload that started before this note was saved would leave it out, so start a fresh one.
+  /** Applies a change this page just saved. */
+  const applySaved = useCallback(
+    (change: (data: NotesData) => NotesData) => {
+      setState((prev) => (prev.screen === "notes" ? { screen: "notes", data: change(prev.data) } : prev));
+      // A reload that started before this change was saved would leave it out, so start a fresh one.
       if (refreshInProgress.current) void refreshNotes();
     },
     [refreshNotes],
+  );
+
+  const addNote = useCallback(
+    (note: Note) =>
+      applySaved((data) =>
+        data.notes.some((existing) => existing.id === note.id) ? data : { ...data, notes: [...data.notes, note] },
+      ),
+    [applySaved],
+  );
+
+  const saveCategory = useCallback(
+    (category: Category) =>
+      applySaved((data) => ({
+        ...data,
+        categories: data.categories.some((c) => c.id === category.id)
+          ? data.categories.map((c) => (c.id === category.id ? category : c))
+          : [...data.categories, category],
+      })),
+    [applySaved],
   );
 
   const logout = useCallback(async () => {
     try {
       await api.logout();
     } finally {
-      navigate("notes", { replace: true });
+      navigate({ name: "notes" }, { replace: true });
       setState({ screen: "login" });
     }
   }, [navigate]);
+
+  const sessionExpired = useCallback(() => setState({ screen: "login" }), []);
 
   switch (state.screen) {
     case "loading":
@@ -103,13 +125,24 @@ export function App() {
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
           />
-          {page === "settings" ? (
-            <SettingsPage onLogout={logout} />
+          {page.name === "settings" ? (
+            <SettingsPage categories={state.data.categories} onNavigate={navigate} onLogout={logout} />
+          ) : page.name === "category" ? (
+            <CategoryEditPage
+              id={page.id}
+              categories={state.data.categories}
+              onSaved={saveCategory}
+              onClose={() => navigate({ name: "settings" })}
+              onSessionExpired={sessionExpired}
+            />
           ) : (
             <NotesPage
-              notes={state.notes}
+              notes={state.data.notes}
+              categories={state.data.categories}
+              tagSelection={tagSelection}
+              onTagSelectionChange={setTagSelection}
               onNoteAdded={addNote}
-              onSessionExpired={() => setState({ screen: "login" })}
+              onSessionExpired={sessionExpired}
             />
           )}
         </div>

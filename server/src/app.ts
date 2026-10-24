@@ -72,7 +72,7 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
       res.status(400).json({ error: check.error });
       return;
     }
-    const note = await store.add(check.title);
+    const note = await store.add(check.title, req.body?.tagIds);
     live.notifyChanged(req.get(CONNECTION_ID_HEADER));
     res.status(201).json(note);
   });
@@ -91,6 +91,30 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
   });
 
   app.use("/api/notes", notesRouter);
+
+  // --- Categories (and their tags) ------------------------------------------
+
+  const categoriesRouter = express.Router();
+  categoriesRouter.use(requireSession(config.sessionSecret));
+
+  categoriesRouter.post("/", async (req, res) => {
+    const category = await store.addCategory(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.status(201).json(category);
+  });
+
+  categoriesRouter.put("/:id", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no category with id ${req.params.id}.` });
+      return;
+    }
+    const category = await store.updateCategory(id, req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(category);
+  });
+
+  app.use("/api/categories", categoriesRouter);
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Unknown API address." });
