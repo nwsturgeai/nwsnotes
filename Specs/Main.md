@@ -16,7 +16,7 @@ The website should have the necessary attributes to be useable as an Android Pro
 ## Notes and main screen
 
 Each note will have the following attributes:
-id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.
+id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.  Ids should never be reused even after notes get deleted.
 titleText - a string.  May not be empty - notes with empty title should be rejected.  Trim leading/trailing whitespace.  Max length 500 characters.
 titleImage - a string containing the base64 image data if the note has been created from stylus handwriting.  Exactly one of titleText and titleImage should be populated on each note.
 createdDateTime
@@ -134,9 +134,9 @@ At the right of the dropdowns, there should be a "reset filters" button (same si
 
 ## Editing Notes
 
-On the Notes page, in the notes-list area: each note should have an "edit" icon.  The icon should be shown on the right-hand side of the screen.  The icon should be 16px wide by 16px high.
+On the Notes page, in the notes-list area: each note should have an "edit" icon.  The icon should be shown on the right-hand side of the screen.  The icon should be 16px wide by 16px high, inside a 24px-square tap area.  This is small, I am making a trade-off between ease of tapping versus retaining maximum area for note content.
 When the edit icon is clicked for a note, the Add-Note section changes into edit-mode.  For text-notes, the text control is shown with the current title of the note.  For image-notes, the canvas needs to be shown and the image needs to be loaded into the canvas.  Text-editing or image-editing becomes enabled according to the type of the note being edited and disregards whether stylus-mode is enabled or not.
-In edit-mode, the "Add" button becomes an "Update" button (with icon fa-circle-check), and a new "Cancel" button also appears.  The Cancel button uses icon fa-x and has no text.
+In edit-mode, the "Add" button becomes an "Update" button (with icon fa-circle-check, size remains the same, no text), and a new "Cancel" button also appears.  The Cancel button uses icon fa-x and has no text.  It is the same size as the Add button.
 Pressing Update causes any changes to the note to be saved to the server and the notes list updated to reflect the changes.  The Add-Note section reverts to its normal "Add" behaviour.
 Pressing Cancel causes any changes to be discarded and the Add-Note section reverts to its normal "Add" behaviour.
 Whilst in edit mode it should not be possible to switch to a different Tab.
@@ -161,7 +161,7 @@ Tab filter definitions can specify values for this system Category.  Additional 
 
 On the Notes screen, each note in the notes-list which is not tagged "Archived" should have an "archive" button (using icon fa-box-archive) alongside the edit button.  This button should be the same size as the edit button.
 When the Archive button is clicked, the note is given the "Archived" tag (and Tag New or Active is removed).
-Notes with the Archived tag should have a fairly dark grey background.
+Notes with the Archived tag should have a background #606060.  Black text is quite hard to read against this colour - that is deliberate.  Handwriting notes should also have this same dark background.
 For Notes with the Archived tag: in place of the "archive" button, they should have a "reinstate" button (fa-rotate-left).
 Pressing the reinstate button takes away the Archived tag and adds the Active tag.
 If the current Tab definition filter (or additional tab filter) specifies that archived items should not be shown in this tab: in this case, when the user clicks to archive a note, the note should then disappear from the current list of notes.
@@ -169,12 +169,14 @@ If the current Tab definition filter (or additional tab filter) specifies that a
 ### Bin
 Any notes with the Bin Tag should be hidden from the notes-list unless the Tab-filter-definition or additional-tab-filters explicitly indicate that Bin items should be shown.  In other words, if a Tab has no filter set for the Lifetime category, notes tagged with Bin should still be hidden.
 Notes with the Archived tag should have an extra icon button to the right: "move to bin" (fa-trash-can).  Clicking this button removes the Archived tab from this note and adds the Bin tag to this note.  Usually this will cause the note to become hidden.
+When a Bin-tagged note is shown in the Notes list, it should have a "reinstate" button (the same as for Archived notes).  Similar to Archived notes, clicking "reinstate" removes the "Bin" tag and sets the "Active" tag.  Bin-tagged notes should have a background #B00000 (same for handwriting notes).
+Buttons for each note should be right-aligned.  It doesn't matter if they don't line up vertically, the important thing is to preserve as much space as possible for note content.
 
 
 ### Lifetime changes
 
 The Settings page should have three new Lifetime buttons in a section at the top below the "Stylus mode" section.  The buttons are:
-Reset New:  Clicking this button will update all notes tagged as "New" to switch to being tagged "Active".  This button should appear alongside the stylus-mode toggle.
+Reset New:  Clicking this button will update all notes tagged as "New" to switch to being tagged "Active".
 Archived to Bin: Clicking this button will update all notes tagged as "Archived" to instead be tagged "Bin".  There should be a confirmation modal asking if the user is sure, saying how many notes will be put in the bin.
 Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
 
