@@ -11,6 +11,7 @@ import {
 import { ApiError, api } from "./api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { pathFor, type Page } from "./route";
+import { MAX_COLUMNS } from "./stylusMode";
 import { TagPills } from "./TagPills";
 
 interface Props {
@@ -20,6 +21,8 @@ interface Props {
   tabs: Tab[];
   stylusMode: boolean;
   onStylusModeChange: (on: boolean) => void;
+  columns: number;
+  onColumnsChange: (columns: number) => void;
   onNavigate: (page: Page) => void;
   /** Called after a Lifetime button changed notes, to reload them. */
   onNotesChanged: () => void;
@@ -37,6 +40,8 @@ export function SettingsPage({
   tabs,
   stylusMode,
   onStylusModeChange,
+  columns,
+  onColumnsChange,
   onNavigate,
   onNotesChanged,
   onSessionExpired,
@@ -91,18 +96,42 @@ export function SettingsPage({
     <main className="settings-page">
       <h1>Settings</h1>
 
-      <section>
-        <label className="switch">
-          <input
-            type="checkbox"
-            role="switch"
-            checked={stylusMode}
-            onChange={(event) => onStylusModeChange(event.target.checked)}
-          />
-          <span className="switch-track" aria-hidden="true" />
-          <span className="switch-label">Stylus mode</span>
-        </label>
-        <p>Write new notes with a stylus instead of typing them. Remembered on this device only.</p>
+      {/* Stylus mode and Columns side by side; both are remembered on this device only. */}
+      <section className="device-settings">
+        <div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={stylusMode}
+              onChange={(event) => onStylusModeChange(event.target.checked)}
+            />
+            <span className="switch-track" aria-hidden="true" />
+            <span className="switch-label">Stylus mode</span>
+          </label>
+          <p>Write new notes with a stylus instead of typing them.</p>
+        </div>
+        <div>
+          <div className="columns-setting" role="radiogroup" aria-labelledby="columns-label">
+            <span id="columns-label" className="switch-label">
+              Columns
+            </span>
+            {Array.from({ length: MAX_COLUMNS }, (_, index) => index + 1).map((count) => (
+              <button
+                key={count}
+                type="button"
+                role="radio"
+                aria-checked={columns === count}
+                className={columns === count ? "column-choice chosen" : "column-choice"}
+                onClick={() => onColumnsChange(count)}
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+          <p>How many columns the notes are shown in.</p>
+        </div>
+        <p className="device-note">These settings are remembered on this device only.</p>
       </section>
 
       <section>

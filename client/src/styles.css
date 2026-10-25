@@ -286,10 +286,13 @@ a:focus-visible {
   gap: 0.35rem 0.5rem;
 }
 
+/* The Columns setting splits the list into balanced columns (column-count is set from NotesPage). */
 .note-list ul {
   list-style: none;
   margin: 0;
   padding: 0;
+  column-gap: 0;
+  column-rule: 1px solid var(--line);
 }
 
 .note-list li {
@@ -299,6 +302,8 @@ a:focus-visible {
   padding: 0.6rem 0.4rem 0.6rem 1rem;
   border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
+  /* A note is never split across two columns. */
+  break-inside: avoid;
 }
 
 .note-list li.editing {
@@ -306,7 +311,11 @@ a:focus-visible {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-/* Archived and Bin notes. The black text is deliberately hard to read on these. */
+/* Waiting, Archived and Bin notes. The black text is deliberately hard to read on Archived and Bin. */
+.note-list li.waiting {
+  background: #c0c0c0;
+}
+
 .note-list li.archived {
   background: #606060;
 }
@@ -316,6 +325,7 @@ a:focus-visible {
 }
 
 /* Handwriting on these rows sits on the row's colour rather than paper. */
+.note-list li.waiting .note-image,
 .note-list li.archived .note-image,
 .note-list li.binned .note-image {
   background: transparent;
@@ -410,6 +420,105 @@ a:focus-visible {
   padding: 0.6rem 4px;
   border-top: 1px solid var(--line);
   background: var(--bg);
+}
+
+/* Full-tag-list mode: the area grows to 250px, and the list shrinks to match. */
+.new-note.full {
+  height: 250px;
+}
+
+.notes-page.full-tag-list .toast {
+  bottom: calc(250px + 0.75rem);
+}
+
+/* A zero-height strip on the divider, holding the round toggle centred over the line. */
+.area-divider {
+  position: relative;
+  z-index: 4;
+  flex: none;
+  height: 0;
+}
+
+.area-toggle {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transform: translateX(-50%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+}
+
+.area-toggle:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+/* ---- Full-tag-list mode: every tag as a pill, one category per line --- */
+
+.tag-pill-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.tag-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.tag-pill-category {
+  margin-right: 0.2rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.tag-pill {
+  padding: 0.15rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--pill-bg);
+  color: var(--pill-text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.tag-pill:hover:not(:disabled) {
+  border-color: var(--pill-text);
+}
+
+/* A tag the note has is dark. */
+.tag-pill.chosen {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.tag-pill.locked {
+  cursor: default;
+}
+
+.tag-pill.locked .lock-icon {
+  margin: 0 0.3rem 0 0;
+  color: inherit;
+}
+
+/* Not allowed by the tab's filters. */
+.tag-pill.unavailable {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .new-note form {
@@ -551,8 +660,58 @@ a:focus-visible {
   font-weight: 600;
 }
 
-.settings-page .switch + p {
+.settings-page .switch + p,
+.settings-page .columns-setting + p {
   margin-top: 0.25rem;
+}
+
+/* Stylus mode and Columns side by side. */
+.device-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+}
+
+/* The two settings share the width (wrapping only on a narrow screen). */
+.device-settings > div {
+  flex: 1 1 0;
+  min-width: 14rem;
+}
+
+.device-settings .device-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.columns-setting {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.columns-setting .switch-label {
+  margin-right: 0.3rem;
+}
+
+.column-choice {
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.column-choice.chosen {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 /* ---- Tags: pills on notes, dropdowns under the new-note title ----------- */
