@@ -1,0 +1,274 @@
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck, faPen } from "@fortawesome/free-solid-svg-icons";
+import {
+  DETAILS_TEXT_MAX_LENGTH,
+  TITLE_MAX_LENGTH,
+  validateTitle,
+  type Category,
+  type Note,
+  type NoteDetails,
+} from "@nwsnotes/shared";
+import { ApiError, api } from "./api";
+import { StylusPad, type StylusPadHandle } from "./StylusPad";
+import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
+
+/** Details and tag changes are sent at most this often (and once this long after the first change). */
+const SAVE_DELAY_MS = 30_000;
+
+interface Props {
+  /** The long-form note being edited, or undefined when creating a new one. */
+  note: Note | undefined;
+  /** User categories (no Lifetime dropdown). */
+  categories: Category[];
+  stylusMode: boolean;
+  /** Height of the add-note area below, which the editor leaves uncovered. */
+  bottom: number;
+  /** A version of the note was saved (`created` the first time). */
+  onSaved: (note: Note, created: boolean) => void;
+  onFinish: () => void;
+  onSessionExpired: () => void;
+}
+
+/** The note's tags as dropdown selections. */
+function selectionFor(note: Note | undefined, categories: Category[]): TagSelection {
+  if (!note) return {};
+  return Object.fromEntries(
+    categories.map((category) => [category.id, category.tags.filter((tag) => note.tagIds.includes(tag.id)).map((tag) => tag.id)]),
+  );
+}
+
+/**
+ * Creating or editing a long-form note: a title, tags, and details (typed, or handwritten in stylus
+ * mode). The title and the details are never editable at the same time: accepting the title (which
+ * creates the note the first time) unlocks the details; "edit title" locks them again. Details and tag
+ * changes are saved at most every 30 seconds, and straight away on Finish or when the app is hidden.
+ */
+export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, onFinish, onSessionExpired }: Props) {
+  const [noteId, setNoteId] = useState(note?.id);
+  const [title, setTitle] = useState(note?.titleText ?? "");
+  /** The title as last saved; updates of the details are sent with it. */
+  const savedTitle = useRef(note?.titleText ?? "");
+  const [titleLocked, setTitleLocked] = useState(note !== undefined);
+  const [selection, setSelection] = useState<TagSelection>(() => selectionFor(note, categories));
+  /** Typed or handwritten details: fixed for an existing note; for a new one, from stylus mode now. */
+  const [kind] = useState<"text" | "image">(() =>
+    note ? (note.detailsImage !== undefined ? "image" : "text") : stylusMode ? "image" : "text",
+  );
+  const [detailsText, setDetailsText] = useState(note?.detailsText ?? "");
+  const padRef = useRef<StylusPadHandle>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  // The latest values, for saves that run from a timer.
+  const latest = useRef({ selection, detailsText });
+  latest.current = { selection, detailsText };
+  const dirty = useRef(false);
+  const timer = useRef<number>(undefined);
+  const saving = useRef<Promise<void>>(Promise.resolve());
+
+  const detailsEditable = titleLocked && noteId !== undefined;
+
+  function currentDetails(): NoteDetails {
+    if (kind === "text") return { detailsText: latest.current.detailsText };
+    const pad = padRef.current;
+    return { detailsImage: pad?.hasInk() ? pad.toImage() : "" };
+  }
+
+  function request(titleText: string) {
+    return { titleText, tagIds: selectedTagIds(categories, latest.current.selection), ...currentDetails() };
+  }
+
+  function failed(err: unknown, what: string) {
+    if (err instanceof ApiError && err.isUnauthorized) {
+      onSessionExpired();
+      return;
+    }
+    setError(`${what}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  /** Sends any pending details or tag change now. Saves run one at a time. */
+  function flush(): Promise<void> {
+    window.clearTimeout(timer.current);
+    timer.current = undefined;
+    saving.current = saving.current.then(async () => {
+      if (!dirty.current || noteId === undefined) return;
+      dirty.current = false;
+      try {
+        onSaved(await api.updateNote(noteId, request(savedTitle.current)), false);
+        setError(undefined);
+      } catch (err) {
+        // Try again at the next window.
+        dirty.current = true;
+        schedule();
+        failed(err, "The note wasn't saved; trying again shortly");
+      }
+    });
+    return saving.current;
+  }
+
+  /** A details or tag change: save it once the 30-second window ends. */
+  function schedule() {
+    dirty.current = true;
+    if (timer.current === undefined) timer.current = window.setTimeout(() => void flush(), SAVE_DELAY_MS);
+  }
+
+  // Save straight away if the app goes into the background, and when the editor closes.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") void flushRef.current();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      void flushRef.current();
+    };
+  }, []);
+
+  async function acceptTitle() {
+    const check = validateTitle(title);
+    if (!check.ok) {
+      setError(check.error);
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    try {
+      // Tag changes made while editing the title are saved with it.
+      if (noteId === undefined) {
+        const created = await api.addNote(request(check.title));
+        setNoteId(created.id);
+        onSaved(created, true);
+      } else {
+        await saving.current;
+        dirty.current = false;
+        onSaved(await api.updateNote(noteId, request(check.title)), false);
+      }
+      savedTitle.current = check.title;
+      setTitle(check.title);
+      setTitleLocked(true);
+    } catch (err) {
+      failed(err, "The title wasn't saved");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function changeTags(next: TagSelection) {
+    setSelection(next);
+    latest.current.selection = next;
+    if (detailsEditable) schedule();
+  }
+
+  /** In stylus mode, Finish ignores finger and palm taps (a stylus or mouse works). */
+  async function finish(event: ReactMouseEvent) {
+    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    setBusy(true);
+    await flush();
+    // A changed title that hasn't been accepted yet is saved too, rather than lost.
+    const check = validateTitle(title);
+    if (!titleLocked && noteId !== undefined && check.ok && check.title !== savedTitle.current) {
+      try {
+        onSaved(await api.updateNote(noteId, request(check.title)), false);
+      } catch (err) {
+        failed(err, "The title wasn't saved");
+        setBusy(false);
+        return;
+      }
+    }
+    onFinish();
+  }
+
+  return (
+    <div className="long-form-editor" style={{ bottom }} role="dialog" aria-label="Long-form note">
+      <div className="lf-title-row">
+        <input
+          type="text"
+          aria-label="Long-form note title"
+          placeholder="Title"
+          value={title}
+          maxLength={TITLE_MAX_LENGTH}
+          autoComplete="off"
+          autoFocus={!titleLocked}
+          disabled={titleLocked || busy}
+          onChange={(event) => setTitle(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void acceptTitle();
+          }}
+        />
+        {titleLocked ? (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Edit title"
+            title="Edit title"
+            disabled={busy}
+            onClick={async () => {
+              // Pending details are saved before they're locked.
+              await flush();
+              setTitleLocked(false);
+            }}
+          >
+            <FontAwesomeIcon icon={faPen} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="icon-button primary"
+            aria-label="Accept title"
+            title="Accept title"
+            disabled={busy}
+            onClick={() => void acceptTitle()}
+          >
+            <FontAwesomeIcon icon={faCheck} />
+          </button>
+        )}
+      </div>
+
+      <TagPickers categories={categories} selection={selection} onChange={changeTags} disabled={busy} />
+
+      <div className={detailsEditable ? "lf-details" : "lf-details locked"}>
+        {kind === "text" ? (
+          <textarea
+            aria-label="Details"
+            placeholder={detailsEditable ? "Details" : "Accept the title to write the details"}
+            value={detailsText}
+            maxLength={DETAILS_TEXT_MAX_LENGTH}
+            disabled={!detailsEditable}
+            onChange={(event) => {
+              setDetailsText(event.target.value);
+              latest.current.detailsText = event.target.value;
+              schedule();
+            }}
+          />
+        ) : (
+          <StylusPad
+            ref={padRef}
+            fill
+            label="Details of the long-form note"
+            disabled={!detailsEditable}
+            initialImage={note?.detailsImage || undefined}
+            onInk={schedule}
+          />
+        )}
+        {!detailsEditable && kind === "image" && (
+          <p className="lf-locked-hint">{noteId === undefined ? "Accept the title to write the details" : "Accept the title to keep writing"}</p>
+        )}
+      </div>
+
+      {error && (
+        <p className="save-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="lf-finish">
+        <button type="button" className="button" disabled={busy} onClick={(event) => void finish(event)}>
+          Finish
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -10,6 +10,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBoxArchive,
+  faChartDiagram,
   faChevronDown,
   faChevronUp,
   faCircleCheck,
@@ -24,6 +25,7 @@ import {
   type IconDefinition,
 } from "@fortawesome/free-solid-svg-icons";
 import {
+  isLongForm,
   lifetimeOf,
   LIFETIME_ACTIVE,
   LIFETIME_ARCHIVED,
@@ -41,7 +43,10 @@ import {
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { useExtraFilters } from "./extraFilters";
+import { LongFormEditor } from "./LongFormEditor";
 import { useFullTagList } from "./stylusMode";
+
+const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
 import {
   constraintsFor,
@@ -116,6 +121,26 @@ export function NotesPage({
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>();
   /** The note whose archive / reinstate / bin button is being handled. */
   const [busyNoteId, setBusyNoteId] = useState<number>();
+  /** The open long-form editor: the note being edited, or none when creating one. */
+  const [longForm, setLongForm] = useState<{ note: Note | undefined; key: number }>();
+  /** The open long-form note's id, once its title has been accepted; new notes become its children. */
+  const [longFormId, setLongFormId] = useState<number>();
+  /** Before a new long-form note's title is first accepted, regular notes can't be added. */
+  const addBlocked = longForm !== undefined && longFormId === undefined;
+
+  function openLongForm(note: Note | undefined) {
+    setLongForm({ note, key: Date.now() });
+    setLongFormId(note?.id);
+  }
+
+  /** The extra pills after a note's tags: "Long Form" on long-form notes, the parent's title on children. */
+  function specialPills(note: Note): string[] {
+    if (isLongForm(note)) return ["Long Form"];
+    const parent = note.parentId === undefined ? undefined : notes.find((n) => n.id === note.parentId);
+    // A child whose parent has been deleted shows no parent pill.
+    const title = parent?.titleText;
+    return title ? [title.length > 20 ? `${title.slice(0, 19)}…` : title] : [];
+  }
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
   const [extraSelection, setExtraSelection] = useExtraFilters(selectedTab?.id);
@@ -274,7 +299,8 @@ export function NotesPage({
       } else {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
         const tagIds = selectedTagIds(userCategories, tagSelection, constraints);
-        const note = await api.addNote({ ...noteTitle, tagIds });
+        // While a long-form note is open, new notes are its children.
+        const note = await api.addNote({ ...noteTitle, tagIds, ...(longFormId !== undefined && { parentId: longFormId }) });
         onNoteAdded(note);
         if (showCanvas) padRef.current?.clear();
         else setTitle("");
@@ -341,7 +367,7 @@ export function NotesPage({
                 <li key={note.id} className={classes.join(" ") || undefined}>
                   <div className="note-body">
                     {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
-                    <TagPills tagIds={note.tagIds} categories={categories} />
+                    <TagPills tagIds={note.tagIds} categories={categories} extra={specialPills(note)} />
                   </div>
                   {/* Right-aligned; they don't need to line up between notes. */}
                   <div className="note-actions">
@@ -349,7 +375,7 @@ export function NotesPage({
                       icon={faPen}
                       label={note.id === editingNote?.id ? "Editing this note" : (hint ?? "Edit note")}
                       disabled={busy || saving}
-                      onClick={() => startEdit(note)}
+                      onClick={() => (isLongForm(note) ? openLongForm(note) : startEdit(note))}
                     />
                     {/* New and Active notes can be put on hold; anything else can be reinstated to Active. */}
                     {lifetime === LIFETIME_NEW || lifetime === LIFETIME_ACTIVE ? (
@@ -399,6 +425,30 @@ export function NotesPage({
         </div>
       )}
 
+      {longForm && (
+        <LongFormEditor
+          // A fresh editor for each note opened.
+          key={longForm.key}
+          note={longForm.note}
+          categories={userCategories}
+          stylusMode={stylusMode}
+          bottom={fullTagList ? 250 : 150}
+          onSaved={(note, created) => {
+            if (created) {
+              onNoteAdded(note);
+            } else {
+              onNoteUpdated(note);
+            }
+            setLongFormId(note.id);
+          }}
+          onFinish={() => {
+            setLongForm(undefined);
+            setLongFormId(undefined);
+          }}
+          onSessionExpired={onSessionExpired}
+        />
+      )}
+
       {/* The full-tag-list toggle sits over the divider between the list and the add/edit area. */}
       <div className="area-divider">
         <button
@@ -407,6 +457,8 @@ export function NotesPage({
           aria-pressed={fullTagList}
           aria-label={fullTagList ? "Show tag dropdowns" : "Show all tags"}
           title={fullTagList ? "Show tag dropdowns" : "Show all tags"}
+          // Not while a long-form note is open, so the editor's space doesn't change under it.
+          disabled={longForm !== undefined}
           onClick={() => setFullTagList(!fullTagList)}
         >
           <FontAwesomeIcon icon={fullTagList ? faChevronDown : faChevronUp} />
@@ -428,7 +480,7 @@ export function NotesPage({
                 // A fresh pad for each note edited (loaded with its image), and an empty one for new notes.
                 key={editingNote ? `edit-${editingNote.id}` : "new"}
                 ref={padRef}
-                disabled={saving}
+                disabled={saving || addBlocked}
                 initialImage={editingNote?.titleImage}
                 onInk={() => setSaveError(undefined)}
               />
@@ -442,7 +494,7 @@ export function NotesPage({
                 placeholder="Type a note title and press Enter"
                 autoComplete="off"
                 autoFocus
-                disabled={saving}
+                disabled={saving || addBlocked}
                 onChange={(event) => setTitle(event.target.value)}
               />
             )}
@@ -452,8 +504,8 @@ export function NotesPage({
                 type="submit"
                 className="icon-button primary"
                 aria-label={editingNote ? "Update" : "Add"}
-                title={editingNote ? "Update" : "Add"}
-                disabled={saving}
+                title={editingNote ? "Update" : addBlocked ? LONG_FORM_TITLE_FIRST : "Add"}
+                disabled={saving || addBlocked}
               >
                 <FontAwesomeIcon icon={editingNote ? faCircleCheck : faCirclePlus} />
               </button>
@@ -484,8 +536,22 @@ export function NotesPage({
                   <FontAwesomeIcon icon={faDeleteLeft} />
                 </button>
               )}
+              {/* In the expanded (250px) area: start a long-form note. */}
+              {fullTagList && !editingNote && !longForm && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Create long-form note"
+                  title="Create long-form note"
+                  disabled={saving}
+                  onClick={() => openLongForm(undefined)}
+                >
+                  <FontAwesomeIcon icon={faChartDiagram} />
+                </button>
+              )}
             </div>
           </div>
+          {addBlocked && <p className="lf-add-hint">{LONG_FORM_TITLE_FIRST}</p>}
           {saveError && (
             <p className="save-error" role="alert">
               {saveError}

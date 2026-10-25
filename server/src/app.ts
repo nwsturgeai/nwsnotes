@@ -3,7 +3,7 @@ import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { CONNECTION_ID_HEADER, validateNoteTitle, type LoginRequest } from "@nwsnotes/shared";
+import { CONNECTION_ID_HEADER, validateNoteDetails, validateNoteTitle, type LoginRequest } from "@nwsnotes/shared";
 import {
   SESSION_COOKIE,
   SESSION_LENGTH_MS,
@@ -20,8 +20,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
-  // Large enough for a handwritten note's image (at most 200 KB).
-  app.use(express.json({ limit: "256kb" }));
+  // Large enough for a long-form note's handwritten details (at most 2 MB).
+  app.use(express.json({ limit: "3mb" }));
 
   const cookieOptions = {
     httpOnly: true,
@@ -67,13 +67,14 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.json(store.getAll());
   });
 
-  notesRouter.post("/", async (req: Request<object, object, { tagIds?: unknown } | undefined>, res) => {
+  notesRouter.post("/", async (req: Request<object, object, { tagIds?: unknown; parentId?: unknown } | undefined>, res) => {
     const check = validateNoteTitle(req.body);
-    if (!check.ok) {
-      res.status(400).json({ error: check.error });
+    const details = validateNoteDetails(req.body);
+    if (!check.ok || !details.ok) {
+      res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : "" });
       return;
     }
-    const note = await store.add(check.title, req.body?.tagIds);
+    const note = await store.add(check.title, req.body?.tagIds, details.details, req.body?.parentId);
     live.notifyChanged(req.get(CONNECTION_ID_HEADER));
     res.status(201).json(note);
   });
@@ -85,11 +86,12 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
       return;
     }
     const check = validateNoteTitle(req.body);
-    if (!check.ok) {
-      res.status(400).json({ error: check.error });
+    const details = validateNoteDetails(req.body);
+    if (!check.ok || !details.ok) {
+      res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : "" });
       return;
     }
-    const note = await store.updateNote(id, check.title, req.body?.tagIds);
+    const note = await store.updateNote(id, check.title, req.body?.tagIds, details.details);
     live.notifyChanged(req.get(CONNECTION_ID_HEADER));
     res.json(note);
   });

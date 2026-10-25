@@ -23,6 +23,12 @@ interface Props {
   onInk?: () => void;
   /** A handwritten note's image (PNG data URL) to start from, when editing it. */
   initialImage?: string;
+  /**
+   * Fill the height of its box (a long-form note's details) instead of the usual 80px. A size change
+   * then keeps what's written (cut off if it no longer fits) rather than clearing it.
+   */
+  fill?: boolean;
+  label?: string;
 }
 
 interface Point {
@@ -30,11 +36,20 @@ interface Point {
   y: number;
 }
 
+/** A copy of a canvas's current pixels. */
+function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const copy = document.createElement("canvas");
+  copy.width = canvas.width;
+  copy.height = canvas.height;
+  copy.getContext("2d")!.drawImage(canvas, 0, 0);
+  return copy;
+}
+
 /**
  * A canvas to write a note on. Only a stylus (or a mouse, for testing on a computer) draws;
  * fingers and palms are ignored.
  */
-export function StylusPad({ ref, disabled, onInk, initialImage }: Props) {
+export function StylusPad({ ref, disabled, onInk, initialImage, fill, label = "Writing area for a new note" }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** The stroke being drawn: which pointer, and where it last was. */
   const stroke = useRef<{ pointerId: number; last: Point }>(undefined);
@@ -106,13 +121,19 @@ export function StylusPad({ ref, disabled, onInk, initialImage }: Props) {
     const canvas = canvasRef.current!;
     const resize = () => {
       const width = Math.round(canvas.clientWidth * INK_SCALE);
-      const height = HEIGHT * INK_SCALE;
+      const height = Math.round((fill ? canvas.clientHeight : HEIGHT) * INK_SCALE);
       if (canvas.width === width && canvas.height === height) return;
+      // A filling pad keeps its drawing across size changes; copy it before resizing wipes it.
+      const keep = fill && changedSinceLoad.current && bounds.current && canvas.width > 0 ? copyOf(canvas) : undefined;
       // Setting the size also wipes the canvas.
       canvas.width = width;
       canvas.height = height;
-      bounds.current = undefined;
       stroke.current = undefined;
+      if (keep) {
+        canvas.getContext("2d")!.drawImage(keep, 0, 0);
+        return;
+      }
+      bounds.current = undefined;
       if (initialImage && !changedSinceLoad.current) loadImage(initialImage);
     };
     resize();
@@ -192,9 +213,9 @@ export function StylusPad({ ref, disabled, onInk, initialImage }: Props) {
   return (
     <canvas
       ref={canvasRef}
-      className="stylus-pad"
+      className={fill ? "stylus-pad fill" : "stylus-pad"}
       role="img"
-      aria-label="Writing area for a new note"
+      aria-label={label}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={endStroke}

@@ -12,6 +12,18 @@ export interface Note {
   lastModifiedDateTime: string;
   /** Ids of the note's tags. Tag ids are unique across all categories. */
   tagIds: number[];
+  /**
+   * Long-form notes have exactly one of detailsText (at most 10,000 characters) or detailsImage
+   * (a PNG data URL); having one is what makes a note long-form. Both start empty ("").
+   */
+  detailsText?: string;
+  detailsImage?: string;
+  /** For a note added while a long-form note was open: that long-form note's id. */
+  parentId?: number;
+}
+
+export function isLongForm(note: Note): boolean {
+  return note.detailsText !== undefined || note.detailsImage !== undefined;
 }
 
 /** A tag within a category. */
@@ -110,8 +122,14 @@ export interface NotesData {
 /** A new note's title: typed text or a handwritten image. */
 export type NoteTitle = { titleText: string; titleImage?: never } | { titleImage: string; titleText?: never };
 
-/** Body of POST /api/notes. */
-export type NewNoteRequest = NoteTitle & { tagIds: number[] };
+/** A long-form note's details: typed text or a drawing (either may be empty). */
+export type NoteDetails = { detailsText: string; detailsImage?: never } | { detailsImage: string; detailsText?: never };
+
+/**
+ * Body of POST /api/notes and PUT /api/notes/:id. Details make it a long-form note;
+ * parentId (POST only) makes it a child of an open long-form note.
+ */
+export type NewNoteRequest = NoteTitle & { tagIds: number[]; parentId?: number } & (NoteDetails | { detailsText?: never; detailsImage?: never });
 
 /** Body of POST /api/categories and PUT /api/categories/:id. Tags without an id are new. */
 export interface CategoryRequest {
@@ -173,22 +191,51 @@ const PNG_BASE64_START = "iVBORw0KGgo";
 /** Maximum length of a handwritten title's data URL, in characters. */
 export const TITLE_IMAGE_MAX_LENGTH = 200 * 1024;
 
-/** Checks a handwritten note's image: a PNG data URL within the size limit. */
-export function validateTitleImage(raw: unknown): Check<string> {
+/** Maximum length of a long-form note's details drawing (data URL), in characters. */
+export const DETAILS_IMAGE_MAX_LENGTH = 2 * 1024 * 1024;
+export const DETAILS_TEXT_MAX_LENGTH = 10_000;
+
+/** Checks a handwritten image: a PNG data URL within the size limit. `what` is e.g. "The handwritten note". */
+export function validateTitleImage(raw: unknown, maxLength = TITLE_IMAGE_MAX_LENGTH, what = "The handwritten note"): Check<string> {
   if (typeof raw !== "string" || !raw.startsWith(PNG_DATA_URL_PREFIX)) {
-    return { ok: false, error: "The handwritten note must be a PNG image." };
+    return { ok: false, error: `${what} must be a PNG image.` };
   }
   const base64 = raw.slice(PNG_DATA_URL_PREFIX.length);
   if (!base64.startsWith(PNG_BASE64_START) || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) {
-    return { ok: false, error: "The handwritten note must be a PNG image." };
+    return { ok: false, error: `${what} must be a PNG image.` };
   }
-  if (raw.length > TITLE_IMAGE_MAX_LENGTH) {
-    return {
-      ok: false,
-      error: `The handwritten note is too large (${Math.ceil(raw.length / 1024)} KB); the maximum is ${TITLE_IMAGE_MAX_LENGTH / 1024} KB.`,
-    };
+  if (raw.length > maxLength) {
+    const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`);
+    return { ok: false, error: `${what} is too large (${kb(raw.length)}); the maximum is ${kb(maxLength)}.` };
   }
   return { ok: true, value: raw };
+}
+
+/**
+ * Checks a long-form note's details, if any: exactly one of detailsText or detailsImage, either of
+ * which may be empty. Returns undefined details for a regular note.
+ */
+export function validateNoteDetails(body: unknown): { ok: true; details?: NoteDetails } | { ok: false; error: string } {
+  const { detailsText, detailsImage } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  if (detailsText !== undefined && detailsImage !== undefined) {
+    return { ok: false, error: "A long-form note has typed or handwritten details, not both." };
+  }
+  if (detailsText !== undefined) {
+    if (typeof detailsText !== "string") return { ok: false, error: "The details must be text." };
+    if (detailsText.length > DETAILS_TEXT_MAX_LENGTH) {
+      return {
+        ok: false,
+        error: `The details are ${detailsText.length} characters long; the maximum is ${DETAILS_TEXT_MAX_LENGTH}.`,
+      };
+    }
+    return { ok: true, details: { detailsText } };
+  }
+  if (detailsImage !== undefined) {
+    if (detailsImage === "") return { ok: true, details: { detailsImage: "" } };
+    const image = validateTitleImage(detailsImage, DETAILS_IMAGE_MAX_LENGTH, "The handwritten details");
+    return image.ok ? { ok: true, details: { detailsImage: image.value } } : image;
+  }
+  return { ok: true };
 }
 
 /** Checks a new note's title: exactly one of typed text or a handwritten image. */
