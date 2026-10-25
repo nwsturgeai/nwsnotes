@@ -79,7 +79,6 @@ If/when a category is saved, that should cause other tabs viewing the website to
 Categories must contain at least one tag to be able to be saved.
 It should not be allowed to have a tag with the same text as the category name.
 For now, it will not be possible to delete tags or categories.
-For now, it will not be possible to change the tags a note has after the note has been created.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
 ### On the main notes page:
@@ -226,7 +225,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - `GET /api/notes` - returns `{ "notes": [...], "categories": [...], "tabs": [...] }`: all notes, all categories with their tags, and all tabs (the most recent save-file's contents). `categories` also includes the built-in Lifetime category (see Note lifetime).
 - `POST /api/notes` - body `{ "titleText": "...", "tagIds": [3, 7] }` (`tagIds` may be empty), or `{ "titleImage": "data:image/png;base64,...", "tagIds": [...] }` for a handwritten note. Exactly one of `titleText` and `titleImage` must be given. The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
 - `PUT /api/notes/:id` - same body as `POST /api/notes`, with the same checks; replaces the note's title and tags. A note keeps its type: a typed note must be given `titleText` and a handwritten one `titleImage`. The server updates `lastModifiedDateTime` (`id` and `createdDateTime` stay the same, so the note keeps its place in the list), saves a new save-file and returns the updated note.
-- `PUT /api/notes/:id/lifetime` - body `{ "lifetime": "Active" | "Archived" | "Bin" }`. Replaces the note's Lifetime tag, updates `lastModifiedDateTime`, saves a new save-file and returns the updated note.
+- `PUT /api/notes/:id/lifetime` - body `{ "lifetime": "Active" | "Waiting" | "Archived" | "Bin" }`. Replaces the note's Lifetime tag, updates `lastModifiedDateTime`, saves a new save-file and returns the updated note.
 - `POST /api/notes/reset-new`, `POST /api/notes/archived-to-bin` and `POST /api/notes/empty-bin` - the Settings Lifetime buttons. Each changes (or, for empty-bin, deletes) every matching note in one save and returns `{ "count": n }`.
 - `POST /api/categories` - body `{ "name": "...", "multiSelect": false, "tags": [{ "name": "..." }] }`. The server assigns the category and tag ids, saves a new save-file and returns the created category.
 - `PUT /api/categories/:id` - body as above, but existing tags include their `id` (`{ "id": 3, "name": "..." }`); tags without an `id` are new. Saves a new save-file and returns the updated category.
@@ -298,6 +297,21 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area).
 - Changing tab resets every dropdown (see "Tabs on the notes page"); adding a note still keeps the selections.
 
+### Full-tag-list mode
+- **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode.
+- **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match. If the pills don't fit, the area scrolls inside itself.
+- **Layout:** the text box or canvas and the buttons stay at the top; below them, instead of dropdowns, every user category gets its own line: its name in small grey text, then all its tags as pills. Lifetime isn't shown.
+- **Pills:** a chosen tag is dark (accent green, white text); an unchosen tag is light (the usual pill colour). Tapping toggles it. In a single-select category, choosing a tag unchooses the others, and tapping the chosen one clears it.
+- **Tab rules:** a tag the tab's filters lock in shows dark with a padlock and can't be turned off. In a single-select category where the filters require one of several tags, the other tags are greyed out and can't be chosen. Add shows the same "Choose a … tag" message if a required tag is missing. While editing a note there are no restrictions, as with the dropdowns.
+- Both modes share the same choices, so switching mode keeps the chosen tags. It works the same when adding and when editing a note.
+- **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
+
+### Columns
+- **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as five small buttons labelled 1 to 5 (default 1). It's remembered on this device in local storage.
+- **Layout:** the note list is split into that many balanced columns (CSS multi-column), and the whole list scrolls up and down as now. Notes flow top to bottom down the first column, then the second, and so on from left to right, so the newest note is at the bottom of the last column. A note is never split across two columns.
+- A handwritten note wider than its column is shrunk to fit.
+- **Balanced columns (accepted):** adding a note can move other notes between columns, as the columns even out. If this feels jumpy in use, an alternative is to fill each column to the screen's height and scroll sideways.
+
 ### Tabs
 - Shared type: `Tab { id, name, categories: { categoryId, tagIds }[] }`, checked by a shared function used by both the website and the server, like categories.
 - **"All" is built in:** it isn't stored, always comes first, has no filters, and can't be edited or deleted. No other tab can be called "All".
@@ -348,15 +362,19 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **What's blocked while editing:** changing tab, the additional tab filters, every note's edit, archive, reinstate and bin buttons, and the Settings cog, so nothing is left half-edited.
 
 ### Note lifetime
-- **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4. It can't be edited or renamed, and user categories can't use its name.
+- **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4, Waiting -5 (added later, so it can't be renumbered; it's still listed in the order New, Active, Waiting, Archived, Bin). It can't be edited or renamed, and user categories can't use its name.
 - **Every note has exactly one Lifetime tag.** The server always gives new notes New, ignoring any Lifetime tag sent, and keeps the existing one when a note is edited. Only the lifetime endpoints change it.
 - **Introducing it:** when a save-file is loaded, any note without a Lifetime tag gets Active; the next save stores it.
 - **Pills:** New, Archived and Bin show as pills in the normal style; Active never does.
 - **Tabs:** tab definitions and the additional tab filters can include Lifetime, as a check-list like any category.
 - **Bin is hidden by default:** Bin notes are hidden in every tab, "All" included, unless the tab's filter or the additional filters tick Bin.
-- **Note buttons:** right-aligned at the right of each note, in this order: edit, then archive (`fa-box-archive`) for New and Active notes, or reinstate (`fa-rotate-left`) for Archived and Bin notes, then move-to-bin (`fa-trash-can`) for Archived notes only. All use 16px icons in 24px tap areas. They don't need to line up between notes.
-- **Actions:** archive sets Archived. Reinstate sets Active, from Archived or from Bin. Move-to-bin sets Bin. Each updates the list straight away; a note that no longer matches the tab or the filters disappears from it.
-- **Colours:** Archived notes have a `#606060` background and Bin notes `#B00000`, handwritten notes included (their light paper is replaced). The text stays black, which is deliberately hard to read. The note buttons on these rows turn light (near-white) so they stay visible.
+- **Note buttons:** right-aligned at the right of each note, all 16px icons in 24px tap areas; they don't need to line up between notes. Left to right:
+  - New and Active: edit, waiting (`fa-hourglass`), archive (`fa-box-archive`).
+  - Waiting: edit, reinstate (`fa-rotate-left`), archive.
+  - Archived: edit, reinstate, move-to-bin (`fa-trash-can`).
+  - Bin: edit, reinstate.
+- **Actions:** waiting sets Waiting. Archive sets Archived (from New, Active or Waiting). Reinstate sets Active, from Waiting, Archived or Bin. Move-to-bin sets Bin. Each updates the list straight away; a note that no longer matches the tab or the filters disappears from it.
+- **Colours:** Waiting notes have a `#c0c0c0` background, Archived notes `#606060` and Bin notes `#B00000`, handwritten notes included (their light paper is replaced). The text stays black, which is deliberately hard to read on Archived and Bin. The note buttons turn light (near-white) on Archived and Bin rows so they stay visible; Waiting rows keep the normal dark icons. Waiting shows as a pill like New, Archived and Bin.
 - **Settings Lifetime section,** directly below Stylus mode, with three buttons in a row:
   - "Reset New" changes every New note to Active straight away, then reports how many ("3 notes changed to Active").
   - "Archived to Bin" first asks "Move 5 archived notes to the bin?".
@@ -371,7 +389,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - The header strip has a fixed height and the same background colour as the new-note area. Below it, the note list fills the page above the fixed 150px new-note area.
 - No app title is shown at the left of the header; on the notes page that space holds the tabs. The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes".
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
-- The settings page has, in order: Stylus mode, Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+- The settings page has, in order: Stylus mode and Columns (side by side), Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
 
 ### Live updates (WebSocket)
 - The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
