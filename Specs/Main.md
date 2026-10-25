@@ -107,6 +107,8 @@ Existing tabs should show their name and the associated tag ids (rendered as pil
 When creating or editing a tab, dropdowns for all the Categories are shown, the same as the dropdowns shown when adding a new Note.
 After the user begins to add or edit a tab, there should be "Save" and "Cancel" buttons.
 
+The first Tab should be called "All" and should have no filters.  This Tab cannot be edited or deleted.
+
 Tab definitions should be stored in the same json file as notes and Category definitions.
 Tab updates should cause other instances of the website to reload their data.
 
@@ -119,16 +121,13 @@ Notes that are "filtered out" remain in the system, they are just hidden.  They 
 When the currently-selected Tab has a Category filter containing a single Tag: the new-note area should have that one Tag automatically selected in the corresponding dropdown.  It should not be possible to change this selection.
 Changing tab should cause all new-note dropdowns to reset, either to "unselected", or to the single value from the corresponding Tab Category filter.
 
-### "*" Tab
+### Additional Tab filters
 
-Before any user-defined Tabs, there should be a system-defined Tab with name text "*", known as the Dynamic Tab.  This tab cannot be edited or deleted.
-The Dynamic tab does not have any statically-defined Category/Tag filters.
-When the Dynamic Tab is selected, a second header area is shown within the tab but above the list of notes.  This second header area should not scroll with the notes.
-The second header area should show a set of dropdowns, one for each Category, the same as when defining a Tab.
-When a selection is made in any of these dropdowns, the notes shown in the list should be filtered using these selections as if the Tab definition contained these selections.
-The selections within the dropdowns in the Dynamic tab should be saved into Local Storage so that the next time this tab is opened on this device, the same selections will be preselected.
-At the right of the dropdowns, there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows all Notes.
-
+Underneath the main "Tabs" header, a second header area is shown within the tab but above the list of notes.  This second header area should not scroll with the notes.
+The second header area should show a set of dropdowns, one for each Category that is not specified in the Tab definition. These dropdowns behave the same way as when defining a Tab.
+When a selection is made in any of these dropdowns, the notes shown in the list should be filtered using these selections in addition to any filtering from the Tab definition, using the same filtering logic as in the Tab definition.
+The selections within the dropdowns should be saved into Browser Local Storage.  The selections should be linked to the Tab in which they were made. The next time this tab is opened on this device, the same selections that were there the last time should be preselected.
+At the right of the dropdowns, there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.
 
 
 ## Editing Notes
@@ -149,12 +148,12 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 There should be a system-controlled Category with name "Lifetime".
 This category cannot be edited in the Settings page.
 This is a single-select Category.
-This category should have possible Tags: "New", "Active", "Archived".  I suggest these tags be given negative ids.
+This category should have possible Tags: "New", "Active", "Archived", "Bin".  I suggest these tags be given negative ids.
 When creating or editing a note, this system category should not have a drop-down.
 New notes are always given the "New" tag from this Category.
 The "Active" tag in this category should never be displayed as a pill in the notes-list.
 When this Category is first introduced, all existing notes should be tagged with the "Active" tag.
-Tab filter definitions can specify values for this system Category.
+Tab filter definitions can specify values for this system Category.  Additional Tab filters can specify values for this system Category (if the Tab definition does not already do so).
 
 ### Archiving
 
@@ -163,12 +162,19 @@ When the Archive button is clicked, the note is given the "Archived" tag (and Ta
 Notes with the Archived tag should have a fairly dark grey background.
 For Notes with the Archived tag: in place of the "archive" button, they should have a "reinstate" button (fa-rotate-left).
 Pressing the reinstate button takes away the Archived tag and adds the Active tag.
+If the current Tab definition filter (or additional tab filter) specifies that archived items should not be shown in this tab: in this case, when the user clicks to archive a note, the note should then disappear from the current list of notes.
+
+### Bin
+Any notes with the Bin Tag should be hidden from the notes-list unless the Tab-filter-definition or additional-tab-filters explicitly indicate that Bin items should be shown.  In other words, if a Tab has no filter set for the Lifetime category, notes tagged with Bin should still be hidden.
+Notes with the Archived tag should have an extra icon button to the right: "move to bin" (fa-trash-can).  Clicking this button removes the Archived tab from this note and adds the Bin tag to this note.  Usually this will cause the note to become hidden.
+
 
 ### Lifetime changes
 
-The Settings page should have a button "Reset New".  Clicking this button will update all notes tagged as "New" to switch to being tagged "Active".  This button should appear alongside the stylus-mode toggle.
-The Settings page should have a second button "Delete Archived".  Clicking this button will delete all notes with the "Archived" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
-
+The Settings page should have three new Lifetime buttons in a section at the top below the "Stylus mode" section.  The buttons are:
+Reset New:  Clicking this button will update all notes tagged as "New" to switch to being tagged "Active".  This button should appear alongside the stylus-mode toggle.
+Archived to Bin: Clicking this button will update all notes tagged as "Archived" to instead be tagged "Bin".  There should be a confirmation modal asking if the user is sure, saying how many notes will be put in the bin.
+Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
 
 
 ## Agreed technical decisions
