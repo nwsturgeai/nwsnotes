@@ -263,3 +263,64 @@ function Option({ label, unset, chosen, onChoose }: { label: string; unset?: boo
     </button>
   );
 }
+
+/**
+ * Full-tag-list mode: every tag of every category as a pill, one category per line (its name first,
+ * in small grey text). A chosen tag is dark, an unchosen one light; tapping toggles it. The tab's
+ * rules apply as for the dropdowns: a locked tag can't be turned off, and in a single-select category
+ * where one of several tags is required, the others can't be chosen.
+ */
+export function TagPillPicker({ categories, selection, onChange, disabled, constraints, tabName }: Props) {
+  if (categories.length === 0) return null;
+  const lockHint = tabName ? `set by the "${tabName}" tab's filters` : "set by this tab's filters";
+
+  return (
+    <div className="tag-pill-picker">
+      {categories.map((category) => {
+        const tabTagIds = constraints?.get(category.id);
+        const chosen = effectiveChosen(category, selection[category.id] ?? [], tabTagIds);
+        const lockedTagId = tabTagIds?.length === 1 ? tabTagIds[0] : undefined;
+
+        function toggle(tagId: number) {
+          const isChosen = chosen.includes(tagId);
+          // Single-select: choosing a tag unchooses the others; tapping the chosen one clears it.
+          const next = category.multiSelect
+            ? isChosen
+              ? chosen.filter((id) => id !== tagId)
+              : [...chosen, tagId]
+            : isChosen
+              ? []
+              : [tagId];
+          onChange({ ...selection, [category.id]: next });
+        }
+
+        return (
+          <div key={category.id} className="tag-pill-row" role="group" aria-label={category.name}>
+            <span className="tag-pill-category">{category.name}</span>
+            {category.tags.map((tag) => {
+              const isChosen = chosen.includes(tag.id);
+              const locked = tag.id === lockedTagId;
+              // Under a several-tag filter, a single-select category only offers the tab's tags.
+              const unavailable = !category.multiSelect && tabTagIds !== undefined && !tabTagIds.includes(tag.id);
+              const classes = ["tag-pill", isChosen && "chosen", locked && "locked", unavailable && "unavailable"];
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  className={classes.filter(Boolean).join(" ")}
+                  aria-pressed={isChosen}
+                  title={locked ? `${tag.name} (${lockHint})` : unavailable ? `${tag.name} (not shown in this tab)` : tag.name}
+                  disabled={disabled || locked || unavailable}
+                  onClick={() => toggle(tag.id)}
+                >
+                  {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

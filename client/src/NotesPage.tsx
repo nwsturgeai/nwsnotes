@@ -10,9 +10,12 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBoxArchive,
+  faChevronDown,
+  faChevronUp,
   faCircleCheck,
   faCirclePlus,
   faDeleteLeft,
+  faHourglass,
   faPen,
   faReplyAll,
   faRotateLeft,
@@ -22,8 +25,11 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import {
   lifetimeOf,
+  LIFETIME_ACTIVE,
   LIFETIME_ARCHIVED,
   LIFETIME_BIN,
+  LIFETIME_NEW,
+  LIFETIME_WAITING,
   noteMatchesFilters,
   validateTitle,
   validateTitleImage,
@@ -35,6 +41,7 @@ import {
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { useExtraFilters } from "./extraFilters";
+import { useFullTagList } from "./stylusMode";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
 import {
   constraintsFor,
@@ -42,6 +49,7 @@ import {
   selectedTagIds,
   selectionToFilters,
   TagPickers,
+  TagPillPicker,
   type TagSelection,
 } from "./TagPickers";
 import { TagPills } from "./TagPills";
@@ -54,6 +62,8 @@ interface Props {
   selectedTab: Tab | undefined;
   /** In stylus mode, new notes are written on a canvas instead of typed. */
   stylusMode: boolean;
+  /** How many balanced columns the note list is split into (the Columns setting). */
+  columns: number;
   /** The dropdowns' selections for new notes, kept by the app so they survive visits to settings and edits. */
   tagSelection: TagSelection;
   onTagSelectionChange: (selection: TagSelection) => void;
@@ -84,6 +94,7 @@ export function NotesPage({
   categories,
   selectedTab,
   stylusMode,
+  columns,
   tagSelection,
   onTagSelectionChange,
   editingNote,
@@ -108,6 +119,9 @@ export function NotesPage({
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
   const [extraSelection, setExtraSelection] = useExtraFilters(selectedTab?.id);
+  const [fullTagList, setFullTagList] = useFullTagList();
+  /** The tag choosers in the add/edit area: dropdowns, or pills in full-tag-list mode. */
+  const TagChooser = fullTagList ? TagPillPicker : TagPickers;
 
   /** The canvas is shown in stylus mode, and when editing a handwritten note whatever the mode. */
   const showCanvas = editingNote ? editingNote.titleImage !== undefined : stylusMode;
@@ -286,7 +300,7 @@ export function NotesPage({
   const blocked = editingNote !== undefined;
 
   return (
-    <div className="notes-page">
+    <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {extraCategories.length > 0 && (
         <div className="filter-row" aria-label="More filters for this tab">
           <TagPickers
@@ -311,11 +325,13 @@ export function NotesPage({
             {allFilters.length > 0 ? "No notes in this tab yet." : "No notes yet. Add your first one below."}
           </p>
         ) : (
-          <ul>
+          // Notes run top to bottom down each column, then on to the next column to the right.
+          <ul style={{ columnCount: columns }}>
             {visibleNotes.map((note) => {
               const lifetime = lifetimeOf(note);
               const classes = [
                 note.id === editingNote?.id && "editing",
+                lifetime === LIFETIME_WAITING && "waiting",
                 lifetime === LIFETIME_ARCHIVED && "archived",
                 lifetime === LIFETIME_BIN && "binned",
               ].filter(Boolean);
@@ -335,28 +351,39 @@ export function NotesPage({
                       disabled={busy || saving}
                       onClick={() => startEdit(note)}
                     />
-                    {lifetime === LIFETIME_ARCHIVED || lifetime === LIFETIME_BIN ? (
+                    {/* New and Active notes can be put on hold; anything else can be reinstated to Active. */}
+                    {lifetime === LIFETIME_NEW || lifetime === LIFETIME_ACTIVE ? (
+                      <IconButton
+                        icon={faHourglass}
+                        label={hint ?? "Waiting"}
+                        disabled={busy}
+                        onClick={() => void changeLifetime(note, "Waiting")}
+                      />
+                    ) : (
                       <IconButton
                         icon={faRotateLeft}
                         label={hint ?? "Reinstate"}
                         disabled={busy}
                         onClick={() => void changeLifetime(note, "Active")}
                       />
-                    ) : (
-                      <IconButton
-                        icon={faBoxArchive}
-                        label={hint ?? "Archive"}
-                        disabled={busy}
-                        onClick={() => void changeLifetime(note, "Archived")}
-                      />
                     )}
-                    {lifetime === LIFETIME_ARCHIVED && (
+                    {/* Anything not yet Archived or in the Bin can be archived; Archived notes can be binned. */}
+                    {lifetime === LIFETIME_ARCHIVED ? (
                       <IconButton
                         icon={faTrashCan}
                         label={hint ?? "Move to bin"}
                         disabled={busy}
                         onClick={() => void changeLifetime(note, "Bin")}
                       />
+                    ) : (
+                      lifetime !== LIFETIME_BIN && (
+                        <IconButton
+                          icon={faBoxArchive}
+                          label={hint ?? "Archive"}
+                          disabled={busy}
+                          onClick={() => void changeLifetime(note, "Archived")}
+                        />
+                      )
                     )}
                   </div>
                 </li>
@@ -372,7 +399,21 @@ export function NotesPage({
         </div>
       )}
 
-      <div className={editingNote ? "new-note editing" : "new-note"}>
+      {/* The full-tag-list toggle sits over the divider between the list and the add/edit area. */}
+      <div className="area-divider">
+        <button
+          type="button"
+          className="area-toggle"
+          aria-pressed={fullTagList}
+          aria-label={fullTagList ? "Show tag dropdowns" : "Show all tags"}
+          title={fullTagList ? "Show tag dropdowns" : "Show all tags"}
+          onClick={() => setFullTagList(!fullTagList)}
+        >
+          <FontAwesomeIcon icon={fullTagList ? faChevronDown : faChevronUp} />
+        </button>
+      </div>
+
+      <div className={["new-note", editingNote && "editing", fullTagList && "full"].filter(Boolean).join(" ")}>
         <form
           onSubmit={submit}
           onPointerDownCapture={(event) => {
@@ -450,15 +491,16 @@ export function NotesPage({
               {saveError}
             </p>
           )}
+          {/* Dropdowns, or every tag as a pill in full-tag-list mode. Both share the same choices. */}
           {editingNote ? (
-            <TagPickers
+            <TagChooser
               categories={userCategories}
               selection={editSelection}
               onChange={setEditSelection}
               disabled={saving}
             />
           ) : (
-            <TagPickers
+            <TagChooser
               categories={userCategories}
               selection={tagSelection}
               onChange={onTagSelectionChange}

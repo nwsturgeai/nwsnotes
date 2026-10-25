@@ -43,6 +43,8 @@ export const LIFETIME_NEW = -1;
 export const LIFETIME_ACTIVE = -2;
 export const LIFETIME_ARCHIVED = -3;
 export const LIFETIME_BIN = -4;
+/** Added after the others, so its id can't follow the listed order (ids are stored on notes). */
+export const LIFETIME_WAITING = -5;
 export const LIFETIME_NAME = "Lifetime";
 
 export const LIFETIME_CATEGORY: Category = {
@@ -53,15 +55,17 @@ export const LIFETIME_CATEGORY: Category = {
   tags: [
     { id: LIFETIME_NEW, name: "New" },
     { id: LIFETIME_ACTIVE, name: "Active" },
+    { id: LIFETIME_WAITING, name: "Waiting" },
     { id: LIFETIME_ARCHIVED, name: "Archived" },
     { id: LIFETIME_BIN, name: "Bin" },
   ],
 };
 
 /** The Lifetime values the note buttons can set (a note only becomes New by being created). */
-export type LifetimeChange = "Active" | "Archived" | "Bin";
+export type LifetimeChange = "Active" | "Waiting" | "Archived" | "Bin";
 export const LIFETIME_CHANGES: Record<LifetimeChange, number> = {
   Active: LIFETIME_ACTIVE,
+  Waiting: LIFETIME_WAITING,
   Archived: LIFETIME_ARCHIVED,
   Bin: LIFETIME_BIN,
 };

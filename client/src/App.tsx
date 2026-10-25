@@ -9,7 +9,7 @@ import { LoginPage } from "./LoginPage";
 import { NotesPage } from "./NotesPage";
 import { usePage } from "./route";
 import { SettingsPage } from "./SettingsPage";
-import { useStylusMode } from "./stylusMode";
+import { useColumns, useStylusMode } from "./stylusMode";
 import { TabEditPage } from "./TabEditPage";
 import type { TagSelection } from "./TagPickers";
 
@@ -23,6 +23,7 @@ export function App() {
   const [state, setState] = useState<State>({ screen: "loading" });
   const [page, navigate] = usePage();
   const [stylusMode, setStylusMode] = useStylusMode();
+  const [columns, setColumns] = useColumns();
   const [refreshError, setRefreshError] = useState<string>();
   /** The new-note tag dropdowns' selections; kept until the page is reloaded or the tab changes. */
   const [tagSelection, setTagSelection] = useState<TagSelection>({});
@@ -182,6 +183,8 @@ export function App() {
               tabs={tabs}
               stylusMode={stylusMode}
               onStylusModeChange={setStylusMode}
+              columns={columns}
+              onColumnsChange={setColumns}
               onNavigate={navigate}
               onNotesChanged={() => void refreshNotes()}
               onSessionExpired={sessionExpired}
@@ -211,6 +214,7 @@ export function App() {
               categories={state.data.categories}
               selectedTab={selectedTab}
               stylusMode={stylusMode}
+              columns={columns}
               tagSelection={tagSelection}
               onTagSelectionChange={setTagSelection}
               editingNote={editingNote}
