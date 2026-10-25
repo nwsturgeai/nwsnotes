@@ -51,6 +51,15 @@ The website should open a websocket connection to the server.  Whenever any data
 
 Whilst the page is loading, show text "Loading...".  If there is an error on startup (e.g. the API is unavailable) then show a page with all the details of the error.
 
+### Columns
+
+The Settings page should have a "Columns" setting, where a number between 1 and 5 can be chosen (default: 1).
+This setting should appear alongside the "Stylus mode" setting at the top of the list of Settings.
+The value for this setting should be saved into browser local storage so that it is remembered / retained on this device.
+This setting controls how notes are shown within the notes list.  Notes should be shown in vertical columns, the number of columns being specified by this setting.
+The order of notes should be: top to bottom in the first column, then continuing top to bottom in the second column, and so on (columns go from left to right).
+
+
 ## Tags
 
 Tags will be arranged into Categories.  Each Category will have the following attributes:
@@ -73,11 +82,29 @@ For now, it will not be possible to delete tags or categories.
 For now, it will not be possible to change the tags a note has after the note has been created.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
-On the main notes page:
+### On the main notes page:
 Each note should also display its tags.  These should be shown in a list of pills underneath the note title.  If 2 categories have tags with the same name, there is a possibility that a note has 2 tags with the same text.  This is OK.
-When adding a note, the user can set tags.  There should be a dropdown for each Category.  Single-select and multi-select categories both use the same kind of dropdown: a button that opens a list.  For single-select categories, the list's first option (which corresponds to "no tag selected within this category") is the category name, and choosing an option replaces any previous choice.  For multi-select categories, the list is a check-list.  In both cases, the button shows the category name when no tag is chosen.
+
+### Tagging a new note / whilst editing a note:
+When adding a note, the user can set tags.
+There should be a dropdown for each Category.
+Single-select and multi-select categories both use the same kind of dropdown: a button that opens a list.
+For single-select categories, the list's first option (which corresponds to "no tag selected within this category") is the category name, and choosing an option replaces any previous choice.
+For multi-select categories, the list is a check-list.  In both cases, the button shows the category name when no tag is chosen.
 The dropdowns should appear underneath the textbox where the note title is entered.  The dropdowns should not have any titles.
 After adding a note, the dropdowns retain their selections so that if the dropdowns aren't changed then a second new note would be given the same tags.
+
+### Full-tag-list mode:
+The add/edit-note area should be able to be toggled between standard mode and full-tag-list mode.
+Full-tag-list mode will use more vertical space.  Toggling into full-tag-list mode should cause the add/edit note area to "grow" to be 250px high.
+The button to toggle between these modes should appear over the divider separating the add/edit note area from the notes-list area.
+When in full-tag-list mode, instead of showing dropdowns for each Category:
+All of the available tags in each category should be shown as pills.  Each new Category's pills should start on a new horizontal line.
+A pill shows a dark background if the new/editing note has that Tag.  A pill shows a light background if the new/editing note does not have this tag.
+Clicking/tapping on the pill toggles whether the new/editing note has this Tag or not.  In stylus mode, finger touches on these pills does not cause them to toggle.
+For a single-select category, clicking on one of the tag pills in this category automatically deselects/un-tags any other tag pills from this category.
+The Lifetime Category continues to be not-shown in full-tag-list mode.
+
 
 
 ## Stylus support
@@ -150,7 +177,7 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 There should be a system-controlled Category with name "Lifetime".
 This category cannot be edited in the Settings page.
 This is a single-select Category.
-This category should have possible Tags: "New", "Active", "Archived", "Bin".  I suggest these tags be given negative ids.
+This category should have possible Tags: "New", "Active", "Waiting", "Archived", "Bin".  I suggest these tags be given negative ids.
 When creating or editing a note, this system category should not have a drop-down.
 New notes are always given the "New" tag from this Category.
 The "Active" tag in this category should never be displayed as a pill in the notes-list.
@@ -159,12 +186,19 @@ Tab filter definitions can specify values for this system Category.  Additional 
 
 ### Archiving
 
-On the Notes screen, each note in the notes-list which is not tagged "Archived" should have an "archive" button (using icon fa-box-archive) alongside the edit button.  This button should be the same size as the edit button.
+On the Notes screen, each note in the notes-list which is not tagged "Archived" or "Bin" should have an "archive" button (using icon fa-box-archive) alongside the edit / waiting buttons.  This button should be the same size as the edit button.
 When the Archive button is clicked, the note is given the "Archived" tag (and Tag New or Active is removed).
 Notes with the Archived tag should have a background #606060.  Black text is quite hard to read against this colour - that is deliberate.  Handwriting notes should also have this same dark background.
 For Notes with the Archived tag: in place of the "archive" button, they should have a "reinstate" button (fa-rotate-left).
-Pressing the reinstate button takes away the Archived tag and adds the Active tag.
+Pressing the reinstate button takes away the Archived/Bin/Waiting tag and adds the Active tag.
 If the current Tab definition filter (or additional tab filter) specifies that archived items should not be shown in this tab: in this case, when the user clicks to archive a note, the note should then disappear from the current list of notes.
+
+### Waiting
+
+On the Notes screen, each note which is New or Active should have a "waiting" button (using icon fa-hourglass).  This button should be the same size as the edit button.
+Clicking the waiting button removes the New/Active tag and sets the Waiting tag.
+Notes with the Waiting tag should have background #c0c0c0, this applies also to handwriting notes.
+Notes with the Waiting tag should have a "reinstate" button just like Archived notes.  Similar to Archived notes, pressing reinstate removes the Waiting tag and adds the Active tag.
 
 ### Bin
 Any notes with the Bin Tag should be hidden from the notes-list unless the Tab-filter-definition or additional-tab-filters explicitly indicate that Bin items should be shown.  In other words, if a Tab has no filter set for the Lifetime category, notes tagged with Bin should still be hidden.
