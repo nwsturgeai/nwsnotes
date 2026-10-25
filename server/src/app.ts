@@ -94,6 +94,28 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.json(note);
   });
 
+  // Archive, reinstate or bin a note.
+  notesRouter.put("/:id/lifetime", async (req: Request<{ id: string }, object, { lifetime?: unknown } | undefined>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
+      return;
+    }
+    const note = await store.setLifetime(id, req.body?.lifetime);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(note);
+  });
+
+  // The Settings page's Lifetime buttons. Each returns how many notes it changed or deleted.
+  const bulkLifetime = { "reset-new": () => store.resetNew(), "archived-to-bin": () => store.archivedToBin(), "empty-bin": () => store.emptyBin() };
+  for (const [action, run] of Object.entries(bulkLifetime)) {
+    notesRouter.post(`/${action}`, async (req, res) => {
+      const count = await run();
+      if (count > 0) live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+      res.json({ count });
+    });
+  }
+
   // The latest save-file exactly as it is on disk, as a download (for manual backups).
   notesRouter.get("/download", (_req, res, next) => {
     const file = store.latestSaveFile();

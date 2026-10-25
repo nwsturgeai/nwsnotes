@@ -1,16 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
-import type { Category, Tab } from "@nwsnotes/shared";
+import { LIFETIME_CATEGORY_ID, type Category, type TabFilter } from "@nwsnotes/shared";
 
 /** The tags chosen in each category's dropdown: category id -> tag ids. */
 export type TagSelection = Record<number, number[]>;
 
-/** What the selected tab requires of new notes: category id -> the tab's tag ids for that category. */
+/** What the selected tab (and its additional filters) require of new notes: category id -> tag ids. */
 export type TabConstraints = Map<number, number[]>;
 
-export function constraintsFor(tab: Tab | undefined): TabConstraints {
-  return new Map((tab?.categories ?? []).map((filter) => [filter.categoryId, filter.tagIds]));
+/**
+ * The new-note rules from a tab's filters and its additional filters. Lifetime isn't included:
+ * new notes are always New, and there's no Lifetime dropdown.
+ */
+export function constraintsFor(filters: TabFilter[]): TabConstraints {
+  return new Map(
+    filters.filter((filter) => filter.categoryId !== LIFETIME_CATEGORY_ID).map((filter) => [filter.categoryId, filter.tagIds]),
+  );
+}
+
+/** Dropdown choices as filters, leaving out categories with nothing ticked. */
+export function selectionToFilters(categories: Category[], selection: TagSelection): TabFilter[] {
+  return categories
+    .map((category) => ({
+      categoryId: category.id,
+      tagIds: category.tags.filter((tag) => (selection[category.id] ?? []).includes(tag.id)).map((tag) => tag.id),
+    }))
+    .filter((filter) => filter.tagIds.length > 0);
 }
 
 /**
@@ -121,7 +137,7 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
   const fullyLocked = lockedTagId !== undefined && !checkList;
   /** Under a several-tag filter a single-select dropdown offers only the tab's tags, and one is required. */
   const options = !checkList && tabTagIds ? category.tags.filter((tag) => tabTagIds.includes(tag.id)) : category.tags;
-  const lockHint = tabName ? `set by the "${tabName}" tab` : "set by the tab";
+  const lockHint = tabName ? `set by the "${tabName}" tab's filters` : "set by this tab's filters";
 
   function close() {
     setPosition(undefined);

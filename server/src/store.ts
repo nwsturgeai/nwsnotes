@@ -1,11 +1,20 @@
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  isLifetimeTag,
+  lifetimeOf,
+  LIFETIME_ACTIVE,
+  LIFETIME_ARCHIVED,
+  LIFETIME_BIN,
+  LIFETIME_CATEGORY,
+  LIFETIME_CHANGES,
+  LIFETIME_NEW,
   validateCategory,
   validateTab,
   validateTagIds,
   type Category,
   type CategoryRequest,
+  type LifetimeChange,
   type Note,
   type NotesData,
   type NoteTitle,
@@ -17,9 +26,25 @@ interface SaveFile {
   version: 2;
   savedDateTime: string;
   notes: Note[];
+  /** User categories only; the built-in Lifetime category isn't stored. */
   categories: Category[];
   /** Missing in files saved before tabs existed. */
   tabs?: Tab[];
+  /** The highest note id ever given, so ids are never reused. Missing in older files. */
+  lastNoteId?: number;
+}
+
+/** The data the store keeps and saves. */
+type StoreData = Pick<NotesData, "notes" | "categories" | "tabs"> & { lastNoteId: number };
+
+/** A note's tags with any Lifetime tag removed (the server decides a note's Lifetime). */
+function withoutLifetime(rawTagIds: unknown): unknown {
+  return Array.isArray(rawTagIds) ? rawTagIds.filter((id) => typeof id !== "number" || !isLifetimeTag(id)) : rawTagIds;
+}
+
+/** A note with its Lifetime tag replaced. */
+function withLifetime(note: Note, lifetime: number): Note["tagIds"] {
+  return [...note.tagIds.filter((id) => !isLifetimeTag(id)), lifetime];
 }
 
 /** Save-files written before tags existed. */
@@ -71,13 +96,19 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
       notes: content.notes.map((note) => ({ ...note, tagIds: [] })),
       categories: [],
       tabs: [],
+      lastNoteId: Math.max(0, ...content.notes.map((n) => n.id)),
     };
   }
   if (content.version !== 2 || !Array.isArray(content.categories)) {
     throw new Error(`Save-file ${name} has an unknown format (version ${String((content as { version?: unknown }).version)}).`);
   }
-  // Files saved before tabs existed have no "tabs" list.
-  return { ...content, tabs: Array.isArray(content.tabs) ? content.tabs : [] };
+  return {
+    ...content,
+    // Files saved before tabs existed have no "tabs" list.
+    tabs: Array.isArray(content.tabs) ? content.tabs : [],
+    // Files saved before notes could be deleted have no "lastNoteId"; the highest id present is right for them.
+    lastNoteId: typeof content.lastNoteId === "number" ? content.lastNoteId : Math.max(0, ...content.notes.map((n) => n.id)),
+  };
 }
 
 /**
@@ -88,6 +119,8 @@ export class NoteStore {
   private notes: Note[] = [];
   private categories: Category[] = [];
   private tabs: Tab[] = [];
+  /** The highest note id ever given; new notes get the next one, so ids are never reused. */
+  private lastNoteId = 0;
   private lastSaveMs = 0;
   private latestFileName: string | undefined;
   /** Changes run one at a time, in order. */
@@ -102,9 +135,13 @@ export class NoteStore {
     const latest = files.at(-1);
     if (latest) {
       const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
-      this.notes = content.notes;
+      // Notes saved before Lifetime existed become Active (stored with the next save).
+      this.notes = content.notes.map((note) =>
+        note.tagIds.some(isLifetimeTag) ? note : { ...note, tagIds: [...note.tagIds, LIFETIME_ACTIVE] },
+      );
       this.categories = content.categories;
       this.tabs = content.tabs;
+      this.lastNoteId = content.lastNoteId;
       this.lastSaveMs = latest.date.getTime();
       this.latestFileName = latest.name;
       console.log(
@@ -117,7 +154,12 @@ export class NoteStore {
   }
 
   getAll(): NotesData {
-    return { notes: this.notes, categories: this.categories, tabs: this.tabs };
+    return { notes: this.notes, categories: this.allCategories(), tabs: this.tabs };
+  }
+
+  /** User categories plus the built-in Lifetime category (which tabs can filter on). */
+  private allCategories(): Category[] {
+    return [...this.categories, LIFETIME_CATEGORY];
   }
 
   /** The most recent save-file, or undefined if nothing has been saved yet. */
@@ -129,19 +171,20 @@ export class NoteStore {
   /** Adds a note (title already validated) and saves. Resolves once it is on disk. */
   add(title: NoteTitle, rawTagIds: unknown): Promise<Note> {
     return this.enqueue(async () => {
-      const tagIds = validateTagIds(rawTagIds, this.categories);
+      const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
 
       const now = this.nextSaveTime();
       const timestamp = now.toISOString();
       const note: Note = {
-        id: this.notes.reduce((max, n) => Math.max(max, n.id), 0) + 1,
+        id: this.lastNoteId + 1,
         ...title,
         createdDateTime: timestamp,
         lastModifiedDateTime: timestamp,
-        tagIds: tagIds.value,
+        // New notes are always New.
+        tagIds: [...tagIds.value, LIFETIME_NEW],
       };
-      await this.save(now, { notes: [...this.notes, note] });
+      await this.save(now, { notes: [...this.notes, note], lastNoteId: note.id });
       return note;
     });
   }
@@ -163,7 +206,7 @@ export class NoteStore {
             : "This note is typed, so it must be updated with new text, not an image.",
         );
       }
-      const tagIds = validateTagIds(rawTagIds, this.categories);
+      const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
 
       const now = this.nextSaveTime();
@@ -172,10 +215,64 @@ export class NoteStore {
         ...title,
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
-        tagIds: tagIds.value,
+        // Editing keeps the note's Lifetime.
+        tagIds: [...tagIds.value, lifetimeOf(existing)],
       };
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) });
       return note;
+    });
+  }
+
+  /** Archives, reinstates (Active) or bins a note, then saves. */
+  setLifetime(id: number, raw: unknown): Promise<Note> {
+    return this.enqueue(async () => {
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
+      if (typeof raw !== "string" || !(raw in LIFETIME_CHANGES)) {
+        throw new RequestError(400, `"lifetime" must be one of ${Object.keys(LIFETIME_CHANGES).join(", ")}.`);
+      }
+      const now = this.nextSaveTime();
+      const note: Note = {
+        ...existing,
+        lastModifiedDateTime: now.toISOString(),
+        tagIds: withLifetime(existing, LIFETIME_CHANGES[raw as LifetimeChange]),
+      };
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) });
+      return note;
+    });
+  }
+
+  /** The Settings "Reset New" button: every New note becomes Active. Returns how many changed. */
+  resetNew(): Promise<number> {
+    return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE);
+  }
+
+  /** The Settings "Archived to Bin" button: every Archived note is moved to the Bin. Returns how many. */
+  archivedToBin(): Promise<number> {
+    return this.changeLifetimes(LIFETIME_ARCHIVED, LIFETIME_BIN);
+  }
+
+  /** The Settings "Empty Bin" button: every Bin note is deleted. Returns how many. */
+  emptyBin(): Promise<number> {
+    return this.enqueue(async () => {
+      const kept = this.notes.filter((n) => lifetimeOf(n) !== LIFETIME_BIN);
+      const count = this.notes.length - kept.length;
+      if (count > 0) await this.save(this.nextSaveTime(), { notes: kept });
+      return count;
+    });
+  }
+
+  /** Moves every note with one Lifetime to another in a single save. Returns how many changed. */
+  private changeLifetimes(from: number, to: number): Promise<number> {
+    return this.enqueue(async () => {
+      const count = this.notes.filter((n) => lifetimeOf(n) === from).length;
+      if (count === 0) return 0;
+      const now = this.nextSaveTime();
+      const notes = this.notes.map((n) =>
+        lifetimeOf(n) === from ? { ...n, lastModifiedDateTime: now.toISOString(), tagIds: withLifetime(n, to) } : n,
+      );
+      await this.save(now, { notes });
+      return count;
     });
   }
 
@@ -219,7 +316,7 @@ export class NoteStore {
   /** Checks and adds a new tab, then saves. */
   addTab(raw: unknown): Promise<Tab> {
     return this.enqueue(async () => {
-      const check = validateTab(raw, this.tabs, this.categories);
+      const check = validateTab(raw, this.tabs, this.allCategories());
       if (!check.ok) throw new RequestError(400, check.error);
 
       const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab };
@@ -233,7 +330,7 @@ export class NoteStore {
     return this.enqueue(async () => {
       const existing = this.tabs.find((t) => t.id === id);
       if (!existing) throw new RequestError(404, `There is no tab with id ${id}.`);
-      const check = validateTab(raw, this.tabs, this.categories, existing);
+      const check = validateTab(raw, this.tabs, this.allCategories(), existing);
       if (!check.ok) throw new RequestError(400, check.error);
 
       const tab: Tab = { id, ...check.tab };
@@ -268,12 +365,13 @@ export class NoteStore {
     return new Date(Math.max(Date.now(), this.lastSaveMs + 1));
   }
 
-  /** Saves the current data with `change` applied (only the lists given are replaced). */
-  private async save(now: Date, change: Partial<NotesData>): Promise<void> {
+  /** Saves the current data with `change` applied (only the parts given are replaced). */
+  private async save(now: Date, change: Partial<StoreData>): Promise<void> {
     const notes = change.notes ?? this.notes;
     const categories = change.categories ?? this.categories;
     const tabs = change.tabs ?? this.tabs;
-    const content: SaveFile = { version: 2, savedDateTime: now.toISOString(), notes, categories, tabs };
+    const lastNoteId = change.lastNoteId ?? this.lastNoteId;
+    const content: SaveFile = { version: 2, savedDateTime: now.toISOString(), notes, categories, tabs, lastNoteId };
 
     // Write to a temporary file, then rename, so a crash can't leave a half-written save-file.
     const fileName = fileNameFor(now);
@@ -286,6 +384,7 @@ export class NoteStore {
     this.notes = notes;
     this.categories = categories;
     this.tabs = tabs;
+    this.lastNoteId = lastNoteId;
     this.lastSaveMs = now.getTime();
     this.latestFileName = fileName;
 

@@ -3,6 +3,7 @@ import {
   type ApiErrorBody,
   type Category,
   type CategoryRequest,
+  type LifetimeChange,
   type LoginRequest,
   type NewNoteRequest,
   type Note,
@@ -75,6 +76,11 @@ export const api = {
   getNotes: () => request<NotesData>("GET", "/api/notes"),
   addNote: (body: NewNoteRequest) => request<Note>("POST", "/api/notes", body, changeHeaders()),
   updateNote: (id: number, body: NewNoteRequest) => request<Note>("PUT", `/api/notes/${id}`, body, changeHeaders()),
+  setLifetime: (id: number, lifetime: LifetimeChange) =>
+    request<Note>("PUT", `/api/notes/${id}/lifetime`, { lifetime }, changeHeaders()),
+  /** The Settings Lifetime buttons; each returns how many notes changed (or were deleted). */
+  bulkLifetime: (action: "reset-new" | "archived-to-bin" | "empty-bin") =>
+    request<{ count: number }>("POST", `/api/notes/${action}`, undefined, changeHeaders()),
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),

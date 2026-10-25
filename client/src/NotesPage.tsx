@@ -8,23 +8,47 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPen } from "@fortawesome/free-solid-svg-icons";
 import {
-  noteMatchesTab,
+  faBoxArchive,
+  faCircleCheck,
+  faCirclePlus,
+  faDeleteLeft,
+  faPen,
+  faReplyAll,
+  faRotateLeft,
+  faTrashCan,
+  faX,
+  type IconDefinition,
+} from "@fortawesome/free-solid-svg-icons";
+import {
+  lifetimeOf,
+  LIFETIME_ARCHIVED,
+  LIFETIME_BIN,
+  noteMatchesFilters,
   validateTitle,
   validateTitleImage,
   type Category,
+  type LifetimeChange,
   type Note,
   type NoteTitle,
   type Tab,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { useExtraFilters } from "./extraFilters";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
-import { constraintsFor, missingRequiredCategory, selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
+import {
+  constraintsFor,
+  missingRequiredCategory,
+  selectedTagIds,
+  selectionToFilters,
+  TagPickers,
+  type TagSelection,
+} from "./TagPickers";
 import { TagPills } from "./TagPills";
 
 interface Props {
   notes: Note[];
+  /** All categories, including the built-in Lifetime one. */
   categories: Category[];
   /** The selected tab, or undefined for "All". Only matching notes are listed. */
   selectedTab: Tab | undefined;
@@ -38,6 +62,7 @@ interface Props {
   onEditStart: (note: Note) => void;
   onEditEnd: () => void;
   onNoteAdded: (note: Note) => void;
+  /** A note was edited, archived, reinstated or binned. */
   onNoteUpdated: (note: Note) => void;
   onSessionExpired: () => void;
 }
@@ -51,6 +76,8 @@ function selectionFor(note: Note, categories: Category[]): TagSelection {
     ]),
   );
 }
+
+const NOTICE_MS = 4000;
 
 export function NotesPage({
   notes,
@@ -74,11 +101,18 @@ export function NotesPage({
   const [editSelection, setEditSelection] = useState<TagSelection>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+  /** A short message over the bottom of the list, e.g. when a new note is hidden by the filters. */
+  const [notice, setNotice] = useState<{ text: string; error?: boolean }>();
+  /** The note whose archive / reinstate / bin button is being handled. */
+  const [busyNoteId, setBusyNoteId] = useState<number>();
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
+  const [extraSelection, setExtraSelection] = useExtraFilters(selectedTab?.id);
 
   /** The canvas is shown in stylus mode, and when editing a handwritten note whatever the mode. */
   const showCanvas = editingNote ? editingNote.titleImage !== undefined : stylusMode;
+  /** Categories with a dropdown in the new-note area: not the built-in Lifetime one. */
+  const userCategories = useMemo(() => categories.filter((category) => !category.system), [categories]);
 
   /**
    * While the canvas is showing, finger and palm taps on the new-note controls (Add/Update, Cancel,
@@ -95,13 +129,22 @@ export function NotesPage({
     }
   }
 
-  // Hidden notes aren't changed, just not listed.
-  const visibleNotes = useMemo(
-    () => (selectedTab ? notes.filter((note) => noteMatchesTab(note, selectedTab)) : notes),
-    [notes, selectedTab],
+  // The tab's own filters, plus the additional filters chosen in the row above the list (for the
+  // categories the tab doesn't filter on).
+  const tabFilters = useMemo(() => selectedTab?.categories ?? [], [selectedTab]);
+  const extraCategories = useMemo(
+    () => categories.filter((category) => !tabFilters.some((filter) => filter.categoryId === category.id)),
+    [categories, tabFilters],
   );
-  /** What the selected tab requires of new notes, so they always match it and stay visible. */
-  const constraints = useMemo(() => constraintsFor(selectedTab), [selectedTab]);
+  const allFilters = useMemo(
+    () => [...tabFilters, ...selectionToFilters(extraCategories, extraSelection)],
+    [tabFilters, extraCategories, extraSelection],
+  );
+
+  // Hidden notes aren't changed, just not listed. Bin notes are hidden unless a filter ticks Bin.
+  const visibleNotes = useMemo(() => notes.filter((note) => noteMatchesFilters(note, allFilters)), [notes, allFilters]);
+  /** What the filters require of new notes, so they always match and stay visible. */
+  const constraints = useMemo(() => constraintsFor(allFilters), [allFilters]);
 
   // Newest notes are at the bottom, so keep the list scrolled to the bottom
   // when the page opens, whenever a note is added, and when the tab changes.
@@ -110,10 +153,17 @@ export function NotesPage({
     if (list) list.scrollTop = list.scrollHeight;
   }, [visibleNotes.length, selectedTab?.id]);
 
+  // Notices disappear by themselves.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(undefined), NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   function startEdit(note: Note) {
     // Any new note that was being typed or written is discarded.
     setTitle(note.titleText ?? "");
-    setEditSelection(selectionFor(note, categories));
+    setEditSelection(selectionFor(note, userCategories));
     setSaveError(undefined);
     onEditStart(note);
     if (note.titleText !== undefined) {
@@ -148,6 +198,23 @@ export function NotesPage({
   onEditEndRef.current = onEditEnd;
   useEffect(() => () => onEditEndRef.current(), []);
 
+  /** Archive, reinstate or bin a note. If it no longer matches the filters, it leaves the list. */
+  async function changeLifetime(note: Note, lifetime: LifetimeChange) {
+    if (busyNoteId !== undefined) return;
+    setBusyNoteId(note.id);
+    try {
+      onNoteUpdated(await api.setLifetime(note.id, lifetime));
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setNotice({ text: `The note wasn't changed: ${error instanceof Error ? error.message : String(error)}`, error: true });
+    } finally {
+      setBusyNoteId(undefined);
+    }
+  }
+
   /** The title to save, or undefined (with the error shown) if there isn't a valid one. */
   function newTitle(): NoteTitle | undefined {
     if (showCanvas) {
@@ -174,9 +241,9 @@ export function NotesPage({
 
     const noteTitle = newTitle();
     if (!noteTitle) return;
-    // The tab's rules only apply to new notes; an edited note can be given any tags.
+    // The filters' rules only apply to new notes; an edited note can be given any tags.
     if (!editingNote) {
-      const missing = missingRequiredCategory(categories, tagSelection, constraints);
+      const missing = missingRequiredCategory(userCategories, tagSelection, constraints);
       if (missing) {
         setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
         return;
@@ -187,15 +254,20 @@ export function NotesPage({
     setSaveError(undefined);
     try {
       if (editingNote) {
-        const tagIds = selectedTagIds(categories, editSelection);
+        const tagIds = selectedTagIds(userCategories, editSelection);
         onNoteUpdated(await api.updateNote(editingNote.id, { ...noteTitle, tagIds }));
         finishEdit();
       } else {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
-        const tagIds = selectedTagIds(categories, tagSelection, constraints);
-        onNoteAdded(await api.addNote({ ...noteTitle, tagIds }));
+        const tagIds = selectedTagIds(userCategories, tagSelection, constraints);
+        const note = await api.addNote({ ...noteTitle, tagIds });
+        onNoteAdded(note);
         if (showCanvas) padRef.current?.clear();
         else setTitle("");
+        // New notes are always New; say so if this tab's filters don't show New notes.
+        if (!noteMatchesFilters(note, allFilters)) {
+          setNotice({ text: "Note added, but this tab doesn't show New notes." });
+        }
       }
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
@@ -211,35 +283,94 @@ export function NotesPage({
     }
   }
 
+  const blocked = editingNote !== undefined;
+
   return (
     <div className="notes-page">
+      {extraCategories.length > 0 && (
+        <div className="filter-row" aria-label="More filters for this tab">
+          <TagPickers
+            categories={extraCategories}
+            selection={extraSelection}
+            onChange={setExtraSelection}
+            disabled={blocked}
+            checkLists
+          />
+          <IconButton
+            icon={faReplyAll}
+            label={blocked ? "Finish or cancel the edit first" : "Reset filters"}
+            disabled={blocked}
+            onClick={() => setExtraSelection({})}
+          />
+        </div>
+      )}
+
       <div className="note-list" ref={listRef}>
         {visibleNotes.length === 0 ? (
-          <p className="empty">{selectedTab ? "No notes in this tab yet." : "No notes yet. Add your first one below."}</p>
+          <p className="empty">
+            {allFilters.length > 0 ? "No notes in this tab yet." : "No notes yet. Add your first one below."}
+          </p>
         ) : (
           <ul>
-            {visibleNotes.map((note) => (
-              <li key={note.id} className={note.id === editingNote?.id ? "editing" : undefined}>
-                <div className="note-body">
-                  {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
-                  <TagPills tagIds={note.tagIds} categories={categories} />
-                </div>
-                <button
-                  type="button"
-                  className="note-edit"
-                  aria-label={note.id === editingNote?.id ? "Editing this note" : "Edit note"}
-                  title={editingNote ? "Finish or cancel the current edit first" : "Edit note"}
-                  // Only one note can be edited at a time.
-                  disabled={editingNote !== undefined || saving}
-                  onClick={() => startEdit(note)}
-                >
-                  <FontAwesomeIcon icon={faPen} />
-                </button>
-              </li>
-            ))}
+            {visibleNotes.map((note) => {
+              const lifetime = lifetimeOf(note);
+              const classes = [
+                note.id === editingNote?.id && "editing",
+                lifetime === LIFETIME_ARCHIVED && "archived",
+                lifetime === LIFETIME_BIN && "binned",
+              ].filter(Boolean);
+              const busy = blocked || busyNoteId !== undefined;
+              const hint = blocked ? "Finish or cancel the current edit first" : undefined;
+              return (
+                <li key={note.id} className={classes.join(" ") || undefined}>
+                  <div className="note-body">
+                    {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
+                    <TagPills tagIds={note.tagIds} categories={categories} />
+                  </div>
+                  {/* Right-aligned; they don't need to line up between notes. */}
+                  <div className="note-actions">
+                    <IconButton
+                      icon={faPen}
+                      label={note.id === editingNote?.id ? "Editing this note" : (hint ?? "Edit note")}
+                      disabled={busy || saving}
+                      onClick={() => startEdit(note)}
+                    />
+                    {lifetime === LIFETIME_ARCHIVED || lifetime === LIFETIME_BIN ? (
+                      <IconButton
+                        icon={faRotateLeft}
+                        label={hint ?? "Reinstate"}
+                        disabled={busy}
+                        onClick={() => void changeLifetime(note, "Active")}
+                      />
+                    ) : (
+                      <IconButton
+                        icon={faBoxArchive}
+                        label={hint ?? "Archive"}
+                        disabled={busy}
+                        onClick={() => void changeLifetime(note, "Archived")}
+                      />
+                    )}
+                    {lifetime === LIFETIME_ARCHIVED && (
+                      <IconButton
+                        icon={faTrashCan}
+                        label={hint ?? "Move to bin"}
+                        disabled={busy}
+                        onClick={() => void changeLifetime(note, "Bin")}
+                      />
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
+
+      {notice && (
+        <div className={notice.error ? "toast error" : "toast"} role="status">
+          {notice.text}
+        </div>
+      )}
 
       <div className={editingNote ? "new-note editing" : "new-note"}>
         <form
@@ -274,27 +405,42 @@ export function NotesPage({
                 onChange={(event) => setTitle(event.target.value)}
               />
             )}
-            {/* Clear sits under Add, leaving more width for handwriting. */}
+            {/* Icon-only buttons; Clear sits under Add, leaving more width for handwriting. */}
             <div className="new-note-buttons">
-              <button type="submit" disabled={saving}>
-                {editingNote ? (saving ? "Updating…" : "Update") : saving ? "Adding…" : "Add"}
+              <button
+                type="submit"
+                className="icon-button primary"
+                aria-label={editingNote ? "Update" : "Add"}
+                title={editingNote ? "Update" : "Add"}
+                disabled={saving}
+              >
+                <FontAwesomeIcon icon={editingNote ? faCircleCheck : faCirclePlus} />
               </button>
               {editingNote && (
-                <button type="button" className="button" disabled={saving} onClick={finishEdit}>
-                  Cancel
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Cancel"
+                  title="Cancel"
+                  disabled={saving}
+                  onClick={finishEdit}
+                >
+                  <FontAwesomeIcon icon={faX} />
                 </button>
               )}
               {showCanvas && (
                 <button
                   type="button"
-                  className="button"
+                  className="icon-button"
+                  aria-label="Clear"
+                  title="Clear"
                   disabled={saving}
                   onClick={() => {
                     padRef.current?.clear();
                     setSaveError(undefined);
                   }}
                 >
-                  Clear
+                  <FontAwesomeIcon icon={faDeleteLeft} />
                 </button>
               )}
             </div>
@@ -305,10 +451,15 @@ export function NotesPage({
             </p>
           )}
           {editingNote ? (
-            <TagPickers categories={categories} selection={editSelection} onChange={setEditSelection} disabled={saving} />
+            <TagPickers
+              categories={userCategories}
+              selection={editSelection}
+              onChange={setEditSelection}
+              disabled={saving}
+            />
           ) : (
             <TagPickers
-              categories={categories}
+              categories={userCategories}
               selection={tagSelection}
               onChange={onTagSelectionChange}
               disabled={saving}
@@ -319,6 +470,25 @@ export function NotesPage({
         </form>
       </div>
     </div>
+  );
+}
+
+/** A small icon-only button (16px icon in a 24px tap area) for the note list and the filter row. */
+function IconButton({
+  icon,
+  label,
+  disabled,
+  onClick,
+}: {
+  icon: IconDefinition;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="note-button" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
+      <FontAwesomeIcon icon={icon} />
+    </button>
   );
 }
 

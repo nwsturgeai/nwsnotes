@@ -252,18 +252,38 @@ a:focus-visible {
 
 /* ---- Notes page: list in the top 3/4, new note in the bottom 1/4 -------- */
 
-/* The list fills the page above a fixed-height new-note area. */
+/* The filter row (if any), then the list filling the page, then the fixed-height new-note area. */
 .notes-page {
-  display: grid;
+  position: relative;
+  display: flex;
   flex: 1;
-  grid-template-rows: 1fr 150px;
+  flex-direction: column;
   min-height: 0;
 }
 
 .note-list {
+  flex: 1;
   overflow-y: auto;
   min-height: 0;
   background: var(--surface);
+}
+
+/* ---- Additional tab filters: a row above the list that doesn't scroll -- */
+
+.filter-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.filter-row .tag-pickers {
+  flex: 1;
+  margin-top: 0;
+  gap: 0.35rem 0.5rem;
 }
 
 .note-list ul {
@@ -275,8 +295,8 @@ a:focus-visible {
 .note-list li {
   display: flex;
   align-items: flex-start;
-  gap: 1rem;
-  padding: 0.7rem 0.75rem 0.7rem 1.5rem;
+  gap: 0.5rem;
+  padding: 0.6rem 0.4rem 0.6rem 1rem;
   border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
 }
@@ -286,34 +306,94 @@ a:focus-visible {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+/* Archived and Bin notes. The black text is deliberately hard to read on these. */
+.note-list li.archived {
+  background: #606060;
+}
+
+.note-list li.binned {
+  background: #b00000;
+}
+
+/* Handwriting on these rows sits on the row's colour rather than paper. */
+.note-list li.archived .note-image,
+.note-list li.binned .note-image {
+  background: transparent;
+}
+
 .note-body {
   flex: 1;
   min-width: 0;
 }
 
-/* The edit icon, at the right-hand side of each note. */
-.note-edit {
+/* The note's buttons (edit, archive / reinstate, move to bin), right-aligned. */
+.note-actions {
+  display: flex;
   flex: none;
+  gap: 2px;
+}
+
+/* 16px icons in 24px tap areas: small, to leave room for note content. */
+.note-button {
   display: grid;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: none;
   color: var(--muted);
+  font-size: 16px;
   cursor: pointer;
 }
 
-.note-edit:hover:not(:disabled) {
+/* Every icon exactly 16px square, whatever its natural shape. */
+.note-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.note-button:hover:not(:disabled) {
   background: var(--bg);
   color: var(--text);
 }
 
-.note-edit:disabled {
+.note-button:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* Light icons, so they stay visible on the dark Archived and Bin rows. */
+.note-list li.archived .note-button,
+.note-list li.binned .note-button {
+  color: #f2f2f2;
+}
+
+.note-list li.archived .note-button:hover:not(:disabled),
+.note-list li.binned .note-button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.18);
+  color: #ffffff;
+}
+
+/* A short message over the bottom of the list (e.g. a new note hidden by the filters). */
+.toast {
+  position: absolute;
+  bottom: calc(150px + 0.75rem);
+  left: 50%;
+  z-index: 5;
+  max-width: calc(100% - 2rem);
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 0.9rem;
+  transform: translateX(-50%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+.toast.error {
+  background: var(--error);
 }
 
 .empty {
@@ -322,11 +402,12 @@ a:focus-visible {
   color: var(--muted);
 }
 
-/* Fixed at 150px by .notes-page; anything that doesn't fit scrolls inside it. */
+/* Fixed at 150px; anything that doesn't fit scrolls inside it. Very little side padding, to give notes room. */
 .new-note {
-  min-height: 0;
+  flex: none;
+  height: 150px;
   overflow-y: auto;
-  padding: 0.7rem 1.5rem;
+  padding: 0.6rem 4px;
   border-top: 1px solid var(--line);
   background: var(--bg);
 }
@@ -344,24 +425,49 @@ a:focus-visible {
 .new-note-row {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
+  gap: 4px;
 }
 
 /* Buttons stack two high (Clear under Add); a third (editing a handwritten note) starts a second column. */
 .new-note-buttons {
   display: grid;
   flex: none;
-  grid-template-rows: auto auto;
-  grid-auto-columns: 5.5rem;
+  /* "auto" so the second row takes no room when there's only one button (typing a note). */
+  grid-template-rows: repeat(2, auto);
+  grid-auto-columns: 40px;
   grid-auto-flow: column;
-  gap: 0.3rem;
+  gap: 2px;
 }
 
-/* All the same width, and short enough that two fit beside the 80px canvas. */
-.new-note-buttons button {
-  width: 100%;
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
+/* Icon-only, the same 40px square as the Settings cog; two fit beside the 82px canvas. */
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+.icon-button.primary {
+  /* Overrides the padding text submit buttons have. */
+  padding: 0;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.icon-button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
 }
 
 /* ---- Stylus mode: writing canvas and handwritten notes ------------------ */
@@ -710,6 +816,44 @@ a:focus-visible {
 .button.danger {
   margin-left: auto;
   color: var(--error);
+}
+
+.button.danger-filled {
+  border-color: var(--error);
+  background: var(--error);
+  color: #ffffff;
+}
+
+/* ---- Settings: Lifetime buttons and their confirmation pop-up ---------- */
+
+.lifetime-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lifetime-result {
+  margin: 0.6rem 0 0;
+  color: var(--text);
+}
+
+.confirm-dialog {
+  max-width: 24rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.25);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+.confirm-dialog p {
+  margin: 0;
+  color: var(--text);
 }
 
 /* ---- Login page --------------------------------------------------------- */

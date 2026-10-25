@@ -103,7 +103,8 @@ export function App() {
         ...data,
         categories: data.categories.some((c) => c.id === category.id)
           ? data.categories.map((c) => (c.id === category.id ? category : c))
-          : [...data.categories, category],
+          : // New categories go before the built-in Lifetime one, which the server always sends last.
+            [...data.categories.filter((c) => !c.system), category, ...data.categories.filter((c) => c.system)],
       })),
     [applySaved],
   );
@@ -176,11 +177,14 @@ export function App() {
           />
           {page.name === "settings" ? (
             <SettingsPage
+              notes={state.data.notes}
               categories={state.data.categories}
               tabs={tabs}
               stylusMode={stylusMode}
               onStylusModeChange={setStylusMode}
               onNavigate={navigate}
+              onNotesChanged={() => void refreshNotes()}
+              onSessionExpired={sessionExpired}
               onLogout={logout}
             />
           ) : page.name === "category" ? (

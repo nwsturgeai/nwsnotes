@@ -30,6 +30,49 @@ export interface Category {
   multiSelect: boolean;
   /** In the order they were created (id order). */
   tags: Tag[];
+  /** True for the built-in Lifetime category, which can't be edited and has no new-note dropdown. */
+  system?: boolean;
+}
+
+/*
+ * The built-in Lifetime category. It isn't stored; the server adds it to the categories it sends.
+ * Negative ids can never clash with user categories and tags, whose ids start at 1.
+ */
+export const LIFETIME_CATEGORY_ID = -1;
+export const LIFETIME_NEW = -1;
+export const LIFETIME_ACTIVE = -2;
+export const LIFETIME_ARCHIVED = -3;
+export const LIFETIME_BIN = -4;
+export const LIFETIME_NAME = "Lifetime";
+
+export const LIFETIME_CATEGORY: Category = {
+  id: LIFETIME_CATEGORY_ID,
+  name: LIFETIME_NAME,
+  multiSelect: false,
+  system: true,
+  tags: [
+    { id: LIFETIME_NEW, name: "New" },
+    { id: LIFETIME_ACTIVE, name: "Active" },
+    { id: LIFETIME_ARCHIVED, name: "Archived" },
+    { id: LIFETIME_BIN, name: "Bin" },
+  ],
+};
+
+/** The Lifetime values the note buttons can set (a note only becomes New by being created). */
+export type LifetimeChange = "Active" | "Archived" | "Bin";
+export const LIFETIME_CHANGES: Record<LifetimeChange, number> = {
+  Active: LIFETIME_ACTIVE,
+  Archived: LIFETIME_ARCHIVED,
+  Bin: LIFETIME_BIN,
+};
+
+export function isLifetimeTag(id: number): boolean {
+  return LIFETIME_CATEGORY.tags.some((tag) => tag.id === id);
+}
+
+/** A note's Lifetime tag id. Every note has exactly one; Active is assumed if it's missing. */
+export function lifetimeOf(note: Note): number {
+  return note.tagIds.find(isLifetimeTag) ?? LIFETIME_ACTIVE;
 }
 
 /** One category in a tab's filter: a note matches it if it has at least one of these tags. */
@@ -199,6 +242,9 @@ export function validateCategory(
 
   const name = validateName(input.name, "The category name");
   if (!name.ok) return name;
+  if (sameName(name.value, LIFETIME_NAME)) {
+    return { ok: false, error: `The name "${LIFETIME_NAME}" is used by the built-in category.` };
+  }
   const clash = categories.find((other) => other.id !== existing?.id && sameName(other.name, name.value));
   if (clash) {
     return { ok: false, error: `There is already a category called "${clash.name}".` };
@@ -293,9 +339,18 @@ export function validateTagIds(raw: unknown, categories: Category[]): Check<numb
 export const ALL_TAB_NAME = "All";
 export const TAB_NAME_MAX_LENGTH = 20;
 
-/** True if a note has, for every category in the tab, at least one of that category's filter tags. */
-export function noteMatchesTab(note: Note, tab: Tab): boolean {
-  return tab.categories.every((filter) => filter.tagIds.some((id) => note.tagIds.includes(id)));
+/**
+ * True if a note is shown under these filters (a tab's own plus any additional filters): it must have,
+ * for every filter, at least one of that filter's tags. Bin notes are hidden unless a filter ticks Bin.
+ */
+export function noteMatchesFilters(note: Note, filters: TabFilter[]): boolean {
+  const lifetimeFilter = filters.find((filter) => filter.categoryId === LIFETIME_CATEGORY_ID);
+  if (lifetimeOf(note) === LIFETIME_BIN && !lifetimeFilter?.tagIds.includes(LIFETIME_BIN)) return false;
+  return filters.every((filter) =>
+    filter.categoryId === LIFETIME_CATEGORY_ID
+      ? filter.tagIds.includes(lifetimeOf(note))
+      : filter.tagIds.some((id) => note.tagIds.includes(id)),
+  );
 }
 
 /**
