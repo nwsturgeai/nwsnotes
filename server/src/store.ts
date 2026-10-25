@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/pro
 import path from "node:path";
 import {
   isLifetimeTag,
+  isLongForm,
   lifetimeOf,
   LIFETIME_ACTIVE,
   LIFETIME_ARCHIVED,
@@ -17,6 +18,7 @@ import {
   type LifetimeChange,
   type Note,
   type NotesData,
+  type NoteDetails,
   type NoteTitle,
   type Tab,
 } from "@nwsnotes/shared";
@@ -123,6 +125,11 @@ export class NoteStore {
   private lastNoteId = 0;
   private lastSaveMs = 0;
   private latestFileName: string | undefined;
+  /**
+   * Set when the latest save-file was written for an update of this long-form note. Anything else
+   * (creating it, other changes, a restart) clears it, so the file it describes is kept.
+   */
+  private lastLongFormUpdateId: number | undefined;
   /** Changes run one at a time, in order. */
   private queue: Promise<unknown> = Promise.resolve();
 
@@ -168,17 +175,34 @@ export class NoteStore {
     return { name: this.latestFileName, path: path.join(this.dataDir, this.latestFileName) };
   }
 
-  /** Adds a note (title already validated) and saves. Resolves once it is on disk. */
-  add(title: NoteTitle, rawTagIds: unknown): Promise<Note> {
+  /**
+   * Adds a note (title and details already validated) and saves. Resolves once it is on disk.
+   * With details it's a long-form note; with a parent id it's a child of an open long-form note.
+   */
+  add(title: NoteTitle, rawTagIds: unknown, details: NoteDetails | undefined, rawParentId: unknown): Promise<Note> {
     return this.enqueue(async () => {
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
+      if (details && title.titleText === undefined) {
+        throw new RequestError(400, "A long-form note's title must be typed text.");
+      }
+      let parentId: number | undefined;
+      if (rawParentId !== undefined && rawParentId !== null) {
+        const parent = this.notes.find((n) => n.id === rawParentId);
+        if (!parent || !isLongForm(parent)) {
+          throw new RequestError(400, `Note ${String(rawParentId)} isn't a long-form note, so it can't have child notes.`);
+        }
+        if (details) throw new RequestError(400, "A long-form note can't be the child of another one.");
+        parentId = parent.id;
+      }
 
       const now = this.nextSaveTime();
       const timestamp = now.toISOString();
       const note: Note = {
         id: this.lastNoteId + 1,
         ...title,
+        ...details,
+        ...(parentId !== undefined && { parentId }),
         createdDateTime: timestamp,
         lastModifiedDateTime: timestamp,
         // New notes are always New.
@@ -193,7 +217,7 @@ export class NoteStore {
    * Replaces a note's title (already validated) and tags, then saves. The note keeps its id, its
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
    */
-  updateNote(id: number, title: NoteTitle, rawTagIds: unknown): Promise<Note> {
+  updateNote(id: number, title: NoteTitle, rawTagIds: unknown, details: NoteDetails | undefined): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
@@ -206,6 +230,22 @@ export class NoteStore {
             : "This note is typed, so it must be updated with new text, not an image.",
         );
       }
+      // A long-form note stays long-form, with the same kind of details; a regular note stays regular.
+      const longForm = isLongForm(existing);
+      if (longForm !== (details !== undefined)) {
+        throw new RequestError(
+          400,
+          longForm ? "This is a long-form note, so it must be updated with its details." : "This note isn't long-form, so it can't have details.",
+        );
+      }
+      if (details && (existing.detailsImage !== undefined) !== (details.detailsImage !== undefined)) {
+        throw new RequestError(
+          400,
+          existing.detailsImage !== undefined
+            ? "This note's details are handwritten, so they must be updated with a new image, not text."
+            : "This note's details are typed, so they must be updated with new text, not an image.",
+        );
+      }
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
 
@@ -213,12 +253,16 @@ export class NoteStore {
       const note: Note = {
         id,
         ...title,
+        ...details,
+        // A child keeps its parent.
+        ...(existing.parentId !== undefined && { parentId: existing.parentId }),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
         // Editing keeps the note's Lifetime.
         tagIds: [...tagIds.value, lifetimeOf(existing)],
       };
-      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) });
+      // Repeated saves of a long-form note being edited replace each other (see save()).
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, longForm ? id : undefined);
       return note;
     });
   }
@@ -365,8 +409,15 @@ export class NoteStore {
     return new Date(Math.max(Date.now(), this.lastSaveMs + 1));
   }
 
-  /** Saves the current data with `change` applied (only the parts given are replaced). */
-  private async save(now: Date, change: Partial<StoreData>): Promise<void> {
+  /**
+   * Saves the current data with `change` applied (only the parts given are replaced).
+   * `longFormUpdateId` is set when this save is an update of that long-form note: if the previous
+   * save-file was too, it's deleted once this one is written, so a long editing session (saving every
+   * 30 seconds) leaves one save-file rather than hundreds.
+   */
+  private async save(now: Date, change: Partial<StoreData>, longFormUpdateId?: number): Promise<void> {
+    const replaces =
+      longFormUpdateId !== undefined && this.lastLongFormUpdateId === longFormUpdateId ? this.latestFileName : undefined;
     const notes = change.notes ?? this.notes;
     const categories = change.categories ?? this.categories;
     const tabs = change.tabs ?? this.tabs;
@@ -387,7 +438,13 @@ export class NoteStore {
     this.lastNoteId = lastNoteId;
     this.lastSaveMs = now.getTime();
     this.latestFileName = fileName;
+    this.lastLongFormUpdateId = longFormUpdateId;
 
+    try {
+      if (replaces) await unlink(path.join(this.dataDir, replaces));
+    } catch (error) {
+      console.error(`Couldn't delete the replaced save-file ${replaces}:`, error);
+    }
     try {
       await this.deleteOldFiles();
     } catch (error) {

@@ -20,9 +20,12 @@ id - a unique integer id.  Should be auto-created on the server, starting at 1, 
 titleText - a string.  May not be empty - notes with empty title should be rejected.  Trim leading/trailing whitespace.  Max length 500 characters.
 titleImage - a string containing the base64 image data if the note has been created from stylus handwriting.  Exactly one of titleText and titleImage should be populated on each note.
 createdDateTime
-lastModifiedDateTime - for now I will not yet add note-editing or note-deleting capability, those will come in future.
+lastModifiedDateTime
 timestamps should be set by the server.  Dates should be stored in ISO 8601 format, UTC timezone.
 Tags - can have multiple.  More details below.  The note should reference/store the ids of the tags it is tagged with.
+detailsText (string, max length 10000 character)
+detailsImage - a string containing base64 image data.  Exactly One of detailsText or detailsImage will be populated for long-form notes
+parentId - an integer, nullable.  When this note is a child of a long-form note, then parentId gives the id of that associated long-form note.
 
 The main app screen will show:
 A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
@@ -167,6 +170,55 @@ Pressing Update causes any changes to the note to be saved to the server and the
 Pressing Cancel causes any changes to be discarded and the Add-Note section reverts to its normal "Add" behaviour.
 Whilst in edit mode it should not be possible to switch to a different Tab.
 Tag selections for a note can be updated in edit mode to have any new tag values.  Updating a note with new Tag selections can therefore cause the note to disappear from the current Tab - this is correct and wanted.
+
+
+## Long-form Notes
+
+A long-form note has "details" (text or image) as well as a title.  The title of a long-form note must always be text (i.e. never an image).  Long-form notes can have "child" regular notes.
+When creating or editing a long-form note, the long-form note editing area takes up all of the screen apart from the create/edit regular note section (which takes up the bottom 150px or 250px).  In other words, the long-form editing area covers over both header strips and the whole note list area.
+The button to create a new long-form note appears when the create-regular-note section is expanded to 250px height.  When this happens, a new "create long form note" button should appear underneath the create-note button (or underneath the "clear" button in stylus mode).  The new button should be the same size as the create-note button, and should have icon fa-chart-diagram.
+After clicking "create long form note", the long-form note editing area should be shown, and the long-form-note workflow begins (see below).  The chevron to collapse the create-regular-note section should be disabled whilst creating or editing a long-form note.
+
+The long-form note editing area contains the following:
+A textbox to type the title, across most of the top of the screen.
+An "accept title" icon button (fa-check) in the top-right.
+A set of dropdowns for setting tags.  These appear underneath the title textbox.
+A large textarea (multiline text accepted) or canvas for entering the details of this note (canvas if in stylus-mode, textarea otherwise).
+A button with text "Finish" centred below the textarea/canvas.  The textarea/canvas should occupy all the vertical space between the dropdowns and the Finish button.
+
+### Workflow
+Details of a long form note can only be created / edited after the title has been set.  The title has to be non-empty.
+Clicking "accept title" causes the new long form note to be created (details initially empty) and makes the details available to be edited.
+Once the title is set, the "accept title" button changes to become an "edit title" button (icon fa-pen).  If the title is being edited then the details are locked and uneditable - the details can only be edited whilst the title is locked and uneditable.
+When "edit title" is clicked then the title becomes editable and the details locked.  The "edit title" button reverts to being "accept title".  Clicking "accept title" for a note that has already been created causes the new title to be sent to the server, the title becomes locked again, the details editable, and "accept title" once again becomes "edit title".
+Once the long form note details are being edited: if the details are changed then an updated version of the note should be sent to the server.  Wait for 30 seconds before sending an updated note to the server, and send new updates at most once every 30 seconds.
+The tags for a long-form note can be updated either when the title is being set/edited, or when the details are being edited.
+Tags for a long-form note are not limited to the tags matching the current Tab.  In other words, once finished, this new long-form note might not appear in the current tab.
+
+When "Finish" is clicked, then:
+the current version of the note is saved i.e. don't wait for the 30-second timer to complete.
+the screen reverts to the regular notes-list view, including the 2 header strips.
+
+On the server, when receiving an update for a long-form-note (either because of the timer, or a click of the Finish button):
+If the most recent previous save file was also created because of an edit of this same long-form note, then after creating the new save file, delete the previous save file.
+
+New long-form notes should start with the "New" lifetime tag (the same as regular notes).
+Long-form notes are displayed in the notes list the same as regular notes.  The only difference: after any tag pills, there should be an extra pill with text "Long Form".  This final pill should have a different colour.
+
+There will be no "clear" button for the stylus-mode long-form note details.  I will add an Eraser option in a future change.
+
+
+### Editing a long-form note
+Within the notes list, when the Edit button is clicked on a long-form note:
+The main page area should switch into long-form note editing mode.  The current title and details of the note should be populated into the appropriate controls.  The title is initially locked so that the details can be edited.  The button "edit title" is shown (i.e. not "accept title").
+
+### Regular notes whilst creating / editing a long-form note
+Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
+New regular notes created whilst creating/editing a long-form note will be given the Tags matching the currently-active Tab (i.e. the same as when creating regular notes just from the notes list).
+
+Any regular note created whilst creating/editing a long-form note:
+These new regular notes should have their "parentId" field populated with the id of the long-form-note.
+When these regular notes are shown in the notes-list: after any pills for their tags, the regular note should have an additional final pill with the title of the long-form note, truncated to at most 20 characters.  This final pill should have the same colour as the "Long Form" pill described above.
 
 
 ## Note Lifetime
@@ -360,6 +412,25 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Update:** saves with `PUT /api/notes/:id` and updates the list in place, without scrolling it. An empty title is refused ("The note title can't be empty" / "Nothing has been written yet"), since notes can't be deleted yet. If saving fails, the error is shown and the edits are kept for a retry.
 - **Cancel** discards the changes. After Update or Cancel the area returns to adding notes, empty, with the earlier tag choices.
 - **What's blocked while editing:** changing tab, the additional tab filters, every note's edit, archive, reinstate and bin buttons, and the Settings cog, so nothing is left half-edited.
+
+### Long-form notes
+- **Data:** a long-form note has a text title (`titleText`, never `titleImage`) and exactly one of `detailsText` (at most 10,000 characters) or `detailsImage` (a PNG data URL). Having one of these fields is what makes a note long-form. The kind is chosen when the note is created, from stylus mode at that moment (canvas → `detailsImage`, otherwise `detailsText`), and never changes afterwards, like a regular note's title type. A new long-form note starts with empty details (`detailsText: ""` or `detailsImage: ""`).
+- **Child notes:** regular notes created while a long-form note is open get `parentId` set to its id. The server checks that `parentId` names an existing long-form note; long-form notes can't have a parent, and a child can't be long-form. If the parent is later deleted (Empty Bin), the child keeps its `parentId` but its parent pill no longer shows.
+- **Titles** follow the usual title rules (trimmed, not empty, at most 500 characters). They don't need to be unique.
+- **Image size:** handwritten details fill a much larger canvas than a title, so `detailsImage` may be up to 2 MB (counting the data URL's characters), and the server's request size limit rises to 3 MB. Like titles, the drawing is cropped to what's written plus a margin, and stored at 2× pixel density.
+- **API:** `POST /api/notes` with `{ "titleText": "...", "detailsText": "" | "detailsImage": "", "tagIds": [...] }` creates a long-form note (New, like any new note). `PUT /api/notes/:id` updates it with the same fields; the details kind can't change. Child notes are created with `POST /api/notes` plus `"parentId": <id>`.
+- **Opening the editor:** the "create long-form note" button (`fa-chart-diagram`, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
+- **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
+- **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note and follow the selected tab's rules as usual.
+- **Saving:**
+  - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it.
+  - Details and tag changes made while editing the details are saved at most every 30 seconds: the first change starts a 30-second timer, and when it runs out the latest version is sent; later changes wait for the next window.
+  - "Finish" sends any pending change straight away, then closes the editor. A pending change is also sent straight away if the app goes into the background.
+  - If a save fails, a small notice shows and it's retried at the next window.
+  - Each save tells other open pages to reload. If two pages edit the same note, the last save wins; an open editor isn't changed by live updates.
+- **Fewer save-files while editing:** the server remembers what caused its last save. When a long-form note is updated and the previous save-file was also an update of that same note, the previous file is deleted after the new one is written. So a long editing session leaves one save-file, not one per 30 seconds. A note's creation, other changes in between (e.g. a child note being added) and server restarts all break the run, so those files are kept.
+- **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish" are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas (an eraser will come later). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
+- **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters, in the same amber. Long-form notes get the usual buttons (edit, waiting, archive and so on).
 
 ### Note lifetime
 - **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4, Waiting -5 (added later, so it can't be renumbered; it's still listed in the order New, Active, Waiting, Archived, Bin). It can't be edited or renamed, and user categories can't use its name.
