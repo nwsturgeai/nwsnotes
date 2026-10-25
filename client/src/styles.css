@@ -102,6 +102,16 @@ input:disabled {
   height: 100dvh;
 }
 
+/*
+ * The app's own screens fit the window exactly and scroll inside their areas, so the page itself never
+ * needs to scroll. Stopping it means the browser can't slide the header or the new-note area off screen
+ * (e.g. when the on-screen keyboard opens). The login and error pages still scroll normally.
+ */
+html:has(.app),
+body:has(.app) {
+  overflow: hidden;
+}
+
 .app-header {
   display: flex;
   flex: none;
@@ -286,8 +296,12 @@ a:focus-visible {
   gap: 0.35rem 0.5rem;
 }
 
-/* The Columns setting splits the list into balanced columns (column-count is set from NotesPage). */
-.note-list ul {
+/*
+ * The Columns setting splits the list into balanced columns (column-count is set from NotesPage).
+ * Only the list itself and its notes ("> ul", "> ul > li"), not the pill lists inside notes, which
+ * would otherwise lose their gap.
+ */
+.note-list > ul {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -295,7 +309,7 @@ a:focus-visible {
   column-rule: 1px solid var(--line);
 }
 
-.note-list li {
+.note-list > ul > li {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
