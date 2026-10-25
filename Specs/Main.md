@@ -16,7 +16,7 @@ The website should have the necessary attributes to be useable as an Android Pro
 ## Notes and main screen
 
 Each note will have the following attributes:
-id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.
+id - a unique integer id.  Should be auto-created on the server, starting at 1, each new note takes the next id value.  Ids should never be reused even after notes get deleted.
 titleText - a string.  May not be empty - notes with empty title should be rejected.  Trim leading/trailing whitespace.  Max length 500 characters.
 titleImage - a string containing the base64 image data if the note has been created from stylus handwriting.  Exactly one of titleText and titleImage should be populated on each note.
 createdDateTime
@@ -29,6 +29,8 @@ A list of all notes occupying most of the page.  Notes should appear in created-
 If there isn't enough space to show all notes, then scroll vertically to see the rest.
 There will be an area to enter a new note at the bottom of the page - always visible even if there are more notes than fit.  This area at the bottom should not scroll when the list of notes scrolls.  This area should be fixed height, 150px tall.
 There should be no "New note" heading.
+Horizontal padding in the "New note" area should be very small, to maximise the horizontal space for note content.
+The Add button (in the New note area) should have an icon (fa-circle-plus) and no text.  The button should be the same size as the cog icon Settings button in the top header.
 For now, phone layout is not important, I will make changes later to address that use-case.
 
 ## Settings and lifecycle
@@ -89,6 +91,7 @@ Saving the note should capture the image data from the canvas and store that as 
 When displaying the list of notes, if a note has a title image (and no title text) then the image should be displayed, and no title text should be displayed.
 Handwritten notes can still have tags the same as typed notes.
 
+In stylus mode, the add-note area has a "Clear" button (as well as the Add button).  The Clear button should be the same size as the Add button and should use icon fa-delete-left and have no text.
 The "Clear" button should be shown underneath the "Add" button - this gives more horizontal space for handwriting.
 Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns: when in stylus mode, these controls should not respond to touch inputs - they should only respond to stylus or mouse inputs. Touch inputs should continue to work when not in stylus mode.
 
@@ -120,16 +123,62 @@ Notes that are "filtered out" remain in the system, they are just hidden.  They 
 When the currently-selected Tab has a Category filter containing a single Tag: the new-note area should have that one Tag automatically selected in the corresponding dropdown.  It should not be possible to change this selection.
 Changing tab should cause all new-note dropdowns to reset, either to "unselected", or to the single value from the corresponding Tab Category filter.
 
+### Additional Tab filters
+
+Underneath the main "Tabs" header, a second header area is shown within the tab but above the list of notes.  This second header area should not scroll with the notes.
+The second header area should show a set of dropdowns, one for each Category that is not specified in the Tab definition. These dropdowns behave the same way as when defining a Tab.
+When a selection is made in any of these dropdowns, the notes shown in the list should be filtered using these selections in addition to any filtering from the Tab definition, using the same filtering logic as in the Tab definition.
+The selections within the dropdowns should be saved into Browser Local Storage.  The selections should be linked to the Tab in which they were made. The next time this tab is opened on this device, the same selections that were there the last time should be preselected.
+At the right of the dropdowns, there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.
+
 
 ## Editing Notes
 
-On the Notes page, in the notes-list area: each note should have an "edit" icon.  The icon should be shown on the right-hand side of the screen.
+On the Notes page, in the notes-list area: each note should have an "edit" icon.  The icon should be shown on the right-hand side of the screen.  The icon should be 16px wide by 16px high, inside a 24px-square tap area.  This is small, I am making a trade-off between ease of tapping versus retaining maximum area for note content.
 When the edit icon is clicked for a note, the Add-Note section changes into edit-mode.  For text-notes, the text control is shown with the current title of the note.  For image-notes, the canvas needs to be shown and the image needs to be loaded into the canvas.  Text-editing or image-editing becomes enabled according to the type of the note being edited and disregards whether stylus-mode is enabled or not.
-In edit-mode, the "Add" button becomes an "Update" button, and a new "Cancel" button also appears.
+In edit-mode, the "Add" button becomes an "Update" button (with icon fa-circle-check, size remains the same, no text), and a new "Cancel" button also appears.  The Cancel button uses icon fa-x and has no text.  It is the same size as the Add button.
 Pressing Update causes any changes to the note to be saved to the server and the notes list updated to reflect the changes.  The Add-Note section reverts to its normal "Add" behaviour.
 Pressing Cancel causes any changes to be discarded and the Add-Note section reverts to its normal "Add" behaviour.
 Whilst in edit mode it should not be possible to switch to a different Tab.
 Tag selections for a note can be updated in edit mode to have any new tag values.  Updating a note with new Tag selections can therefore cause the note to disappear from the current Tab - this is correct and wanted.
+
+
+## Note Lifetime
+
+### "Lifetime" system Category
+
+There should be a system-controlled Category with name "Lifetime".
+This category cannot be edited in the Settings page.
+This is a single-select Category.
+This category should have possible Tags: "New", "Active", "Archived", "Bin".  I suggest these tags be given negative ids.
+When creating or editing a note, this system category should not have a drop-down.
+New notes are always given the "New" tag from this Category.
+The "Active" tag in this category should never be displayed as a pill in the notes-list.
+When this Category is first introduced, all existing notes should be tagged with the "Active" tag.
+Tab filter definitions can specify values for this system Category.  Additional Tab filters can specify values for this system Category (if the Tab definition does not already do so).
+
+### Archiving
+
+On the Notes screen, each note in the notes-list which is not tagged "Archived" should have an "archive" button (using icon fa-box-archive) alongside the edit button.  This button should be the same size as the edit button.
+When the Archive button is clicked, the note is given the "Archived" tag (and Tag New or Active is removed).
+Notes with the Archived tag should have a background #606060.  Black text is quite hard to read against this colour - that is deliberate.  Handwriting notes should also have this same dark background.
+For Notes with the Archived tag: in place of the "archive" button, they should have a "reinstate" button (fa-rotate-left).
+Pressing the reinstate button takes away the Archived tag and adds the Active tag.
+If the current Tab definition filter (or additional tab filter) specifies that archived items should not be shown in this tab: in this case, when the user clicks to archive a note, the note should then disappear from the current list of notes.
+
+### Bin
+Any notes with the Bin Tag should be hidden from the notes-list unless the Tab-filter-definition or additional-tab-filters explicitly indicate that Bin items should be shown.  In other words, if a Tab has no filter set for the Lifetime category, notes tagged with Bin should still be hidden.
+Notes with the Archived tag should have an extra icon button to the right: "move to bin" (fa-trash-can).  Clicking this button removes the Archived tab from this note and adds the Bin tag to this note.  Usually this will cause the note to become hidden.
+When a Bin-tagged note is shown in the Notes list, it should have a "reinstate" button (the same as for Archived notes).  Similar to Archived notes, clicking "reinstate" removes the "Bin" tag and sets the "Active" tag.  Bin-tagged notes should have a background #B00000 (same for handwriting notes).
+Buttons for each note should be right-aligned.  It doesn't matter if they don't line up vertically, the important thing is to preserve as much space as possible for note content.
+
+
+### Lifetime changes
+
+The Settings page should have three new Lifetime buttons in a section at the top below the "Stylus mode" section.  The buttons are:
+Reset New:  Clicking this button will update all notes tagged as "New" to switch to being tagged "Active".
+Archived to Bin: Clicking this button will update all notes tagged as "Archived" to instead be tagged "Bin".  There should be a confirmation modal asking if the user is sure, saying how many notes will be put in the bin.
+Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
 
 
 ## Agreed technical decisions
@@ -140,9 +189,11 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - Icons: Font Awesome Free (solid icons), installed from npm (`@fortawesome/fontawesome-svg-core`, `@fortawesome/free-solid-svg-icons`, `@fortawesome/react-fontawesome`) and bundled into the app, not loaded from a CDN, so the security headers and offline start-up keep working. All the app's icons use it, including the settings cog (`fa-gear`).
 
 ### API
-- `GET /api/notes` - returns `{ "notes": [...], "categories": [...], "tabs": [...] }`: all notes, all categories with their tags, and all tabs (the most recent save-file's contents).
+- `GET /api/notes` - returns `{ "notes": [...], "categories": [...], "tabs": [...] }`: all notes, all categories with their tags, and all tabs (the most recent save-file's contents). `categories` also includes the built-in Lifetime category (see Note lifetime).
 - `POST /api/notes` - body `{ "titleText": "...", "tagIds": [3, 7] }` (`tagIds` may be empty), or `{ "titleImage": "data:image/png;base64,...", "tagIds": [...] }` for a handwritten note. Exactly one of `titleText` and `titleImage` must be given. The server assigns the id and timestamps, saves a new save-file and returns the created note. The website sends its connection id in an `X-Connection-Id` header (see Live updates).
 - `PUT /api/notes/:id` - same body as `POST /api/notes`, with the same checks; replaces the note's title and tags. A note keeps its type: a typed note must be given `titleText` and a handwritten one `titleImage`. The server updates `lastModifiedDateTime` (`id` and `createdDateTime` stay the same, so the note keeps its place in the list), saves a new save-file and returns the updated note.
+- `PUT /api/notes/:id/lifetime` - body `{ "lifetime": "Active" | "Archived" | "Bin" }`. Replaces the note's Lifetime tag, updates `lastModifiedDateTime`, saves a new save-file and returns the updated note.
+- `POST /api/notes/reset-new`, `POST /api/notes/archived-to-bin` and `POST /api/notes/empty-bin` - the Settings Lifetime buttons. Each changes (or, for empty-bin, deletes) every matching note in one save and returns `{ "count": n }`.
 - `POST /api/categories` - body `{ "name": "...", "multiSelect": false, "tags": [{ "name": "..." }] }`. The server assigns the category and tag ids, saves a new save-file and returns the created category.
 - `PUT /api/categories/:id` - body as above, but existing tags include their `id` (`{ "id": 3, "name": "..." }`); tags without an `id` are new. Saves a new save-file and returns the updated category.
 - `POST /api/tabs` - body `{ "name": "...", "categories": [{ "categoryId": 1, "tagIds": [1, 6] }] }`. The server assigns the id, saves a new save-file and returns the created tab.
@@ -165,6 +216,8 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 ### New-note area
 - The area is a fixed 150px high (including its padding and border) at the bottom of the page and never scrolls with the note list; the list fills the rest of the page below the header. Padding is reduced so the canvas, buttons and one row of dropdowns fit. If more appears than fits (an error message, or dropdowns wrapping onto a second row), the area scrolls inside itself; it never grows.
 - A single-line text box and an "Add" button. Pressing Enter also adds the note. There is no "New note" heading; the text box keeps its placeholder text and an accessible label.
+- **Side padding** is very small (about 4px), to give note content as much width as possible.
+- **Icon buttons:** Add (`fa-circle-plus`), Update (`fa-circle-check`), Cancel (`fa-x`) and Clear (`fa-delete-left`) show only an icon, with a tooltip and screen-reader label giving the action. All four are the same size as the Settings cog (40px square). Add and Update are filled in the accent colour; Cancel and Clear are outlined.
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible.
 - When the page loads, the list starts scrolled to the bottom.
 - In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
@@ -188,12 +241,13 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - Ids: a new category gets the highest category id + 1; a new tag gets the highest tag id across all categories + 1. Both start at 1.
 - Category and tag names are trimmed, can't be empty and are at most 40 characters. Category names must be unique, and tag names unique within their category; both checks ignore upper/lower case ("Work" and "work" count as the same).
 - A tag can't have the same name as its own category (ignoring upper/lower case), as the category name is what an unset dropdown shows. Tags in other categories may share it. Categories saved before this rule still load and work; saving one that breaks it is refused, with a message naming the clashing tag, until the tag or the category is renamed.
+- No user category can be called "Lifetime" (ignoring upper/lower case); that name belongs to the built-in category.
 - `multiSelect` can be changed from false to true, but not back. A note's `tagIds` must all exist, with at most one from each single-select category.
 - Categories, tags within a category, and the dropdowns all appear in the order they were created (id order). A note's pills appear in category order, then tag order.
 - Renaming a tag changes it on every note that has it, because notes store only the tag id.
 
 ### Category editing
-- The settings page has a Categories section listing each category's name with its tags, and an "Add category" button.
+- The settings page has a Categories section listing each category's name with its tags, and an "Add category" button. The built-in Lifetime category is listed too, marked "Built-in", and isn't clickable.
 - Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (locked once the category has been saved as multi-select), one text box per tag for renaming, and an "Add tag" button that adds an empty tag row.
 - Empty new tag rows are ignored when saving. Emptying an existing tag's name is an error, as tags can't be deleted.
 - "Save" sends the whole category in one call and returns to the settings page. If saving fails, the error is shown on the page and the edits are kept so you can retry.
@@ -240,22 +294,50 @@ Tag selections for a note can be updated in edit mode to have any new tag values
   - Categories the tab doesn't list work as before.
 - Changing tab resets every dropdown: to no tag, or to the locked tag for one-tag filters.
 
+### Additional tab filters
+- **Filter row:** below the header, inside the selected tab and above the note list, a row that doesn't scroll with the notes. It has one dropdown per category the tab doesn't already filter on (for "All", every category), including Lifetime when the tab doesn't set it. Like the tab editor, every dropdown is a check-list, even for single-select categories. At the right is a "reset filters" button (`fa-reply-all`, the same 24px size as the note buttons), which clears every dropdown in the row.
+- **Matching:** the row's choices combine with the tab's own filter using the same rules: every category must match, and any ticked tag within a category will do.
+- **Remembered per tab, per device:** the choices are saved in the browser's local storage under the tab's id (or "all"), and are put back the next time that tab is opened on this device. Saved choices for a category the tab now filters on itself are ignored. Local storage is wrapped so the app still works when it isn't available.
+- **New notes:** the row's choices set the new-note dropdowns exactly like a tab's own filter (one ticked tag is locked in; several mean one is required), so new notes stay visible.
+- **Lifetime and new notes:** new notes are always New, and there's no Lifetime dropdown to change that. If the tab or the row hides New notes, the note is still added, and a short notice says "Note added, but this tab doesn't show New notes." for a few seconds.
+- **While editing,** the row is blocked like the tabs, so the note being edited can't be filtered out mid-edit.
+
 ### Editing notes
-- **Edit icon:** each note in the list has an `fa-pen` icon at the right-hand side, which responds to touch as normal (it's in the list, not the new-note controls). The note being edited is highlighted in the list.
+- **Edit icon:** each note in the list has an `fa-pen` icon at the right-hand side, which responds to touch as normal (it's in the list, not the new-note controls). The icon is 16px inside a 24px-square tap area, a deliberate trade-off to leave more room for note content. The note being edited is highlighted in the list.
+- **Lifetime while editing:** there's no Lifetime dropdown; editing keeps the note's Lifetime tag.
 - **Edit mode:** clicking the icon turns the bottom area into edit mode for that note. A typed note shows the text box with its title; a handwritten note shows the canvas with its image, whatever stylus mode is set to. "Add" becomes "Update" and a "Cancel" button appears (for handwritten notes, "Clear" stays too). Enter updates a typed note; Escape cancels.
 - **Loading an image:** the note's image is drawn at its original size at the top-left of the canvas. If it's wider than the canvas (e.g. written in landscape, edited in portrait), it's shrunk to fit, so nothing is lost on Update. Editing a handwritten note means writing more on it or using "Clear" to start again; there's no eraser.
 - **Draft:** pressing edit while part-way through a new note discards that draft (typed text or writing). The new-note tag choices are kept and come back after Update or Cancel.
 - **Tags while editing:** the dropdowns show the note's own tags and can be changed to anything; the selected tab's locked and required rules don't apply. If the new tags no longer match the selected tab, the note disappears from it after Update, as intended.
 - **Update:** saves with `PUT /api/notes/:id` and updates the list in place, without scrolling it. An empty title is refused ("The note title can't be empty" / "Nothing has been written yet"), since notes can't be deleted yet. If saving fails, the error is shown and the edits are kept for a retry.
 - **Cancel** discards the changes. After Update or Cancel the area returns to adding notes, empty, with the earlier tag choices.
-- **What's blocked while editing:** changing tab, the other notes' edit icons and the Settings cog, so nothing is left half-edited.
+- **What's blocked while editing:** changing tab, the additional tab filters, every note's edit, archive, reinstate and bin buttons, and the Settings cog, so nothing is left half-edited.
+
+### Note lifetime
+- **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4. It can't be edited or renamed, and user categories can't use its name.
+- **Every note has exactly one Lifetime tag.** The server always gives new notes New, ignoring any Lifetime tag sent, and keeps the existing one when a note is edited. Only the lifetime endpoints change it.
+- **Introducing it:** when a save-file is loaded, any note without a Lifetime tag gets Active; the next save stores it.
+- **Pills:** New, Archived and Bin show as pills in the normal style; Active never does.
+- **Tabs:** tab definitions and the additional tab filters can include Lifetime, as a check-list like any category.
+- **Bin is hidden by default:** Bin notes are hidden in every tab, "All" included, unless the tab's filter or the additional filters tick Bin.
+- **Note buttons:** right-aligned at the right of each note, in this order: edit, then archive (`fa-box-archive`) for New and Active notes, or reinstate (`fa-rotate-left`) for Archived and Bin notes, then move-to-bin (`fa-trash-can`) for Archived notes only. All use 16px icons in 24px tap areas. They don't need to line up between notes.
+- **Actions:** archive sets Archived. Reinstate sets Active, from Archived or from Bin. Move-to-bin sets Bin. Each updates the list straight away; a note that no longer matches the tab or the filters disappears from it.
+- **Colours:** Archived notes have a `#606060` background and Bin notes `#B00000`, handwritten notes included (their light paper is replaced). The text stays black, which is deliberately hard to read. The note buttons on these rows turn light (near-white) so they stay visible.
+- **Settings Lifetime section,** directly below Stylus mode, with three buttons in a row:
+  - "Reset New" changes every New note to Active straight away, then reports how many ("3 notes changed to Active").
+  - "Archived to Bin" first asks "Move 5 archived notes to the bin?".
+  - "Empty Bin" first asks "Permanently delete 4 notes in the bin?".
+  - The confirmations are the app's own pop-up windows (not the browser's), with the count. If there's nothing to change, the button says so (e.g. "There are no archived notes.") instead of asking.
+  - Emptied notes are gone from the app but remain in the past week's save-files, so they can be recovered from a backup.
+- **Note ids are never reused:** the save-file stores `lastNoteId`, the highest id ever given, and new notes get `lastNoteId + 1`. Files without it start from the highest id present.
+- **Live updates:** every lifetime change reloads other open pages, as for other changes.
 - **Live updates:** if another page changes the note being edited, the last Update wins; the open edit isn't changed by live updates.
 
 ### Header and settings page
 - The header strip has a fixed height and the same background colour as the new-note area. Below it, the note list fills the page above the fixed 150px new-note area.
 - No app title is shown at the left of the header; on the notes page that space holds the tabs. The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes".
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
-- The settings page has, in order: Stylus mode, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+- The settings page has, in order: Stylus mode, Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
 
 ### Live updates (WebSocket)
 - The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
@@ -277,7 +359,7 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - Filename format: `notes-2026-10-24T09-40-12-345Z.json` (UTC timestamp, no colons).
 - Files are written to a temporary name and then renamed, so a crash mid-save can't leave a corrupt file.
 - Retention cleanup runs after each save and when the server starts.
-- Contents: `{ "version": 2, "savedDateTime": "...", "notes": [...], "categories": [...] }`. A version 1 file (from before tags) loads with no categories and every note's `tagIds` empty; the next save writes version 2. Handwritten notes add `titleImage` in place of `titleText`; the file stays version 2, as existing files are still valid. Tabs are saved as a `"tabs": [...]` list in the same file (still version 2); a file without it loads with no tabs, so only "All" shows.
+- Contents: `{ "version": 2, "savedDateTime": "...", "notes": [...], "categories": [...] }`. A version 1 file (from before tags) loads with no categories and every note's `tagIds` empty; the next save writes version 2. Handwritten notes add `titleImage` in place of `titleText`; the file stays version 2, as existing files are still valid. Tabs are saved as a `"tabs": [...]` list in the same file (still version 2); a file without it loads with no tabs, so only "All" shows. A `"lastNoteId"` number is also stored (still version 2), so note ids are never reused after notes are deleted; the built-in Lifetime category itself isn't stored, only each note's Lifetime tag id.
 
 ### Hosting (Ubuntu VM)
 - App code lives in `/opt/nwsnotes`, run by a dedicated `nwsnotes` user under pm2. pm2 starts the app on boot.
