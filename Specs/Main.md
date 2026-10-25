@@ -187,14 +187,21 @@ A large textarea (multiline text accepted) or canvas for entering the details of
 A button with text "Finish" centred below the textarea/canvas.  The textarea/canvas should occupy all the vertical space between the dropdowns and the Finish button.
 
 ### Workflow
-Details of a long form note can only be created / edited after the title has been set.  The title has to be non-empty and unique.
+Details of a long form note can only be created / edited after the title has been set.  The title has to be non-empty.
 Clicking "accept title" causes the new long form note to be created (details initially empty) and makes the details available to be edited.
 Once the title is set, the "accept title" button changes to become an "edit title" button (icon fa-pen).  If the title is being edited then the details are locked and uneditable - the details can only be edited whilst the title is locked and uneditable.
 When "edit title" is clicked then the title becomes editable and the details locked.  The "edit title" button reverts to being "accept title".  Clicking "accept title" for a note that has already been created causes the new title to be sent to the server, the title becomes locked again, the details editable, and "accept title" once again becomes "edit title".
-Once the long form note details are being edited: if the details are changed then an updated version of the note should be sent to the server.  Wait for 10 seconds before sending an updated note to the server, and send new updates at most once every 10 seconds.
+Once the long form note details are being edited: if the details are changed then an updated version of the note should be sent to the server.  Wait for 30 seconds before sending an updated note to the server, and send new updates at most once every 30 seconds.
 The tags for a long-form note can be updated either when the title is being set/edited, or when the details are being edited.
 Tags for a long-form note are not limited to the tags matching the current Tab.  In other words, once finished, this new long-form note might not appear in the current tab.
-When "Finish" is clicked, then the screen reverts to the regular notes-list view, including the 2 header strips.
+
+When "Finish" is clicked, then:
+the current version of the note is saved i.e. don't wait for the 10-second timer to complete.
+the screen reverts to the regular notes-list view, including the 2 header strips.
+
+On the server, when receiving an update for a long-form-note (either because of the timer, or a click of the Finish button):
+If the most recent previous save file was also created because of an edit of this same long-form note, then after creating the new save file, delete the previous save file.
+
 New long-form notes should start with the "New" lifetime tag (the same as regular notes).
 Long-form notes are displayed in the notes list the same as regular notes.  The only difference: after any tag pills, there should be an extra pill with text "Long Form".  This final pill should have a different colour.
 
