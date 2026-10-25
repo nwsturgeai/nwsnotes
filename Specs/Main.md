@@ -30,6 +30,7 @@ If there isn't enough space to show all notes, then scroll vertically to see the
 There will be an area to enter a new note at the bottom of the page - always visible even if there are more notes than fit.  This area at the bottom should not scroll when the list of notes scrolls.  This area should be fixed height, 150px tall.
 There should be no "New note" heading.
 Horizontal padding in the "New note" area should be very small, to maximise the horizontal space for note content.
+The Add button (in the New note area) should have an icon (fa-circle-plus) and no text.  The button should be the same size as the cog icon Settings button in the top header.
 For now, phone layout is not important, I will make changes later to address that use-case.
 
 ## Settings and lifecycle
@@ -90,6 +91,7 @@ Saving the note should capture the image data from the canvas and store that as 
 When displaying the list of notes, if a note has a title image (and no title text) then the image should be displayed, and no title text should be displayed.
 Handwritten notes can still have tags the same as typed notes.
 
+In stylus mode, the add-note area has a "Clear" button (as well as the Add button).  The Clear button should be the same size as the Add button and should use icon fa-delete-left and have no text.
 The "Clear" button should be shown underneath the "Add" button - this gives more horizontal space for handwriting.
 Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns: when in stylus mode, these controls should not respond to touch inputs - they should only respond to stylus or mouse inputs. Touch inputs should continue to work when not in stylus mode.
 
@@ -134,7 +136,7 @@ At the right of the dropdowns, there should be a "reset filters" button (same si
 
 On the Notes page, in the notes-list area: each note should have an "edit" icon.  The icon should be shown on the right-hand side of the screen.  The icon should be 16px wide by 16px high.
 When the edit icon is clicked for a note, the Add-Note section changes into edit-mode.  For text-notes, the text control is shown with the current title of the note.  For image-notes, the canvas needs to be shown and the image needs to be loaded into the canvas.  Text-editing or image-editing becomes enabled according to the type of the note being edited and disregards whether stylus-mode is enabled or not.
-In edit-mode, the "Add" button becomes an "Update" button, and a new "Cancel" button also appears.  All 3 buttons should be arranged vertically one above the other.  If necessary, padding should be reduced to make these buttons fit in the available space.
+In edit-mode, the "Add" button becomes an "Update" button (with icon fa-circle-check), and a new "Cancel" button also appears.  The Cancel button uses icon fa-x and has no text.
 Pressing Update causes any changes to the note to be saved to the server and the notes list updated to reflect the changes.  The Add-Note section reverts to its normal "Add" behaviour.
 Pressing Cancel causes any changes to be discarded and the Add-Note section reverts to its normal "Add" behaviour.
 Whilst in edit mode it should not be possible to switch to a different Tab.
