@@ -415,12 +415,34 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - Changing tab resets every dropdown: to no tag, or to the locked tag for one-tag filters.
 
 ### Additional tab filters
-- **Filter row:** below the header, inside the selected tab and above the note list, a row that doesn't scroll with the notes. It has one dropdown per category the tab doesn't already filter on (for "All", every category), including Lifetime when the tab doesn't set it. Like the tab editor, every dropdown is a check-list, even for single-select categories. At the right is a "reset filters" button (`fa-reply-all`, the same 24px size as the note buttons), which clears every dropdown in the row.
+- **Filter row:** below the header, inside the selected tab and above the note list, a row that doesn't scroll with the notes. It has one dropdown per category the tab doesn't already filter on (for "All", every category), including Lifetime when the tab doesn't set it. Like the tab editor, every dropdown is a check-list, even for single-select categories. Just right of the dropdowns (not at the far right) is a "reset filters" button (`fa-reply-all`, the same 24px size as the note buttons), which clears every dropdown in the row.
 - **Matching:** the row's choices combine with the tab's own filter using the same rules: every category must match, and any ticked tag within a category will do.
 - **Remembered per tab, per device:** the choices are saved in the browser's local storage under the tab's id (or "all"), and are put back the next time that tab is opened on this device. Saved choices for a category the tab now filters on itself are ignored. Local storage is wrapped so the app still works when it isn't available.
 - **New notes:** the row's choices set the new-note dropdowns exactly like a tab's own filter (one ticked tag is locked in; several mean one is required), so new notes stay visible.
 - **Lifetime and new notes:** new notes are always New, and there's no Lifetime dropdown to change that. If the tab or the row hides New notes, the note is still added, and a short notice says "Note added, but this tab doesn't show New notes." for a few seconds.
 - **While editing,** the row is blocked like the tabs, so the note being edited can't be filtered out mid-edit.
+
+### Note ordering
+- **Stored on the tab:** each tab has `noteOrder`, an array of note ids (empty or missing for tabs saved before this). The save-file format stays version 2, since a missing `noteOrder` simply means empty. The tab editor doesn't change it. It's set with `PUT /api/tabs/:id/order` and `{ noteOrder: number[] }`. The server keeps only ids of existing notes, drops duplicates, saves, and tells other pages to reload. If two browsers reorder at the same time, the last save wins.
+- **"All" can't be ordered:** the edit-order button isn't shown on "All", which always lists notes in creation order.
+- **List order:** within a tab, notes listed in `noteOrder` come first, in that order. Notes that aren't listed (including new ones) follow in creation order, so a new note still appears at the bottom. Notes in `noteOrder` that don't match the tab or the filters are simply not shown.
+- **Deleted notes:** when notes are deleted (Empty Bin, or cancelling a new long-form note), the server removes their ids from every tab's `noteOrder` in the same save.
+- **Edit-order button:** in the filter row, at the far right, the same 24px size as the note buttons. It shows `fa-arrow-down-wide-short` ("Edit order") when ordering is off and `fa-clipboard-check` ("Finish ordering") when it's on. If a tab already filters on every category, the row has no dropdowns. The row (and its reset button) is then still shown, just to hold the edit-order button. On "All", the row only shows its dropdowns and reset button.
+- **Edit-order mode:**
+  - It isn't remembered: it's off when the app opens.
+  - It stays on when switching tabs, and turns off on "All".
+  - It can't be turned on while a note or long-form note is being edited. The button is greyed out, with the hint "Finish or cancel the edit first".
+  - Note buttons (edit, archive and so on) keep working while it's on. Editing a note turns ordering mode off.
+- **Grips:** in edit-order mode each note shows an `fa-grip-vertical` icon at its left, in a 24px-wide handle.
+- **Dragging:**
+  - Pressing on a grip starts the drag straight away, with no hold delay. Mouse, stylus and finger all work, in stylus mode too, as the grips only appear in this mode.
+  - The note follows the pointer up or down, and a gap the note's height opens between the two notes it's over. Releasing drops it there.
+  - Escape, or releasing it where it started, changes nothing.
+  - The list scrolls by itself when the pointer is near its top or bottom edge.
+  - The grip has `touch-action: none`, so a finger drag doesn't scroll the page.
+- **Columns:** with several columns, the order runs down the first column and then on down the next, and a note can be dropped into any column. The drop point is worked out from where the notes were when the drag started, so the columns re-balancing as the gap opens doesn't make it jump.
+- **Under extra filters:** the moved note goes straight after the visible note it was dropped below, or straight before the first visible note if dropped at the top. Notes that are filtered out keep their places. Each drop saves the order of every note in the tab (all notes matching the tab's own filter, Bin included), so after the first drag nothing in that tab is unordered.
+- **Live updates:** the list shows the new order as soon as the note is dropped, and the save is sent in the background. If it fails, the list returns to the saved order and a notice shows the error. If another page changes something mid-drag, the reload waits until the drag ends.
 
 ### Editing notes
 - **Edit icon:** each note in the list has an `fa-pen` icon at the right-hand side, which responds to touch as normal (it's in the list, not the new-note controls). The icon is 16px inside a 24px-square tap area, a deliberate trade-off to leave more room for note content. The note being edited is highlighted in the list.
