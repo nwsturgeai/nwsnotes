@@ -331,18 +331,13 @@ export function validateCategory(
       const tagName = validateName(tag.name, `The new name for "${current.name}"`);
       if (!tagName.ok) {
         return typeof tag.name === "string" && tag.name.trim() === ""
-          ? { ok: false, error: `The tag "${current.name}" can't be given an empty name, as tags can't be deleted.` }
+          ? { ok: false, error: `The tag "${current.name}" can't be given an empty name; use its bin button to delete it.` }
           : tagName;
       }
       tags.push({ id: current.id, name: tagName.value });
     }
   }
-
-  for (const current of existing?.tags ?? []) {
-    if (!tags.some((t) => t.id === current.id)) {
-      return { ok: false, error: `The tag "${current.name}" is missing; tags can't be deleted.` };
-    }
-  }
+  // Existing tags left out are deleted (the server removes them from notes and tabs).
   for (const [index, tag] of tags.entries()) {
     if (tags.slice(0, index).some((earlier) => sameName(earlier.name, tag.name))) {
       return { ok: false, error: `There is more than one tag called "${tag.name}".` };

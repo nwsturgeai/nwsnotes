@@ -352,7 +352,26 @@ export class NoteStore {
         tags: this.withTagIds(check.category.tags).sort((a, b) => a.id - b.id),
       };
       const categories = this.categories.map((c) => (c.id === id ? category : c));
-      await this.save(this.nextSaveTime(), { categories });
+
+      // Tags left out were deleted: take them off every note, and out of every tab's filter
+      // (a filter left with no tags is dropped; a tab left with no filters shows every note).
+      const deleted = existing.tags.filter((tag) => !category.tags.some((t) => t.id === tag.id)).map((tag) => tag.id);
+      if (deleted.length === 0) {
+        await this.save(this.nextSaveTime(), { categories });
+        return category;
+      }
+      const notes = this.notes.map((note) =>
+        note.tagIds.some((tagId) => deleted.includes(tagId))
+          ? { ...note, tagIds: note.tagIds.filter((tagId) => !deleted.includes(tagId)) }
+          : note,
+      );
+      const tabs = this.tabs.map((tab) => ({
+        ...tab,
+        categories: tab.categories
+          .map((filter) => ({ ...filter, tagIds: filter.tagIds.filter((tagId) => !deleted.includes(tagId)) }))
+          .filter((filter) => filter.tagIds.length > 0),
+      }));
+      await this.save(this.nextSaveTime(), { categories, notes, tabs });
       return category;
     });
   }

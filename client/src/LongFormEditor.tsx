@@ -57,6 +57,10 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   );
   const [detailsText, setDetailsText] = useState(note?.detailsText ?? "");
   const padRef = useRef<StylusPadHandle>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const detailsRef = useRef<HTMLTextAreaElement>(null);
+  /** Set when the title is accepted, so the typed details take the focus once enabled. */
+  const focusDetails = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -149,6 +153,8 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       savedTitle.current = check.title;
       setTitle(check.title);
       setTitleLocked(true);
+      // Typed details get the focus, ready to write (once they're enabled).
+      focusDetails.current = kind === "text";
     } catch (err) {
       failed(err, "The title wasn't saved");
     } finally {
@@ -181,10 +187,27 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
     onFinish();
   }
 
+  // After accepting the title, move into the typed details.
+  useEffect(() => {
+    if (detailsEditable && !busy && focusDetails.current) {
+      focusDetails.current = false;
+      detailsRef.current?.focus();
+    }
+  }, [detailsEditable, busy]);
+
+  /** Back to editing the title (the details lock); pending details are saved first. */
+  async function editTitle() {
+    if (busy) return;
+    await flush();
+    setTitleLocked(false);
+    requestAnimationFrame(() => titleRef.current?.focus());
+  }
+
   return (
     <div className="long-form-editor" style={{ bottom }} role="dialog" aria-label="Long-form note">
       <div className="lf-title-row">
         <input
+          ref={titleRef}
           type="text"
           aria-label="Long-form note title"
           placeholder="Title"
@@ -192,10 +215,16 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
           maxLength={TITLE_MAX_LENGTH}
           autoComplete="off"
           autoFocus={!titleLocked}
-          disabled={titleLocked || busy}
+          // Read-only rather than disabled while locked, so a click on it can start editing the title.
+          readOnly={titleLocked}
+          title={titleLocked ? "Click to edit the title" : undefined}
+          disabled={busy}
+          onClick={() => {
+            if (titleLocked) void editTitle();
+          }}
           onChange={(event) => setTitle(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") void acceptTitle();
+            if (event.key === "Enter" && !titleLocked) void acceptTitle();
           }}
         />
         {titleLocked ? (
@@ -205,11 +234,7 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
             aria-label="Edit title"
             title="Edit title"
             disabled={busy}
-            onClick={async () => {
-              // Pending details are saved before they're locked.
-              await flush();
-              setTitleLocked(false);
-            }}
+            onClick={() => void editTitle()}
           >
             <FontAwesomeIcon icon={faPen} />
           </button>
@@ -232,6 +257,7 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       <div className={detailsEditable ? "lf-details" : "lf-details locked"}>
         {kind === "text" ? (
           <textarea
+            ref={detailsRef}
             aria-label="Details"
             placeholder={detailsEditable ? "Details" : "Accept the title to write the details"}
             value={detailsText}

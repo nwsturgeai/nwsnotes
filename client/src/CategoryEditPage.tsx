@@ -1,11 +1,16 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { NAME_MAX_LENGTH, validateCategory, type Category, type CategoryRequest } from "@nwsnotes/shared";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTrashCan } from "@fortawesome/free-solid-svg-icons";
+import { NAME_MAX_LENGTH, validateCategory, type Category, type CategoryRequest, type Note } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
   /** "new" to add a category. */
   id: number | "new";
   categories: Category[];
+  /** All notes, to say how many a deleted tag is removed from. */
+  notes: Note[];
   onSaved: (category: Category) => void;
   /** Returns to the settings page (after saving or cancelling). */
   onClose: () => void;
@@ -37,8 +42,11 @@ export function CategoryEditPage(props: Props) {
   return <CategoryForm key={String(props.id)} {...props} existing={existing} />;
 }
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
 function CategoryForm({
   categories,
+  notes,
   existing,
   onSaved,
   onClose,
@@ -52,6 +60,8 @@ function CategoryForm({
   const [rows, setRows] = useState<TagRow[]>(() => (existing ? existing.tags.map((tag) => newRow(tag)) : [newRow()]));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  /** Asking before saving, when deleted tags are on notes. */
+  const [confirming, setConfirming] = useState<{ message: string; request: CategoryRequest }>();
   const focusKey = useRef<number>(undefined);
 
   function setRowName(key: number, value: string) {
@@ -64,6 +74,11 @@ function CategoryForm({
     setRows((current) => [...current, row]);
   }
 
+  /** Deletes a tag row. A saved tag is only deleted (and removed from notes) when the category is saved. */
+  function deleteRow(key: number) {
+    setRows((current) => current.filter((row) => row.key !== key));
+  }
+
   function onTagKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     // Enter in a tag box adds another tag rather than saving.
     if (event.key === "Enter") {
@@ -72,7 +87,7 @@ function CategoryForm({
     }
   }
 
-  async function save(event: FormEvent) {
+  function save(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
 
@@ -87,12 +102,26 @@ function CategoryForm({
       return;
     }
 
+    // Deleting tags removes them from every note that has them, so say so first.
+    const deleted = (existing?.tags ?? []).filter((tag) => !check.category.tags.some((t) => t.id === tag.id));
+    const affected = notes.filter((note) => deleted.some((tag) => note.tagIds.includes(tag.id))).length;
+    if (affected > 0) {
+      const names = deleted.map((tag) => `"${tag.name}"`).join(", ");
+      setConfirming({
+        message: `Delete ${deleted.length === 1 ? "the tag" : "the tags"} ${names}? ${deleted.length === 1 ? "It" : "They"} will be removed from ${plural(affected, "note")}.`,
+        request: check.category,
+      });
+      return;
+    }
+    void send(check.category);
+  }
+
+  async function send(request: CategoryRequest) {
+    setConfirming(undefined);
     setSaving(true);
     setError(undefined);
     try {
-      const saved = existing
-        ? await api.updateCategory(existing.id, check.category)
-        : await api.addCategory(check.category);
+      const saved = existing ? await api.updateCategory(existing.id, request) : await api.addCategory(request);
       onSaved(saved);
       onClose();
     } catch (err) {
@@ -121,14 +150,16 @@ function CategoryForm({
           onChange={(event) => setName(event.target.value)}
         />
 
-        <label className="checkbox">
+        {/* Linked by id as well as wrapping, with a tall tap area, so tapping the text toggles the box. */}
+        <label className="checkbox" htmlFor="category-multi-select">
           <input
+            id="category-multi-select"
             type="checkbox"
             checked={multiSelect}
             disabled={saving || existing?.multiSelect}
             onChange={(event) => setMultiSelect(event.target.checked)}
           />
-          Multi-select: a note can have several tags from this category
+          <span>Multi-select: a note can have several tags from this category</span>
         </label>
         {existing?.multiSelect && (
           <p className="hint">A multi-select category can't be changed back to single-select.</p>
@@ -137,24 +168,36 @@ function CategoryForm({
         <fieldset>
           <legend>Tags</legend>
           {rows.map((row, index) => (
-            <input
-              key={row.key}
-              type="text"
-              aria-label={`Tag ${index + 1}`}
-              value={row.name}
-              maxLength={NAME_MAX_LENGTH}
-              autoComplete="off"
-              placeholder={row.id === undefined ? "New tag" : undefined}
-              disabled={saving}
-              ref={(input) => {
-                if (input && focusKey.current === row.key) {
-                  focusKey.current = undefined;
-                  input.focus();
-                }
-              }}
-              onChange={(event) => setRowName(row.key, event.target.value)}
-              onKeyDown={onTagKeyDown}
-            />
+            <div key={row.key} className="tag-row">
+              <input
+                type="text"
+                aria-label={`Tag ${index + 1}`}
+                value={row.name}
+                maxLength={NAME_MAX_LENGTH}
+                autoComplete="off"
+                placeholder={row.id === undefined ? "New tag" : undefined}
+                disabled={saving}
+                ref={(input) => {
+                  if (input && focusKey.current === row.key) {
+                    focusKey.current = undefined;
+                    input.focus();
+                  }
+                }}
+                onChange={(event) => setRowName(row.key, event.target.value)}
+                onKeyDown={onTagKeyDown}
+              />
+              <button
+                type="button"
+                className="note-button"
+                aria-label={`Delete tag ${row.name || index + 1}`}
+                title="Delete tag"
+                // A category needs at least one tag.
+                disabled={saving || rows.length === 1}
+                onClick={() => deleteRow(row.key)}
+              >
+                <FontAwesomeIcon icon={faTrashCan} />
+              </button>
+            </div>
           ))}
           <button type="button" className="button" disabled={saving} onClick={addRow}>
             Add tag
@@ -176,6 +219,14 @@ function CategoryForm({
           </button>
         </div>
       </form>
+      {confirming && (
+        <ConfirmDialog
+          message={confirming.message}
+          confirmLabel="Delete and save"
+          onConfirm={() => void send(confirming.request)}
+          onCancel={() => setConfirming(undefined)}
+        />
+      )}
     </main>
   );
 }
