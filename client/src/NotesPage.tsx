@@ -42,6 +42,7 @@ import {
   type Tab,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
 import { useFullTagList } from "./stylusMode";
@@ -79,6 +80,8 @@ interface Props {
   onNoteAdded: (note: Note) => void;
   /** A note was edited, archived, reinstated or binned. */
   onNoteUpdated: (note: Note) => void;
+  /** Several notes changed at once (resetting the New tags); reload them. */
+  onNotesChanged: () => void;
   onSessionExpired: () => void;
 }
 
@@ -107,6 +110,7 @@ export function NotesPage({
   onEditEnd,
   onNoteAdded,
   onNoteUpdated,
+  onNotesChanged,
   onSessionExpired,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -249,6 +253,27 @@ export function NotesPage({
   useEffect(() => () => onEditEndRef.current(), []);
 
   /** Archive, reinstate or bin a note. If it no longer matches the filters, it leaves the list. */
+  /** Tapping a "New" pill asks whether to change every New note to Active. */
+  const [confirmResetNew, setConfirmResetNew] = useState(false);
+  const [resettingNew, setResettingNew] = useState(false);
+
+  async function resetNew() {
+    setConfirmResetNew(false);
+    setResettingNew(true);
+    try {
+      const { count } = await api.bulkLifetime("reset-new");
+      if (count > 0) onNotesChanged();
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setNotice({ text: `Nothing was changed: ${error instanceof Error ? error.message : String(error)}`, error: true });
+    } finally {
+      setResettingNew(false);
+    }
+  }
+
   async function changeLifetime(note: Note, lifetime: LifetimeChange) {
     if (busyNoteId !== undefined) return;
     setBusyNoteId(note.id);
@@ -336,6 +361,30 @@ export function NotesPage({
 
   const blocked = editingNote !== undefined;
 
+  /** Messages, then the dropdowns (or every tag as a pill in full-tag-list mode). Both share the same choices. */
+  const belowTitle = (
+    <>
+      {addBlocked && <p className="lf-add-hint">{LONG_FORM_TITLE_FIRST}</p>}
+      {saveError && (
+        <p className="save-error" role="alert">
+          {saveError}
+        </p>
+      )}
+      {editingNote ? (
+        <TagChooser categories={userCategories} selection={editSelection} onChange={setEditSelection} disabled={saving} />
+      ) : (
+        <TagChooser
+          categories={userCategories}
+          selection={tagSelection}
+          onChange={onTagSelectionChange}
+          disabled={saving}
+          constraints={constraints}
+          tabName={selectedTab?.name}
+        />
+      )}
+    </>
+  );
+
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {extraCategories.length > 0 && (
@@ -371,6 +420,7 @@ export function NotesPage({
                 lifetime === LIFETIME_WAITING && "waiting",
                 lifetime === LIFETIME_ARCHIVED && "archived",
                 lifetime === LIFETIME_BIN && "binned",
+                note.titleImage !== undefined && "handwritten",
               ].filter(Boolean);
               const busy = blocked || busyNoteId !== undefined;
               const hint = blocked ? "Finish or cancel the current edit first" : undefined;
@@ -383,9 +433,12 @@ export function NotesPage({
                       categories={categories}
                       extra={specialPills(note)}
                       hideCategoryIds={filteredSingleSelect}
+                      onNewClick={() => setConfirmResetNew(true)}
+                      newClickDisabled={resettingNew}
                     />
                   </div>
-                  {/* Right-aligned; they don't need to line up between notes. */}
+                  {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
+                  <div className="note-side">
                   <div className="note-actions">
                     <IconButton
                       icon={faPen}
@@ -428,12 +481,27 @@ export function NotesPage({
                       )
                     )}
                   </div>
+                  <time className="note-date" dateTime={note.createdDateTime} title={`Created ${new Date(note.createdDateTime).toLocaleString()}`}>
+                    {formatCreated(note.createdDateTime)}
+                  </time>
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
       </div>
+
+      {confirmResetNew && (
+        <ConfirmDialog
+          message="Do you want to reset the New tags?"
+          confirmLabel="Yes"
+          cancelLabel="No"
+          danger={false}
+          onConfirm={() => void resetNew()}
+          onCancel={() => setConfirmResetNew(false)}
+        />
+      )}
 
       {notice && (
         <div className={notice.error ? "toast error" : "toast"} role="status">
@@ -457,9 +525,10 @@ export function NotesPage({
             }
             setLongFormId(note.id);
           }}
-          onFinish={() => {
+          onFinish={(deleted) => {
             setLongForm(undefined);
             setLongFormId(undefined);
+            if (deleted) onNotesChanged();
           }}
           onSessionExpired={onSessionExpired}
         />
@@ -491,6 +560,8 @@ export function NotesPage({
         >
           {/* No "New note" heading; the text box is labelled for screen readers instead. */}
           <div className="new-note-row">
+            {/* The dropdowns or pills sit under the title, using the space beside the buttons. */}
+            <div className="new-note-main">
             {showCanvas ? (
               <StylusPad
                 // A fresh pad for each note edited (loaded with its image), and an empty one for new notes.
@@ -517,6 +588,8 @@ export function NotesPage({
                 onChange={(event) => setTitle(event.target.value)}
               />
             )}
+            {belowTitle}
+            </div>
             {/* Icon-only buttons; Clear sits under Add, leaving more width for handwriting. */}
             <div className="new-note-buttons">
               <button
@@ -570,30 +643,6 @@ export function NotesPage({
               )}
             </div>
           </div>
-          {addBlocked && <p className="lf-add-hint">{LONG_FORM_TITLE_FIRST}</p>}
-          {saveError && (
-            <p className="save-error" role="alert">
-              {saveError}
-            </p>
-          )}
-          {/* Dropdowns, or every tag as a pill in full-tag-list mode. Both share the same choices. */}
-          {editingNote ? (
-            <TagChooser
-              categories={userCategories}
-              selection={editSelection}
-              onChange={setEditSelection}
-              disabled={saving}
-            />
-          ) : (
-            <TagChooser
-              categories={userCategories}
-              selection={tagSelection}
-              onChange={onTagSelectionChange}
-              disabled={saving}
-              constraints={constraints}
-              tabName={selectedTab?.name}
-            />
-          )}
         </form>
       </div>
     </div>
@@ -645,4 +694,11 @@ function pngSize(dataUrl: string): { width: number; height: number } | undefined
   } catch {
     return undefined;
   }
+}
+
+/** A note's creation time in the device's local time, as "dd/MM HH:mm" (e.g. "26/10 14:05"). */
+function formatCreated(iso: string): string {
+  const date = new Date(iso);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(date.getDate())}/${two(date.getMonth() + 1)} ${two(date.getHours())}:${two(date.getMinutes())}`;
 }

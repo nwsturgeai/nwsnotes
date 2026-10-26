@@ -254,7 +254,7 @@ export function SettingsPage({
                     <TagPills
                       tagIds={tab.categories.flatMap((filter) => filter.tagIds)}
                       categories={categories}
-                      showActive
+                      allLifetime
                     />
                   </div>
                 </a>

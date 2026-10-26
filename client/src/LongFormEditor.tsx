@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faPen } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -10,6 +16,7 @@ import {
   type NoteDetails,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
@@ -26,7 +33,8 @@ interface Props {
   bottom: number;
   /** A version of the note was saved (`created` the first time). */
   onSaved: (note: Note, created: boolean) => void;
-  onFinish: () => void;
+  /** The editor closes; `deleted` when Cancel deleted the new note. */
+  onFinish: (deleted?: boolean) => void;
   onSessionExpired: () => void;
 }
 
@@ -63,6 +71,10 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   const focusDetails = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  /** Only a note created in this editor can be cancelled (deleted); editing an existing one can't. */
+  const [isNew] = useState(note === undefined);
+  /** Cancel with details written asks before deleting. */
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   // The latest values, for saves that run from a timer.
   const latest = useRef({ selection, detailsText });
@@ -169,8 +181,21 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   }
 
   /** In stylus mode, Finish ignores finger and palm taps (a stylus or mouse works). */
-  async function finish(event: ReactMouseEvent) {
+  function onFinishClick(event: ReactMouseEvent) {
     if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    void finish();
+  }
+
+  /** Outside stylus mode, Ctrl+Enter, Alt+Enter or Cmd+Enter (Mac) anywhere in the editor does the same as Finish. */
+  function onEditorKeyDown(event: ReactKeyboardEvent) {
+    if (stylusMode || event.key !== "Enter" || !(event.ctrlKey || event.altKey || event.metaKey)) return;
+    // Not a new line in the details, and not "accept title".
+    event.preventDefault();
+    event.stopPropagation();
+    if (!busy) void finish();
+  }
+
+  async function finish() {
     setBusy(true);
     await flush();
     // A changed title that hasn't been accepted yet is saved too, rather than lost.
@@ -185,6 +210,39 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       }
     }
     onFinish();
+  }
+
+  /** Cancel (new notes only): straight away if there are no details, otherwise after asking. */
+  function onCancelClick(event: ReactMouseEvent) {
+    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    const empty = kind === "text" ? latest.current.detailsText.trim() === "" : !padRef.current?.hasInk();
+    if (empty) void cancel();
+    else setConfirmingCancel(true);
+  }
+
+  /** Closes the editor, deleting the note if its title was already saved. Pending details are dropped. */
+  async function cancel() {
+    setConfirmingCancel(false);
+    setBusy(true);
+    const dropPending = () => {
+      window.clearTimeout(timer.current);
+      timer.current = undefined;
+      dirty.current = false;
+    };
+    dropPending();
+    await saving.current;
+    // A save that failed meanwhile may have rescheduled itself.
+    dropPending();
+    if (noteId !== undefined) {
+      try {
+        await api.deleteNote(noteId);
+      } catch (err) {
+        failed(err, "The note wasn't deleted");
+        setBusy(false);
+        return;
+      }
+    }
+    onFinish(noteId !== undefined);
   }
 
   // After accepting the title, move into the typed details.
@@ -204,7 +262,14 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   }
 
   return (
-    <div className="long-form-editor" style={{ bottom }} role="dialog" aria-label="Long-form note">
+    <div
+      className="long-form-editor"
+      style={{ bottom }}
+      role="dialog"
+      aria-label="Long-form note"
+      // Capture, so it's handled before the title box's own Enter (accept title).
+      onKeyDownCapture={onEditorKeyDown}
+    >
       <div className="lf-title-row">
         <input
           ref={titleRef}
@@ -291,10 +356,31 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       )}
 
       <div className="lf-finish">
-        <button type="button" className="button" disabled={busy} onClick={(event) => void finish(event)}>
+        {isNew && (
+          <button type="button" className="button" disabled={busy} onClick={onCancelClick}>
+            Cancel
+          </button>
+        )}
+        <button
+          type="button"
+          className="button"
+          disabled={busy}
+          title={stylusMode ? undefined : "Finish (Ctrl+Enter)"}
+          onClick={onFinishClick}
+        >
           Finish
         </button>
       </div>
+
+      {confirmingCancel && (
+        <ConfirmDialog
+          message="Are you sure you want to delete this note?"
+          confirmLabel="Yes"
+          cancelLabel="No"
+          onConfirm={() => void cancel()}
+          onCancel={() => setConfirmingCancel(false)}
+        />
+      )}
     </div>
   );
 }

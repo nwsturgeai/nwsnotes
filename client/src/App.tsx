@@ -227,6 +227,7 @@ export function App() {
               onEditEnd={endEdit}
               onNoteAdded={addNote}
               onNoteUpdated={updateNote}
+              onNotesChanged={() => void refreshNotes()}
               onSessionExpired={sessionExpired}
             />
           )}

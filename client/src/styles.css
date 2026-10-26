@@ -95,11 +95,32 @@ input:disabled {
 
 /* ---- App frame: header strip, then the current page --------------------- */
 
+/* At most 1280px wide, centred: on a wider window the extra space is split equally either side. */
 .app {
   display: flex;
   flex-direction: column;
+  max-width: var(--app-max-width);
   height: 100vh;
   height: 100dvh;
+  margin: 0 auto;
+}
+
+:root {
+  --app-max-width: 1280px;
+  /* Left and right edge of the app on a wider window (0 when the window is narrower). */
+  --app-side: max(0px, (100vw - var(--app-max-width)) / 2);
+}
+
+/* On a wider window the side areas are a slightly darker shade, with a line at the app's edges. */
+@media (min-width: 1281px) {
+  body:has(.app) {
+    background: #e7e4dc;
+  }
+
+  .app {
+    border-right: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
 }
 
 /*
@@ -320,6 +341,12 @@ a:focus-visible {
   break-inside: avoid;
 }
 
+/* The handwriting image has its own space around the writing, so these rows need less. */
+.note-list > ul > li.handwritten {
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
+}
+
 .note-list li.editing {
   background: var(--editing-bg);
   box-shadow: inset 3px 0 0 var(--accent);
@@ -350,11 +377,28 @@ a:focus-visible {
   min-width: 0;
 }
 
-/* The note's buttons (edit, archive / reinstate, move to bin), right-aligned. */
+/* The note's buttons (edit, archive / reinstate, move to bin), right-aligned, with its date below. */
+.note-side {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
 .note-actions {
   display: flex;
   flex: none;
   gap: 2px;
+}
+
+/* The note's creation date and time, e.g. "26/10 14:05". */
+.note-date {
+  padding-right: 4px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 /* 16px icons in 24px tap areas: small, to leave room for note content. */
@@ -552,6 +596,17 @@ a:focus-visible {
   gap: 4px;
 }
 
+/* The text box or canvas, with messages and the dropdowns or pills under it, left of the buttons. */
+.new-note-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The canvas fills the column's width (its 1px border is outside the drawing area). */
+.new-note-main .stylus-pad {
+  width: calc(100% - 2px);
+}
+
 /* Buttons stack two high (Clear under Add); a third (editing a handwritten note) starts a second column. */
 .new-note-buttons {
   display: grid;
@@ -579,8 +634,9 @@ a:focus-visible {
 .long-form-editor {
   position: fixed;
   top: 0;
-  right: 0;
-  left: 0;
+  /* Within the app's 1280px column, like everything else. */
+  right: var(--app-side);
+  left: var(--app-side);
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -659,6 +715,7 @@ a:focus-visible {
 .lf-finish {
   display: flex;
   justify-content: center;
+  gap: 0.75rem;
 }
 
 .lf-finish .button {
@@ -856,6 +913,25 @@ a:focus-visible {
   font-size: 0.8rem;
 }
 
+/* The "New" pill on notes is a button (reset the New tags), filling the pill. */
+.pills li.clickable {
+  padding: 0;
+}
+
+.pills li.clickable button {
+  padding: 0.05rem 0.55rem;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.pills li.clickable button:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--pill-text);
+}
+
 /* "Long Form" on long-form notes, and the parent's title on their child notes. */
 .pills li.special {
   background: #f6dfa4;
@@ -867,6 +943,12 @@ a:focus-visible {
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
   margin-top: 0.5rem;
+}
+
+/* The new-note dropdowns' text can't be selected (a drag or long press would otherwise highlight it). */
+.new-note .tag-pickers {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .tag-dropdown-button {
@@ -1135,6 +1217,12 @@ a:focus-visible {
   border-color: var(--error);
   background: var(--error);
   color: #ffffff;
+}
+
+.button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ---- Settings: Lifetime buttons and their confirmation pop-up ---------- */

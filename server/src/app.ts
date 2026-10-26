@@ -96,6 +96,18 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.json(note);
   });
 
+  // Delete a note (used when cancelling a new long-form note).
+  notesRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
+      return;
+    }
+    await store.deleteNote(id);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json({ ok: true });
+  });
+
   // Archive, reinstate or bin a note.
   notesRouter.put("/:id/lifetime", async (req: Request<{ id: string }, object, { lifetime?: unknown } | undefined>, res) => {
     const id = Number(req.params.id);

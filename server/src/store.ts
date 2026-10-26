@@ -306,6 +306,14 @@ export class NoteStore {
     });
   }
 
+  /** Deletes one note (cancelling a new long-form note), then saves. Child notes keep their `parentId`. */
+  deleteNote(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      if (!this.notes.some((n) => n.id === id)) throw new RequestError(404, `There is no note with id ${id}.`);
+      await this.save(this.nextSaveTime(), { notes: this.notes.filter((n) => n.id !== id) });
+    });
+  }
+
   /** Moves every note with one Lifetime to another in a single save. Returns how many changed. */
   private changeLifetimes(from: number, to: number): Promise<number> {
     return this.enqueue(async () => {

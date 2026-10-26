@@ -76,6 +76,7 @@ export const api = {
   getNotes: () => request<NotesData>("GET", "/api/notes"),
   addNote: (body: NewNoteRequest) => request<Note>("POST", "/api/notes", body, changeHeaders()),
   updateNote: (id: number, body: NewNoteRequest) => request<Note>("PUT", `/api/notes/${id}`, body, changeHeaders()),
+  deleteNote: (id: number) => request<{ ok: true }>("DELETE", `/api/notes/${id}`, undefined, changeHeaders()),
   setLifetime: (id: number, lifetime: LifetimeChange) =>
     request<Note>("PUT", `/api/notes/${id}/lifetime`, { lifetime }, changeHeaders()),
   /** The Settings Lifetime buttons; each returns how many notes changed (or were deleted). */
