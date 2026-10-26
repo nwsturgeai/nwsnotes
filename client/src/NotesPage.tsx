@@ -525,9 +525,10 @@ export function NotesPage({
             }
             setLongFormId(note.id);
           }}
-          onFinish={() => {
+          onFinish={(deleted) => {
             setLongForm(undefined);
             setLongFormId(undefined);
+            if (deleted) onNotesChanged();
           }}
           onSessionExpired={onSessionExpired}
         />

@@ -200,6 +200,10 @@ When "Finish" is clicked, then:
 the current version of the note is saved i.e. don't wait for the 30-second timer to complete.
 the screen reverts to the regular notes-list view, including the 2 header strips.
 
+When initially creating a new long-form note (not when editing one), there is a "Cancel" button to the left of the "Finish" button.
+If Cancel is clicked and the details are empty, then the new long-form note page closes and the screen reverts to the notes list.  If the new long-form note had already been saved (because the title had been set), then it is deleted.
+If Cancel is clicked and the details are non-empty, then a confirmation modal opens: "Are you sure you want to delete this note?", with options "Yes" and "No".
+
 On the server, when receiving an update for a long-form-note (either because of the timer, or a click of the Finish button):
 If the most recent previous save file was also created because of an edit of this same long-form note, then after creating the new save file, delete the previous save file.
 
@@ -435,10 +439,11 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
   - Details and tag changes made while editing the details are saved at most every 30 seconds: the first change starts a 30-second timer, and when it runs out the latest version is sent; later changes wait for the next window.
   - "Finish" sends any pending change straight away, then closes the editor. A pending change is also sent straight away if the app goes into the background.
   - Outside stylus mode, Ctrl+Enter, Alt+Enter or Cmd+Enter (Mac) anywhere in the editor does the same as clicking "Finish" (plain Enter still adds a line in the details, or accepts the title).
+  - **Cancel (new notes only):** a "Cancel" button left of "Finish", shown only when the editor was opened to create a note (and still shown after its title is accepted), never when editing an existing one. Details count as empty when the typed text is only spaces or the canvas has no ink. With empty details it closes straight away. Otherwise it first asks "Are you sure you want to delete this note?" in the app's own pop-up, with Yes (red, focused) and No (Escape counts as No; the editor stays open). Closing drops any unsent change; if the title had been accepted, the note is deleted on the server (`DELETE /api/notes/:id`, a normal save) and the list reloads. If the delete fails, the error shows in the editor and it stays open. Child notes added while it was open are kept, and lose their parent pill, as when a parent is emptied from the Bin. In stylus mode, finger taps on Cancel are ignored, like Finish.
   - If a save fails, a small notice shows and it's retried at the next window.
   - Each save tells other open pages to reload. If two pages edit the same note, the last save wins; an open editor isn't changed by live updates.
 - **Fewer save-files while editing:** the server remembers what caused its last save. When a long-form note is updated and the previous save-file was also an update of that same note, the previous file is deleted after the new one is written. So a long editing session leaves one save-file, not one per 30 seconds. A note's creation, other changes in between (e.g. a child note being added) and server restarts all break the run, so those files are kept.
-- **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish" are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas (an eraser will come later). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
+- **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish" and "Cancel" are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas (an eraser will come later). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
 - **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters, in the same amber. Long-form notes get the usual buttons (edit, waiting, archive and so on).
 
 ### Note lifetime
