@@ -232,7 +232,8 @@ This is a single-select Category.
 This category should have possible Tags: "New", "Active", "Waiting", "Archived", "Bin".  I suggest these tags be given negative ids.
 When creating or editing a note, this system category should not have a drop-down.
 New notes are always given the "New" tag from this Category.
-The "Active" tag in this category should never be displayed as a pill in the notes-list.
+The "Active", "Waiting", "Archived" and "Bin" tags in this category should never be displayed as pills in the notes-list (the different background colour is sufficient to indicate those states).
+In the notes-list, clicking/tapping on the "New" pill brings up a modal with text "Do you want to reset the New tags?" and options Yes/No.  If Yes is chosen then the New tag is removed from all notes that have it and replaced with the Active tag.
 When this Category is first introduced, all existing notes should be tagged with the "Active" tag.
 Tab filter definitions can specify values for this system Category.  Additional Tab filters can specify values for this system Category (if the Tab definition does not already do so).
 
@@ -317,7 +318,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Buttons:** "Clear" sits underneath "Add", leaving more width for the canvas; both buttons are the same width. "Add" saves the note and "Clear" wipes the canvas. Adding with nothing written shows "Nothing has been written yet." After a successful save the canvas clears. If saving fails, the error appears under the canvas and the writing is kept so you can retry. The tag dropdowns work exactly as for typed notes.
 - **Saved image:** black ink on a transparent background, cropped to the written area plus a 4-pixel margin, as a PNG data URL (`data:image/png;base64,...`). The canvas always works at 2× pixel density, so ink is crisp on tablets and every image is shown at half its pixel size (the size it was written).
 - **Paper:** the canvas and handwritten notes in the list sit on a light "paper" background. (The app is now always light, so this simply matches the page.)
-- **Notes list:** a handwritten note shows its image at the size it was written, with the alt text "Handwritten note", and its tag pills underneath as usual.
+- **Notes list:** a handwritten note shows its image at the size it was written, with the alt text "Handwritten note", and its tag pills underneath as usual. Handwritten rows have less vertical padding than typed ones (0.2rem above and below instead of 0.6rem).
 - **Server checks:** exactly one of `titleText` and `titleImage`; the image must be a PNG data URL of at most 200 KB (counting the data URL's characters). The server's request size limit rises from 20 KB to 256 KB to allow for this.
 - **Ignoring finger touches:** whenever the canvas is showing (stylus mode, or editing a handwritten note), finger taps on Add, Update, Cancel, Clear, the tag dropdown buttons and the lists they open do nothing, and fingers still don't draw or erase on the canvas; a stylus or mouse works as normal. Fingers can still scroll the new-note area if it overflows. Outside stylus mode, touch works everywhere as before. This can only be partly tested on a computer, so it is to be checked on the Android device: a palm or finger resting on the controls mustn't open a dropdown or add a note.
 - **Screen rotation:** if the canvas size changes (e.g. the device is rotated), anything written but not yet added is cleared.
@@ -351,6 +352,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - Multi-select: the list is a check-list of the tags; it stays open while ticking, and closes when clicking elsewhere or pressing Escape.
 - After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
 - If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area).
+- The text in the new-note dropdowns (their buttons and the lists they open) can't be selected, so a drag or long press doesn't highlight it.
 - Changing tab resets every dropdown (see "Tabs on the notes page"); adding a note still keeps the selections.
 
 ### Full-tag-list mode
@@ -442,7 +444,8 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4, Waiting -5 (added later, so it can't be renumbered; it's still listed in the order New, Active, Waiting, Archived, Bin). It can't be edited or renamed, and user categories can't use its name.
 - **Every note has exactly one Lifetime tag.** The server always gives new notes New, ignoring any Lifetime tag sent, and keeps the existing one when a note is edited. Only the lifetime endpoints change it.
 - **Introducing it:** when a save-file is loaded, any note without a Lifetime tag gets Active; the next save stores it.
-- **Pills:** New, Archived and Bin show as pills in the normal style; Active never does.
+- **Pills:** only New shows as a pill on notes, in the normal style; Active, Waiting, Archived and Bin never do, as the row colour already shows them. Tab definitions on the settings page still show every Lifetime tag they filter on.
+- **Resetting New from the list:** the New pill on a note is a button (hover text "Reset the New tags"). It opens the app's own pop-up, "Do you want to reset the New tags?", with Yes (accent colour, focused) and No (Escape also counts as No). Yes does the same as the settings page's "Reset New" (every New note becomes Active, in one save) and reloads the list, with no other message. If it fails, the error shows as a notice over the list.
 - **Tabs:** tab definitions and the additional tab filters can include Lifetime, as a check-list like any category.
 - **Bin is hidden by default:** Bin notes are hidden in every tab, "All" included, unless the tab's filter or the additional filters tick Bin.
 - **Creation date:** under each note's buttons, right-aligned, its creation date and time in the device's local time as "dd/MM HH:mm" (24-hour, e.g. "26/10 14:05"), in small grey text, the same grey on every row (it's deliberately hard to read on the dark Archived and Bin rows). Hovering shows the full date.
@@ -452,7 +455,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
   - Archived: edit, reinstate, move-to-bin (`fa-trash-can`).
   - Bin: edit, reinstate.
 - **Actions:** waiting sets Waiting. Archive sets Archived (from New, Active or Waiting). Reinstate sets Active, from Waiting, Archived or Bin. Move-to-bin sets Bin. Each updates the list straight away; a note that no longer matches the tab or the filters disappears from it.
-- **Colours:** Waiting notes have a `#c0c0c0` background, Archived notes `#606060` and Bin notes `#B00000`, handwritten notes included (their light paper is replaced). The text stays black, which is deliberately hard to read on Archived and Bin. The note buttons turn light (near-white) on Archived and Bin rows so they stay visible; Waiting rows keep the normal dark icons. Waiting shows as a pill like New, Archived and Bin.
+- **Colours:** Waiting notes have a `#c0c0c0` background, Archived notes `#606060` and Bin notes `#B00000`, handwritten notes included (their light paper is replaced). The text stays black, which is deliberately hard to read on Archived and Bin. The note buttons turn light (near-white) on Archived and Bin rows so they stay visible; Waiting rows keep the normal dark icons.
 - **Settings Lifetime section,** directly below Stylus mode, with three buttons in a row:
   - "Reset New" changes every New note to Active straight away, then reports how many ("3 notes changed to Active").
   - "Archived to Bin" first asks "Move 5 archived notes to the bin?".

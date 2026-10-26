@@ -42,6 +42,7 @@ import {
   type Tab,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
 import { useFullTagList } from "./stylusMode";
@@ -79,6 +80,8 @@ interface Props {
   onNoteAdded: (note: Note) => void;
   /** A note was edited, archived, reinstated or binned. */
   onNoteUpdated: (note: Note) => void;
+  /** Several notes changed at once (resetting the New tags); reload them. */
+  onNotesChanged: () => void;
   onSessionExpired: () => void;
 }
 
@@ -107,6 +110,7 @@ export function NotesPage({
   onEditEnd,
   onNoteAdded,
   onNoteUpdated,
+  onNotesChanged,
   onSessionExpired,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -249,6 +253,27 @@ export function NotesPage({
   useEffect(() => () => onEditEndRef.current(), []);
 
   /** Archive, reinstate or bin a note. If it no longer matches the filters, it leaves the list. */
+  /** Tapping a "New" pill asks whether to change every New note to Active. */
+  const [confirmResetNew, setConfirmResetNew] = useState(false);
+  const [resettingNew, setResettingNew] = useState(false);
+
+  async function resetNew() {
+    setConfirmResetNew(false);
+    setResettingNew(true);
+    try {
+      const { count } = await api.bulkLifetime("reset-new");
+      if (count > 0) onNotesChanged();
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setNotice({ text: `Nothing was changed: ${error instanceof Error ? error.message : String(error)}`, error: true });
+    } finally {
+      setResettingNew(false);
+    }
+  }
+
   async function changeLifetime(note: Note, lifetime: LifetimeChange) {
     if (busyNoteId !== undefined) return;
     setBusyNoteId(note.id);
@@ -371,6 +396,7 @@ export function NotesPage({
                 lifetime === LIFETIME_WAITING && "waiting",
                 lifetime === LIFETIME_ARCHIVED && "archived",
                 lifetime === LIFETIME_BIN && "binned",
+                note.titleImage !== undefined && "handwritten",
               ].filter(Boolean);
               const busy = blocked || busyNoteId !== undefined;
               const hint = blocked ? "Finish or cancel the current edit first" : undefined;
@@ -383,6 +409,8 @@ export function NotesPage({
                       categories={categories}
                       extra={specialPills(note)}
                       hideCategoryIds={filteredSingleSelect}
+                      onNewClick={() => setConfirmResetNew(true)}
+                      newClickDisabled={resettingNew}
                     />
                   </div>
                   {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
@@ -439,6 +467,17 @@ export function NotesPage({
           </ul>
         )}
       </div>
+
+      {confirmResetNew && (
+        <ConfirmDialog
+          message="Do you want to reset the New tags?"
+          confirmLabel="Yes"
+          cancelLabel="No"
+          danger={false}
+          onConfirm={() => void resetNew()}
+          onCancel={() => setConfirmResetNew(false)}
+        />
+      )}
 
       {notice && (
         <div className={notice.error ? "toast error" : "toast"} role="status">
