@@ -194,7 +194,12 @@ export function App() {
             <CategoryEditPage
               id={page.id}
               categories={state.data.categories}
-              onSaved={saveCategory}
+              notes={state.data.notes}
+              onSaved={(category) => {
+                saveCategory(category);
+                // Deleted tags were also removed from notes and tabs on the server; reload to match.
+                void refreshNotes();
+              }}
               onClose={() => navigate({ name: "settings" })}
               onSessionExpired={sessionExpired}
             />

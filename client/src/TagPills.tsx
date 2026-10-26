@@ -7,11 +7,15 @@ interface Props {
   showActive?: boolean;
   /** Extra pills after the tags, in their own colour ("Long Form", or a child note's parent title). */
   extra?: string[];
+  /** Categories whose tags aren't shown (e.g. single-select categories the selected tab filters on). */
+  hideCategoryIds?: number[];
 }
 
 /** Tags shown as small pills, in category order then tag order. Hovering a pill shows its category. */
-export function TagPills({ tagIds, categories, showActive, extra = [] }: Props) {
-  const pills = categories.flatMap((category) =>
+export function TagPills({ tagIds, categories, showActive, extra = [], hideCategoryIds = [] }: Props) {
+  const pills = categories
+    .filter((category) => !hideCategoryIds.includes(category.id))
+    .flatMap((category) =>
     category.tags
       .filter((tag) => tagIds.includes(tag.id) && (showActive || tag.id !== LIFETIME_ACTIVE))
       .map((tag) => ({ tag, category })),

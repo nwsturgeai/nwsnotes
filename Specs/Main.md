@@ -81,7 +81,8 @@ Have a "Save" button to save all changes to a category in one go.  And a "Cancel
 If/when a category is saved, that should cause other tabs viewing the website to be sent the latest data (including the latest categories and tags).
 Categories must contain at least one tag to be able to be saved.
 It should not be allowed to have a tag with the same text as the category name.
-For now, it will not be possible to delete tags or categories.
+When editing a category, there should be bin icons alongside each Tag allowing Tags to be deleted.  If, when a category is saved, any Tags have been deleted, then that tag-id should be removed from any notes that currently have it.
+For now, it will not be possible to delete categories.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
 ### On the main notes page:
@@ -303,7 +304,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - A single-line text box and an "Add" button. Pressing Enter also adds the note. There is no "New note" heading; the text box keeps its placeholder text and an accessible label.
 - **Side padding** is very small (about 4px), to give note content as much width as possible.
 - **Icon buttons:** Add (`fa-circle-plus`), Update (`fa-circle-check`), Cancel (`fa-x`) and Clear (`fa-delete-left`) show only an icon, with a tooltip and screen-reader label giving the action. All four are the same size as the Settings cog (40px square). Add and Update are filled in the accent colour; Cancel and Clear are outlined.
-- After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible.
+- After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible. (The box is made read-only, not disabled, while saving, since disabling it would take the focus away.)
 - When the page loads, the list starts scrolled to the bottom.
 - In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
 
@@ -333,14 +334,16 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 
 ### Category editing
 - The settings page has a Categories section listing each category's name with its tags, and an "Add category" button. The built-in Lifetime category is listed too, marked "Built-in", and isn't clickable.
-- Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (locked once the category has been saved as multi-select), one text box per tag for renaming, and an "Add tag" button that adds an empty tag row.
-- Empty new tag rows are ignored when saving. Emptying an existing tag's name is an error, as tags can't be deleted.
+- Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (locked once the category has been saved as multi-select; tapping its text toggles it), one text box per tag for renaming with a bin button (`fa-trash-can`) beside it, and an "Add tag" button that adds an empty tag row.
+- Empty new tag rows are ignored when saving. Emptying an existing tag's name is an error; its bin button deletes it instead.
+- **Deleting tags:** the bin removes the row; nothing changes until Save. A category must keep at least one tag (the last bin is disabled). If deleted tags are on any notes, Save first asks, in the app's own pop-up, "Delete the tag "X"? It will be removed from N notes.". On save the server takes deleted tags off every note and out of every tab's filter; a filter left with no tags is dropped, and a tab left with no filters shows every note (its editor will ask for a tag next time it's saved). Notes' modified times aren't changed by this.
 - "Save" sends the whole category in one call and returns to the settings page. If saving fails, the error is shown on the page and the edits are kept so you can retry.
 - "Cancel" discards the edits and returns to the settings page; for a new category nothing is created.
 - If another page saves the same category while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
 
 ### Tags on the notes page
 - Each note shows its tags as small pills under the title, showing the tag name only.
+- Under a tab whose own filter includes a single-select category (including Lifetime), that category's pills are left off the notes, as they only repeat the tab. Pills from multi-select categories, from categories the tab doesn't filter on, and from the additional filters still show.
 - Under the title text box there is one dropdown per category, with no visible title. Every dropdown is the app's own button-and-list control, not the browser's built-in dropdown, so single- and multi-select look and behave alike (and the app controls which inputs they respond to).
 - The button shows the chosen tag names, or the category name in grey when no tag is chosen. Hovering shows the category name (useful once a tag is chosen), and screen readers announce it as the button's label.
 - Single-select: the list shows the category name first (meaning no tag), then the tags, with the chosen one marked. Choosing an option replaces the previous choice and closes the list.
@@ -423,7 +426,8 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
 - **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note and follow the selected tab's rules as usual.
 - **Saving:**
-  - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it.
+  - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it. After accepting, typed details get the focus.
+  - While the title is locked, clicking the title box does the same as "edit title".
   - Details and tag changes made while editing the details are saved at most every 30 seconds: the first change starts a 30-second timer, and when it runs out the latest version is sent; later changes wait for the next window.
   - "Finish" sends any pending change straight away, then closes the editor. A pending change is also sent straight away if the app goes into the background.
   - If a save fails, a small notice shows and it's retried at the next window.

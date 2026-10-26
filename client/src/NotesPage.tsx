@@ -171,6 +171,17 @@ export function NotesPage({
   // The tab's own filters, plus the additional filters chosen in the row above the list (for the
   // categories the tab doesn't filter on).
   const tabFilters = useMemo(() => selectedTab?.categories ?? [], [selectedTab]);
+  /**
+   * Single-select categories the tab itself filters on: their pills are left off the notes, since
+   * they only repeat what the tab already shows. (Multi-select ones, and the additional filters, still show.)
+   */
+  const filteredSingleSelect = useMemo(
+    () =>
+      tabFilters
+        .map((filter) => filter.categoryId)
+        .filter((id) => categories.some((category) => category.id === id && !category.multiSelect)),
+    [tabFilters, categories],
+  );
   const extraCategories = useMemo(
     () => categories.filter((category) => !tabFilters.some((filter) => filter.categoryId === category.id)),
     [categories, tabFilters],
@@ -367,7 +378,12 @@ export function NotesPage({
                 <li key={note.id} className={classes.join(" ") || undefined}>
                   <div className="note-body">
                     {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
-                    <TagPills tagIds={note.tagIds} categories={categories} extra={specialPills(note)} />
+                    <TagPills
+                      tagIds={note.tagIds}
+                      categories={categories}
+                      extra={specialPills(note)}
+                      hideCategoryIds={filteredSingleSelect}
+                    />
                   </div>
                   {/* Right-aligned; they don't need to line up between notes. */}
                   <div className="note-actions">
@@ -494,7 +510,10 @@ export function NotesPage({
                 placeholder="Type a note title and press Enter"
                 autoComplete="off"
                 autoFocus
-                disabled={saving || addBlocked}
+                // Read-only (not disabled) while saving: disabling it would take the focus away, and it
+                // should keep the focus so the next note can be typed straight away.
+                readOnly={saving}
+                disabled={addBlocked}
                 onChange={(event) => setTitle(event.target.value)}
               />
             )}
