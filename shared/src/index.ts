@@ -104,6 +104,24 @@ export interface Tab {
   id: number;
   name: string;
   categories: TabFilter[];
+  /**
+   * Note ids in the order this tab lists them; notes not in it follow, in creation order. Set with
+   * PUT /api/tabs/:id/order (not by the tab editor). Empty for tabs saved before ordering existed.
+   */
+  noteOrder: number[];
+}
+
+/** Body of PUT /api/tabs/:id/order. */
+export interface TabOrderRequest {
+  noteOrder: number[];
+}
+
+/** Notes in a tab's order: those in `noteOrder` first (in that order), then the rest as given. */
+export function orderNotes<T extends { id: number }>(notes: T[], noteOrder: number[]): T[] {
+  const position = new Map(noteOrder.map((id, index) => [id, index]));
+  const listed = notes.filter((note) => position.has(note.id));
+  listed.sort((a, b) => position.get(a.id)! - position.get(b.id)!);
+  return [...listed, ...notes.filter((note) => !position.has(note.id))];
 }
 
 /** Body of POST /api/tabs and PUT /api/tabs/:id. */
@@ -389,9 +407,9 @@ export const TAB_NAME_MAX_LENGTH = 20;
  * True if a note is shown under these filters (a tab's own plus any additional filters): it must have,
  * for every filter, at least one of that filter's tags. Bin notes are hidden unless a filter ticks Bin.
  */
-export function noteMatchesFilters(note: Note, filters: TabFilter[]): boolean {
+export function noteMatchesFilters(note: Note, filters: TabFilter[], includeBin = false): boolean {
   const lifetimeFilter = filters.find((filter) => filter.categoryId === LIFETIME_CATEGORY_ID);
-  if (lifetimeOf(note) === LIFETIME_BIN && !lifetimeFilter?.tagIds.includes(LIFETIME_BIN)) return false;
+  if (!includeBin && lifetimeOf(note) === LIFETIME_BIN && !lifetimeFilter?.tagIds.includes(LIFETIME_BIN)) return false;
   return filters.every((filter) =>
     filter.categoryId === LIFETIME_CATEGORY_ID
       ? filter.tagIds.includes(lifetimeOf(note))

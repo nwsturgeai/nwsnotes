@@ -228,6 +228,7 @@ export function App() {
               onNoteAdded={addNote}
               onNoteUpdated={updateNote}
               onNotesChanged={() => void refreshNotes()}
+              onTabUpdated={saveTab}
               onSessionExpired={sessionExpired}
             />
           )}

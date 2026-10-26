@@ -9,13 +9,16 @@ import {
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
+  faArrowDownWideShort,
   faBoxArchive,
   faChartDiagram,
   faChevronDown,
   faChevronUp,
   faCircleCheck,
   faCirclePlus,
+  faClipboardCheck,
   faDeleteLeft,
+  faGripVertical,
   faHourglass,
   faPen,
   faReplyAll,
@@ -33,6 +36,7 @@ import {
   LIFETIME_NEW,
   LIFETIME_WAITING,
   noteMatchesFilters,
+  orderNotes,
   validateTitle,
   validateTitleImage,
   type Category,
@@ -45,6 +49,7 @@ import { ApiError, api } from "./api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
+import { useNoteDrag } from "./noteDrag";
 import { useFullTagList } from "./stylusMode";
 
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
@@ -82,6 +87,8 @@ interface Props {
   onNoteUpdated: (note: Note) => void;
   /** Several notes changed at once (resetting the New tags); reload them. */
   onNotesChanged: () => void;
+  /** A tab's note order changed (shown straight away, before it's saved). */
+  onTabUpdated: (tab: Tab) => void;
   onSessionExpired: () => void;
 }
 
@@ -111,6 +118,7 @@ export function NotesPage({
   onNoteAdded,
   onNoteUpdated,
   onNotesChanged,
+  onTabUpdated,
   onSessionExpired,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -132,7 +140,11 @@ export function NotesPage({
   /** Before a new long-form note's title is first accepted, regular notes can't be added. */
   const addBlocked = longForm !== undefined && longFormId === undefined;
 
+  /** Edit-order mode: notes get grips for dragging. Not remembered; never on "All". */
+  const [ordering, setOrdering] = useState(false);
+
   function openLongForm(note: Note | undefined) {
+    setOrdering(false);
     setLongForm({ note, key: Date.now() });
     setLongFormId(note?.id);
   }
@@ -196,7 +208,54 @@ export function NotesPage({
   );
 
   // Hidden notes aren't changed, just not listed. Bin notes are hidden unless a filter ticks Bin.
-  const visibleNotes = useMemo(() => notes.filter((note) => noteMatchesFilters(note, allFilters)), [notes, allFilters]);
+  // A tab lists its ordered notes first, then the rest in creation order; "All" is in creation order.
+  const visibleNotes = useMemo(() => {
+    const matching = notes.filter((note) => noteMatchesFilters(note, allFilters));
+    return selectedTab ? orderNotes(matching, selectedTab.noteOrder) : matching;
+  }, [notes, allFilters, selectedTab]);
+
+  const onAll = selectedTab === undefined;
+  useEffect(() => {
+    if (onAll) setOrdering(false);
+  }, [onAll]);
+
+  /** The list as it was when a drag started: live updates don't change what's shown until the drop. */
+  const dragList = useRef<Note[]>(undefined);
+  const { drag, gripHandlers } = useNoteDrag(listRef, (noteId, target) => void dropNote(noteId, target));
+  const listedNotes = drag && dragList.current ? dragList.current : visibleNotes;
+
+  /**
+   * Saves the tab's order with the note moved to `target` among the other listed notes: straight after
+   * the listed note above it (or before the first one). Notes hidden by the filters keep their places,
+   * and every note in the tab (Bin included) is in the saved order. Shown at once; reverted if it fails.
+   */
+  async function dropNote(noteId: number, target: number) {
+    const tab = selectedTab;
+    if (!tab) return;
+    const others = (dragList.current ?? visibleNotes).filter((note) => note.id !== noteId);
+    const order = orderNotes(
+      notes.filter((note) => noteMatchesFilters(note, tab.categories, true)),
+      tab.noteOrder,
+    )
+      .map((note) => note.id)
+      .filter((id) => id !== noteId);
+    const above = others[target - 1];
+    const below = others[0];
+    const anchor = above ? order.indexOf(above.id) + 1 : below ? order.indexOf(below.id) : 0;
+    const at = anchor < 0 ? order.length : anchor;
+    const noteOrder = [...order.slice(0, at), noteId, ...order.slice(at)];
+    onTabUpdated({ ...tab, noteOrder });
+    try {
+      await api.setTabOrder(tab.id, { noteOrder });
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setNotice({ text: `The new order wasn't saved: ${error instanceof Error ? error.message : String(error)}`, error: true });
+      onNotesChanged();
+    }
+  }
   /** What the filters require of new notes, so they always match and stay visible. */
   const constraints = useMemo(() => constraintsFor(allFilters), [allFilters]);
 
@@ -215,6 +274,7 @@ export function NotesPage({
   }, [notice]);
 
   function startEdit(note: Note) {
+    setOrdering(false);
     // Any new note that was being typed or written is discarded.
     setTitle(note.titleText ?? "");
     setEditSelection(selectionFor(note, userCategories));
@@ -252,7 +312,6 @@ export function NotesPage({
   onEditEndRef.current = onEditEnd;
   useEffect(() => () => onEditEndRef.current(), []);
 
-  /** Archive, reinstate or bin a note. If it no longer matches the filters, it leaves the list. */
   /** Tapping a "New" pill asks whether to change every New note to Active. */
   const [confirmResetNew, setConfirmResetNew] = useState(false);
   const [resettingNew, setResettingNew] = useState(false);
@@ -274,6 +333,7 @@ export function NotesPage({
     }
   }
 
+  /** Archive, reinstate or bin a note. If it no longer matches the filters, it leaves the list. */
   async function changeLifetime(note: Note, lifetime: LifetimeChange) {
     if (busyNoteId !== undefined) return;
     setBusyNoteId(note.id);
@@ -385,23 +445,53 @@ export function NotesPage({
     </>
   );
 
+  /**
+   * The list's items: the notes, and while dragging a gap where the dragged note would go. The dragged
+   * note itself stays among its original neighbours (so it isn't re-created mid-drag), drawn following
+   * the pointer and taking no room.
+   */
+  const rows: ({ note: Note } | { gap: number })[] = listedNotes.map((note) => ({ note }));
+  if (drag) {
+    const start = listedNotes.findIndex((note) => note.id === drag.noteId);
+    const dragged = rows[start];
+    if (dragged) {
+      rows.splice(start, 1);
+      rows.splice(drag.target, 0, { gap: drag.height });
+      rows.splice(drag.target <= start ? start + 1 : start, 0, dragged);
+    }
+  }
+  const editBlocked = blocked || longForm !== undefined;
+
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
-      {extraCategories.length > 0 && (
+      {/* A tab that filters on every category has no dropdowns, but still needs the edit-order button. */}
+      {(extraCategories.length > 0 || selectedTab) && (
         <div className="filter-row" aria-label="More filters for this tab">
-          <TagPickers
-            categories={extraCategories}
-            selection={extraSelection}
-            onChange={setExtraSelection}
-            disabled={blocked}
-            checkLists
-          />
+          {extraCategories.length > 0 && (
+            <TagPickers
+              categories={extraCategories}
+              selection={extraSelection}
+              onChange={setExtraSelection}
+              disabled={blocked}
+              checkLists
+            />
+          )}
           <IconButton
             icon={faReplyAll}
             label={blocked ? "Finish or cancel the edit first" : "Reset filters"}
             disabled={blocked}
             onClick={() => setExtraSelection({})}
           />
+          {selectedTab && (
+            <div className="filter-row-end">
+              <IconButton
+                icon={ordering ? faClipboardCheck : faArrowDownWideShort}
+                label={ordering ? "Finish ordering" : editBlocked ? "Finish or cancel the edit first" : "Edit order"}
+                disabled={!ordering && editBlocked}
+                onClick={() => setOrdering(!ordering)}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -413,9 +503,13 @@ export function NotesPage({
         ) : (
           // Notes run top to bottom down each column, then on to the next column to the right.
           <ul style={{ columnCount: columns }}>
-            {visibleNotes.map((note) => {
+            {rows.map((row) => {
+              if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
+              const note = row.note;
+              const dragging = note.id === drag?.noteId;
               const lifetime = lifetimeOf(note);
               const classes = [
+                dragging && "dragging",
                 note.id === editingNote?.id && "editing",
                 lifetime === LIFETIME_WAITING && "waiting",
                 lifetime === LIFETIME_ARCHIVED && "archived",
@@ -425,7 +519,26 @@ export function NotesPage({
               const busy = blocked || busyNoteId !== undefined;
               const hint = blocked ? "Finish or cancel the current edit first" : undefined;
               return (
-                <li key={note.id} className={classes.join(" ") || undefined}>
+                <li
+                  key={note.id}
+                  data-note-id={note.id}
+                  className={classes.join(" ") || undefined}
+                  style={dragging ? { top: drag.top, left: drag.left, width: drag.width, height: drag.height } : undefined}
+                >
+                  {ordering && (
+                    <span
+                      className="note-grip"
+                      title="Drag to reorder"
+                      {...gripHandlers(note.id)}
+                      onPointerDown={(event) => {
+                        // What's shown stays as it is until the drop, whatever live updates arrive.
+                        if (!drag) dragList.current = visibleNotes;
+                        gripHandlers(note.id).onPointerDown(event);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faGripVertical} />
+                    </span>
+                  )}
                   <div className="note-body">
                     {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
                     <TagPills

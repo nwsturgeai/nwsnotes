@@ -311,8 +311,9 @@ a:focus-visible {
   background: var(--surface);
 }
 
+/* The reset button sits just right of the dropdowns; the edit-order button is at the far right. */
 .filter-row .tag-pickers {
-  flex: 1;
+  flex: 0 1 auto;
   margin-top: 0;
   gap: 0.35rem 0.5rem;
 }
@@ -345,6 +346,54 @@ a:focus-visible {
 .note-list > ul > li.handwritten {
   padding-top: 0.2rem;
   padding-bottom: 0.2rem;
+}
+
+/* ---- Edit-order mode: a grip on each note, and the note being dragged --- */
+
+/* In the row's left padding, the full height of the note. Pressing it starts a drag at once. */
+.note-grip {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: stretch;
+  width: 24px;
+  margin-left: -0.8rem;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Follows the pointer, taking no room in the list (the gap shows where it would go). Lifetime colours below win. */
+.note-list > ul > li.dragging {
+  position: fixed;
+  z-index: 30;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+  opacity: 0.95;
+}
+
+/* The same specificity as the Waiting/Archived/Bin backgrounds further down, so those win. */
+.note-list li.dragging {
+  background: var(--surface);
+}
+
+.note-list > ul > li.dragging .note-grip {
+  cursor: grabbing;
+}
+
+.note-list > ul > li.drag-gap {
+  box-sizing: border-box;
+  padding: 0;
+  border: 2px dashed var(--line);
+  background: var(--editing-bg);
+}
+
+/* The page shows the grabbing cursor wherever the pointer goes mid-drag. */
+body:has(.note-list li.dragging) {
+  cursor: grabbing;
 }
 
 .note-list li.editing {
@@ -434,7 +483,9 @@ a:focus-visible {
 
 /* Light icons, so they stay visible on the dark Archived and Bin rows. */
 .note-list li.archived .note-button,
-.note-list li.binned .note-button {
+.note-list li.binned .note-button,
+.note-list li.archived .note-grip,
+.note-list li.binned .note-grip {
   color: #f2f2f2;
 }
 
@@ -1342,4 +1393,9 @@ a:focus-visible {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: 0.85rem;
+}
+
+.filter-row-end {
+  display: flex;
+  margin-left: auto;
 }

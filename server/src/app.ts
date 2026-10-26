@@ -191,6 +191,18 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.json(tab);
   });
 
+  // A tab's note order (set by dragging notes in edit-order mode).
+  tabsRouter.put("/:id/order", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no tab with id ${req.params.id}.` });
+      return;
+    }
+    const tab = await store.setTabOrder(id, req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(tab);
+  });
+
   tabsRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
