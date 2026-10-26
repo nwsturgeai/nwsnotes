@@ -596,6 +596,17 @@ a:focus-visible {
   gap: 4px;
 }
 
+/* The text box or canvas, with messages and the dropdowns or pills under it, left of the buttons. */
+.new-note-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The canvas fills the column's width (its 1px border is outside the drawing area). */
+.new-note-main .stylus-pad {
+  width: calc(100% - 2px);
+}
+
 /* Buttons stack two high (Clear under Add); a third (editing a handwritten note) starts a second column. */
 .new-note-buttons {
   display: grid;

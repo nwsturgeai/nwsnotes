@@ -361,6 +361,30 @@ export function NotesPage({
 
   const blocked = editingNote !== undefined;
 
+  /** Messages, then the dropdowns (or every tag as a pill in full-tag-list mode). Both share the same choices. */
+  const belowTitle = (
+    <>
+      {addBlocked && <p className="lf-add-hint">{LONG_FORM_TITLE_FIRST}</p>}
+      {saveError && (
+        <p className="save-error" role="alert">
+          {saveError}
+        </p>
+      )}
+      {editingNote ? (
+        <TagChooser categories={userCategories} selection={editSelection} onChange={setEditSelection} disabled={saving} />
+      ) : (
+        <TagChooser
+          categories={userCategories}
+          selection={tagSelection}
+          onChange={onTagSelectionChange}
+          disabled={saving}
+          constraints={constraints}
+          tabName={selectedTab?.name}
+        />
+      )}
+    </>
+  );
+
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {extraCategories.length > 0 && (
@@ -535,6 +559,8 @@ export function NotesPage({
         >
           {/* No "New note" heading; the text box is labelled for screen readers instead. */}
           <div className="new-note-row">
+            {/* The dropdowns or pills sit under the title, using the space beside the buttons. */}
+            <div className="new-note-main">
             {showCanvas ? (
               <StylusPad
                 // A fresh pad for each note edited (loaded with its image), and an empty one for new notes.
@@ -561,6 +587,8 @@ export function NotesPage({
                 onChange={(event) => setTitle(event.target.value)}
               />
             )}
+            {belowTitle}
+            </div>
             {/* Icon-only buttons; Clear sits under Add, leaving more width for handwriting. */}
             <div className="new-note-buttons">
               <button
@@ -614,30 +642,6 @@ export function NotesPage({
               )}
             </div>
           </div>
-          {addBlocked && <p className="lf-add-hint">{LONG_FORM_TITLE_FIRST}</p>}
-          {saveError && (
-            <p className="save-error" role="alert">
-              {saveError}
-            </p>
-          )}
-          {/* Dropdowns, or every tag as a pill in full-tag-list mode. Both share the same choices. */}
-          {editingNote ? (
-            <TagChooser
-              categories={userCategories}
-              selection={editSelection}
-              onChange={setEditSelection}
-              disabled={saving}
-            />
-          ) : (
-            <TagChooser
-              categories={userCategories}
-              selection={tagSelection}
-              onChange={onTagSelectionChange}
-              disabled={saving}
-              constraints={constraints}
-              tabName={selectedTab?.name}
-            />
-          )}
         </form>
       </div>
     </div>

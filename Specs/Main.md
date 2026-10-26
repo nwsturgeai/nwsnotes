@@ -353,12 +353,13 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
 - If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area).
 - The text in the new-note dropdowns (their buttons and the lists they open) can't be selected, so a drag or long press doesn't highlight it.
+- The buttons (Add/Update, Cancel, Clear, long-form) have their own column at the right of the area. The text box or canvas, any message, and the dropdowns (or the pills in full-tag-list mode) share the column to its left, so the dropdowns and pills start straight under the title rather than below the last button.
 - Changing tab resets every dropdown (see "Tabs on the notes page"); adding a note still keeps the selections.
 
 ### Full-tag-list mode
 - **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode.
 - **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match. If the pills don't fit, the area scrolls inside itself.
-- **Layout:** the text box or canvas and the buttons stay at the top; below them, instead of dropdowns, every user category gets its own line: its name in small grey text, then all its tags as pills. Lifetime isn't shown.
+- **Layout:** the text box or canvas stays at the top, with the buttons in their column to its right; under the text box or canvas, instead of dropdowns, every user category gets its own line: its name in small grey text, then all its tags as pills. Lifetime isn't shown.
 - **Pills:** a chosen tag is dark (accent green, white text); an unchosen tag is light (the usual pill colour). Tapping toggles it. In a single-select category, choosing a tag unchooses the others, and tapping the chosen one clears it.
 - **Tab rules:** a tag the tab's filters lock in shows dark with a padlock and can't be turned off. In a single-select category where the filters require one of several tags, the other tags are greyed out and can't be chosen. Add shows the same "Choose a … tag" message if a required tag is missing. While editing a note there are no restrictions, as with the dropdowns.
 - Both modes share the same choices, so switching mode keeps the chosen tags. It works the same when adding and when editing a note.
