@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faPen } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -169,8 +175,21 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   }
 
   /** In stylus mode, Finish ignores finger and palm taps (a stylus or mouse works). */
-  async function finish(event: ReactMouseEvent) {
+  function onFinishClick(event: ReactMouseEvent) {
     if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    void finish();
+  }
+
+  /** Outside stylus mode, Ctrl+Enter, Alt+Enter or Cmd+Enter (Mac) anywhere in the editor does the same as Finish. */
+  function onEditorKeyDown(event: ReactKeyboardEvent) {
+    if (stylusMode || event.key !== "Enter" || !(event.ctrlKey || event.altKey || event.metaKey)) return;
+    // Not a new line in the details, and not "accept title".
+    event.preventDefault();
+    event.stopPropagation();
+    if (!busy) void finish();
+  }
+
+  async function finish() {
     setBusy(true);
     await flush();
     // A changed title that hasn't been accepted yet is saved too, rather than lost.
@@ -204,7 +223,14 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   }
 
   return (
-    <div className="long-form-editor" style={{ bottom }} role="dialog" aria-label="Long-form note">
+    <div
+      className="long-form-editor"
+      style={{ bottom }}
+      role="dialog"
+      aria-label="Long-form note"
+      // Capture, so it's handled before the title box's own Enter (accept title).
+      onKeyDownCapture={onEditorKeyDown}
+    >
       <div className="lf-title-row">
         <input
           ref={titleRef}
@@ -291,7 +317,13 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       )}
 
       <div className="lf-finish">
-        <button type="button" className="button" disabled={busy} onClick={(event) => void finish(event)}>
+        <button
+          type="button"
+          className="button"
+          disabled={busy}
+          title={stylusMode ? undefined : "Finish (Ctrl+Enter)"}
+          onClick={onFinishClick}
+        >
           Finish
         </button>
       </div>

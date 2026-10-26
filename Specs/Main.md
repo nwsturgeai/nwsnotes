@@ -431,6 +431,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
   - While the title is locked, clicking the title box does the same as "edit title".
   - Details and tag changes made while editing the details are saved at most every 30 seconds: the first change starts a 30-second timer, and when it runs out the latest version is sent; later changes wait for the next window.
   - "Finish" sends any pending change straight away, then closes the editor. A pending change is also sent straight away if the app goes into the background.
+  - Outside stylus mode, Ctrl+Enter, Alt+Enter or Cmd+Enter (Mac) anywhere in the editor does the same as clicking "Finish" (plain Enter still adds a line in the details, or accepts the title).
   - If a save fails, a small notice shows and it's retried at the next window.
   - Each save tells other open pages to reload. If two pages edit the same note, the last save wins; an open editor isn't changed by live updates.
 - **Fewer save-files while editing:** the server remembers what caused its last save. When a long-form note is updated and the previous save-file was also an update of that same note, the previous file is deleted after the new one is written. So a long editing session leaves one save-file, not one per 30 seconds. A note's creation, other changes in between (e.g. a child note being added) and server restarts all break the run, so those files are kept.
