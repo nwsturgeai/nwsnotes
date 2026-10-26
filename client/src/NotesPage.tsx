@@ -385,7 +385,8 @@ export function NotesPage({
                       hideCategoryIds={filteredSingleSelect}
                     />
                   </div>
-                  {/* Right-aligned; they don't need to line up between notes. */}
+                  {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
+                  <div className="note-side">
                   <div className="note-actions">
                     <IconButton
                       icon={faPen}
@@ -427,6 +428,10 @@ export function NotesPage({
                         />
                       )
                     )}
+                  </div>
+                  <time className="note-date" dateTime={note.createdDateTime} title={`Created ${new Date(note.createdDateTime).toLocaleString()}`}>
+                    {formatCreated(note.createdDateTime)}
+                  </time>
                   </div>
                 </li>
               );
@@ -645,4 +650,11 @@ function pngSize(dataUrl: string): { width: number; height: number } | undefined
   } catch {
     return undefined;
   }
+}
+
+/** A note's creation time in the device's local time, as "dd/MM HH:mm" (e.g. "26/10 14:05"). */
+function formatCreated(iso: string): string {
+  const date = new Date(iso);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${two(date.getDate())}/${two(date.getMonth() + 1)} ${two(date.getHours())}:${two(date.getMinutes())}`;
 }

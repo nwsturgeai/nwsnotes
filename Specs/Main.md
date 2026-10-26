@@ -298,6 +298,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 
 ### Appearance
 - Always light: dark text on light backgrounds, whatever the device's dark-mode setting (`color-scheme: light`, no dark-mode colours).
+- **Width:** the app is at most 1280px wide. On a wider window it's centred, with the extra space split equally either side; the side areas are a slightly darker shade, with a thin line at the app's edges. The long-form editor stays within the same 1280px column.
 
 ### New-note area
 - The area is a fixed 150px high (including its padding and border) at the bottom of the page and never scrolls with the note list; the list fills the rest of the page below the header. Padding is reduced so the canvas, buttons and one row of dropdowns fit. If more appears than fits (an error message, or dropdowns wrapping onto a second row), the area scrolls inside itself; it never grows.
@@ -443,6 +444,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Pills:** New, Archived and Bin show as pills in the normal style; Active never does.
 - **Tabs:** tab definitions and the additional tab filters can include Lifetime, as a check-list like any category.
 - **Bin is hidden by default:** Bin notes are hidden in every tab, "All" included, unless the tab's filter or the additional filters tick Bin.
+- **Creation date:** under each note's buttons, right-aligned, its creation date and time in the device's local time as "dd/MM HH:mm" (24-hour, e.g. "26/10 14:05"), in small grey text, the same grey on every row (it's deliberately hard to read on the dark Archived and Bin rows). Hovering shows the full date.
 - **Note buttons:** right-aligned at the right of each note, all 16px icons in 24px tap areas; they don't need to line up between notes. Left to right:
   - New and Active: edit, waiting (`fa-hourglass`), archive (`fa-box-archive`).
   - Waiting: edit, reinstate (`fa-rotate-left`), archive.
