@@ -159,7 +159,16 @@ Underneath the main "Tabs" header, a second header area is shown within the tab 
 The second header area should show a set of dropdowns, one for each Category that is not specified in the Tab definition. These dropdowns behave the same way as when defining a Tab.
 When a selection is made in any of these dropdowns, the notes shown in the list should be filtered using these selections in addition to any filtering from the Tab definition, using the same filtering logic as in the Tab definition.
 The selections within the dropdowns should be saved into Browser Local Storage.  The selections should be linked to the Tab in which they were made. The next time this tab is opened on this device, the same selections that were there the last time should be preselected.
-At the right of the dropdowns, there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.
+Just to the right of these dropdowns (i.e. not all the way to the right of the screen), there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.
+
+
+## Setting the order of notes
+In the second header (with the additional filter dropdowns): to the far right of the screen, have a new button with icon fa-arrow-down-wide-short.  This is the "edit order" button.
+When this button is clicked, editing-order mode is activated.  The "edit order" button should change to icon fa-clipboard-check.  Clicking the button again deactivates editing-order mode.
+Whilst the notes-list page is in editing-order mode, each note should have an icon on its left: fa-grip-vertical.
+Clicking and holding on one of the fa-grip-vertical icons causes that note to start dragging.  It can be dragged up or down.  When the note-being-dragged is hovered over the gap between two other notes, then a gap opens up between those notes ready to accept the note-being-dragged.  If the mouse/finger/stylus is then released, the note is dropped into this new location.  This updated ordering is then sent to the server and should be reflected in all other browsers that have this tab open.
+The note ordering should be saved as an integer-array attribute on each Tab.  Any notes shown in a Tab that are not listed in the ordering should appear below any notes that have an ordering specified.
+
 
 
 ## Editing Notes
