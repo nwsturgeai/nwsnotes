@@ -107,7 +107,11 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
   return {
     ...content,
     // Files saved before tabs existed have no "tabs" list.
-    tabs: Array.isArray(content.tabs) ? content.tabs : [],
+    // Tabs saved before ordering existed have no "noteOrder".
+    tabs: (Array.isArray(content.tabs) ? content.tabs : []).map((tab) => ({
+      ...tab,
+      noteOrder: Array.isArray(tab.noteOrder) ? tab.noteOrder : [],
+    })),
     // Files saved before notes could be deleted have no "lastNoteId"; the highest id present is right for them.
     lastNoteId: typeof content.lastNoteId === "number" ? content.lastNoteId : Math.max(0, ...content.notes.map((n) => n.id)),
   };
@@ -301,7 +305,7 @@ export class NoteStore {
     return this.enqueue(async () => {
       const kept = this.notes.filter((n) => lifetimeOf(n) !== LIFETIME_BIN);
       const count = this.notes.length - kept.length;
-      if (count > 0) await this.save(this.nextSaveTime(), { notes: kept });
+      if (count > 0) await this.save(this.nextSaveTime(), { notes: kept, tabs: this.tabsKeepingNotes(kept) });
       return count;
     });
   }
@@ -310,8 +314,17 @@ export class NoteStore {
   deleteNote(id: number): Promise<void> {
     return this.enqueue(async () => {
       if (!this.notes.some((n) => n.id === id)) throw new RequestError(404, `There is no note with id ${id}.`);
-      await this.save(this.nextSaveTime(), { notes: this.notes.filter((n) => n.id !== id) });
+      const notes = this.notes.filter((n) => n.id !== id);
+      await this.save(this.nextSaveTime(), { notes, tabs: this.tabsKeepingNotes(notes) });
     });
+  }
+
+  /** The tabs with deleted notes' ids taken out of their `noteOrder`. */
+  private tabsKeepingNotes(notes: Note[]): Tab[] {
+    const ids = new Set(notes.map((n) => n.id));
+    return this.tabs.map((tab) =>
+      tab.noteOrder.every((id) => ids.has(id)) ? tab : { ...tab, noteOrder: tab.noteOrder.filter((id) => ids.has(id)) },
+    );
   }
 
   /** Moves every note with one Lifetime to another in a single save. Returns how many changed. */
@@ -390,7 +403,7 @@ export class NoteStore {
       const check = validateTab(raw, this.tabs, this.allCategories());
       if (!check.ok) throw new RequestError(400, check.error);
 
-      const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab };
+      const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab, noteOrder: [] };
       await this.save(this.nextSaveTime(), { tabs: [...this.tabs, tab] });
       return tab;
     });
@@ -404,7 +417,25 @@ export class NoteStore {
       const check = validateTab(raw, this.tabs, this.allCategories(), existing);
       if (!check.ok) throw new RequestError(400, check.error);
 
-      const tab: Tab = { id, ...check.tab };
+      // Editing a tab's name or filters keeps its note order.
+      const tab: Tab = { id, ...check.tab, noteOrder: existing.noteOrder };
+      await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) });
+      return tab;
+    });
+  }
+
+  /** Replaces a tab's note order (dragging notes), keeping only existing notes' ids, once each. */
+  setTabOrder(id: number, raw: unknown): Promise<Tab> {
+    return this.enqueue(async () => {
+      const existing = this.tabs.find((t) => t.id === id);
+      if (!existing) throw new RequestError(404, `There is no tab with id ${id}.`);
+      const order = (raw as { noteOrder?: unknown } | undefined)?.noteOrder;
+      if (!Array.isArray(order) || !order.every((n) => Number.isInteger(n))) {
+        throw new RequestError(400, '"noteOrder" must be an array of note ids.');
+      }
+      const ids = new Set(this.notes.map((n) => n.id));
+      const noteOrder = [...new Set(order as number[])].filter((noteId) => ids.has(noteId));
+      const tab: Tab = { ...existing, noteOrder };
       await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) });
       return tab;
     });
