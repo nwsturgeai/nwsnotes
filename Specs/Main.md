@@ -478,7 +478,21 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
   - If a save fails, a small notice shows and it's retried at the next window.
   - Each save tells other open pages to reload. If two pages edit the same note, the last save wins; an open editor isn't changed by live updates.
 - **Fewer save-files while editing:** the server remembers what caused its last save. When a long-form note is updated and the previous save-file was also an update of that same note, the previous file is deleted after the new one is written. So a long editing session leaves one save-file, not one per 30 seconds. A note's creation, other changes in between (e.g. a child note being added) and server restarts all break the run, so those files are kept.
-- **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish" and "Cancel" are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas (an eraser will come later). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
+- **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish", "Cancel" and the eraser button are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas; the eraser is used instead (see below). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
+- **Eraser:**
+  - **When it shows:** whenever a long-form note's details are a canvas, whatever the stylus-mode setting. Handwritten details stay a canvas even with stylus mode off.
+  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row with Cancel and Finish, which stay centred.
+    - Tapping it toggles it between unselected and selected. When selected its colours are inverted (accent background, light icon) and it's marked as pressed for screen readers.
+    - It starts unselected each time the editor opens, and stays selected across strokes until tapped again.
+    - It's greyed out while the details are locked, i.e. while the title is being edited.
+    - In stylus mode, finger taps on it are ignored, like Finish.
+  - **Erasing:**
+    - While it's selected, a stylus or mouse on the canvas erases instead of drawing. Fingers still do nothing.
+    - It rubs out the ink under a circle 20 CSS pixels across (40 canvas pixels at 2× density), centred on the pointer.
+    - Dragging erases a continuous band, not just dots, and only the ink under the circle goes, so a line can be partly erased.
+    - While erasing, a thin circle outline the size of the eraser follows the pointer, and while hovering if the pen reports hover.
+  - **The pen's eraser end:** if the browser reports the stylus's eraser end or eraser button (`buttons` bit 32), that always erases, whether or not the button is selected. Whether a given tablet reports it can only be checked on the device.
+  - **Saving:** erasing counts as a change and is autosaved like drawing. When each erase stroke ends, the remaining ink is re-measured, so the saved image is cropped tightly again. A fully erased canvas counts as empty, so Cancel closes without asking.
 - **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters, in the same amber. Long-form notes get the usual buttons (edit, waiting, archive and so on).
 
 ### Note lifetime
