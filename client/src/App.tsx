@@ -34,6 +34,8 @@ export function App() {
    * While set, the tabs, the Settings cog and the other notes' edit icons are blocked.
    */
   const [editingNote, setEditingNote] = useState<Note>();
+  /** Multi-select (bulk tag editing) is on: the tabs and the Settings cog are blocked, as during an edit. */
+  const [bulkActive, setBulkActive] = useState(false);
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
   const refreshInProgress = useRef(false);
@@ -171,7 +173,7 @@ export function App() {
             tabs={tabs}
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
-            editing={editingNote !== undefined}
+            editing={editingNote !== undefined || bulkActive}
             onNavigate={navigate}
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
@@ -229,6 +231,7 @@ export function App() {
               onNoteUpdated={updateNote}
               onNotesChanged={() => void refreshNotes()}
               onTabUpdated={saveTab}
+              onBulkChange={setBulkActive}
               onSessionExpired={sessionExpired}
             />
           )}

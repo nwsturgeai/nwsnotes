@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
-import { LIFETIME_CATEGORY_ID, type Category, type TabFilter } from "@nwsnotes/shared";
+import { LIFETIME_CATEGORY_ID, type Category, type Note, type TabFilter } from "@nwsnotes/shared";
 
 /** The tags chosen in each category's dropdown: category id -> tag ids. */
 export type TagSelection = Record<number, number[]>;
@@ -314,6 +314,73 @@ export function TagPillPicker({ categories, selection, onChange, disabled, const
                   onClick={() => toggle(tag.id)}
                 >
                   {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Multi-select: the pills clicked so far, as tag id -> whether it ended chosen (to add) or not (to remove). */
+export type BulkTagChanges = Map<number, boolean>;
+
+interface BulkProps {
+  categories: Category[];
+  /** The notes selected in the list. With none, the pills can't be clicked. */
+  notes: Note[];
+  changes: BulkTagChanges;
+  onChange: (changes: BulkTagChanges) => void;
+  disabled: boolean;
+}
+
+/**
+ * Multi-select (bulk tag editing): every tag as a pill, showing whether all, some or none of the
+ * selected notes have it (chosen, mixed or not), until it's clicked. Clicking a not-chosen or mixed
+ * pill chooses it, and a chosen one unchooses it. In a single-select category, choosing a tag also
+ * unchooses the category's other tags (all counting as clicked). Tab rules don't apply.
+ */
+export function BulkTagPicker({ categories, notes, changes, onChange, disabled }: BulkProps) {
+  if (categories.length === 0) return null;
+
+  function stateOf(tagId: number): "chosen" | "mixed" | "none" {
+    const changed = changes.get(tagId);
+    if (changed !== undefined) return changed ? "chosen" : "none";
+    const count = notes.filter((note) => note.tagIds.includes(tagId)).length;
+    return count === 0 ? "none" : count === notes.length ? "chosen" : "mixed";
+  }
+
+  return (
+    <div className="tag-pill-picker">
+      {categories.map((category) => {
+        function toggle(tagId: number) {
+          const choose = stateOf(tagId) !== "chosen";
+          const next = new Map(changes);
+          next.set(tagId, choose);
+          if (choose && !category.multiSelect) {
+            for (const tag of category.tags) if (tag.id !== tagId) next.set(tag.id, false);
+          }
+          onChange(next);
+        }
+
+        return (
+          <div key={category.id} className="tag-pill-row" role="group" aria-label={category.name}>
+            <span className="tag-pill-category">{category.name}</span>
+            {category.tags.map((tag) => {
+              const state = stateOf(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  className={state === "none" ? "tag-pill" : `tag-pill ${state}`}
+                  aria-pressed={state === "chosen" ? true : state === "mixed" ? "mixed" : false}
+                  title={state === "mixed" ? `${tag.name} (some of the selected notes)` : tag.name}
+                  disabled={disabled || notes.length === 0}
+                  onClick={() => toggle(tag.id)}
+                >
                   {tag.name}
                 </button>
               );

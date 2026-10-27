@@ -79,6 +79,13 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.status(201).json(note);
   });
 
+  // Multi-select: add and remove tags on several notes at once. (Before "/:id", which would match it.)
+  notesRouter.put("/bulk-tags", async (req, res) => {
+    const notes = await store.bulkTags(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(notes);
+  });
+
   notesRouter.put("/:id", async (req: Request<{ id: string }, object, { tagIds?: unknown } | undefined>, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {

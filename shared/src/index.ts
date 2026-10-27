@@ -116,6 +116,13 @@ export interface TabOrderRequest {
   noteOrder: number[];
 }
 
+/** Body of PUT /api/notes/bulk-tags: tags to add to and remove from every listed note (multi-select). */
+export interface BulkTagsRequest {
+  noteIds: number[];
+  addTagIds: number[];
+  removeTagIds: number[];
+}
+
 /** Notes in a tab's order: those in `noteOrder` first (in that order), then the rest as given. */
 export function orderNotes<T extends { id: number }>(notes: T[], noteOrder: number[]): T[] {
   const position = new Map(noteOrder.map((id, index) => [id, index]));
