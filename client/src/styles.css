@@ -537,6 +537,48 @@ body:has(.note-list li.dragging) {
   height: 250px;
 }
 
+/*
+ * In full-tag-list mode the area itself doesn't scroll: the title box or canvas, any message and the
+ * buttons stay put, and only the pills scroll. (Collapsed, the whole area scrolls, since the dropdowns'
+ * lists would be cut off in a separately scrolling strip.)
+ */
+.new-note.full,
+.new-note.full form,
+.new-note.full .new-note-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.new-note.full {
+  overflow: hidden;
+}
+
+.new-note.full form,
+.new-note.full .new-note-row {
+  flex: 1;
+  min-height: 0;
+}
+
+.new-note.full .new-note-row {
+  align-items: stretch;
+}
+
+.new-note.full .new-note-buttons {
+  align-self: flex-start;
+}
+
+.new-note.full .new-note-main > * {
+  flex: none;
+}
+
+.new-note.full .new-note-main > .tag-pill-picker {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .notes-page.full-tag-list .toast {
   bottom: calc(250px + 0.75rem);
 }
@@ -964,6 +1006,51 @@ body:has(.note-list li.dragging) {
   background: var(--accent);
   color: var(--accent-text);
   font-weight: 600;
+}
+
+/* Pen thickness: each button shows a sample line and its size; the chosen one is inverted. */
+.pen-widths {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.pen-width {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 5rem;
+  height: 3.2rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.pen-width:hover:not(.chosen) {
+  border-color: var(--muted);
+}
+
+.pen-width.chosen {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.pen-sample {
+  display: block;
+  width: 100%;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.pen-size {
+  font-size: 0.75rem;
 }
 
 /* ---- Tags: pills on notes, dropdowns under the new-note title ----------- */

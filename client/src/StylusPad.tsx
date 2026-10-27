@@ -1,10 +1,10 @@
 import { useEffect, useImperativeHandle, useRef, type PointerEvent as ReactPointerEvent, type Ref } from "react";
+import { usePenWidth } from "./stylusMode";
 
 /** The canvas works at this many pixels per CSS pixel; saved images are shown at 1/INK_SCALE of their pixel size. */
 export const INK_SCALE = 2;
 /** Canvas height in CSS pixels. */
 const HEIGHT = 80;
-const LINE_WIDTH = 2.5;
 /** The eraser's diameter, in CSS pixels. */
 const ERASER_SIZE = 20;
 /** `PointerEvent.buttons` bit for a stylus's eraser end (or eraser button). */
@@ -58,6 +58,8 @@ function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
  * fingers and palms are ignored.
  */
 export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, label = "Writing area for a new note" }: Props) {
+  /** The Pen thickness setting, for new strokes (read when the pad opens; it's changed on the settings page). */
+  const [penWidth] = usePenWidth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** The eraser's outline, following the pointer while erasing. */
   const ringRef = useRef<HTMLDivElement>(null);
@@ -160,7 +162,7 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
     context.globalCompositeOperation = erase ? "destination-out" : "source-over";
     context.strokeStyle = "#000";
     context.fillStyle = "#000";
-    context.lineWidth = erase ? ERASER_SIZE : LINE_WIDTH;
+    context.lineWidth = erase ? ERASER_SIZE : penWidth;
     context.lineCap = "round";
     context.lineJoin = "round";
     return context;
@@ -204,7 +206,7 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
   }
 
   function include(point: Point) {
-    const r = LINE_WIDTH / 2;
+    const r = penWidth / 2;
     const b = bounds.current;
     bounds.current = {
       minX: Math.min(b?.minX ?? Infinity, point.x - r),
@@ -232,7 +234,7 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
     // A dot, so a tap without moving still leaves a mark (or erases a spot).
     const context = pen(erase);
     context.beginPath();
-    context.arc(point.x, point.y, (erase ? ERASER_SIZE : LINE_WIDTH) / 2, 0, Math.PI * 2);
+    context.arc(point.x, point.y, (erase ? ERASER_SIZE : penWidth) / 2, 0, Math.PI * 2);
     context.fill();
     if (erase) showRing(event);
     else include(point);
