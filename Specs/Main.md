@@ -56,7 +56,7 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 
 ### Columns
 
-The Settings page should have a "Columns" setting, where a number between 1 and 5 can be chosen (default: 1).
+The Settings page should have a "Columns" setting, where a number between 1 and 4 can be chosen (default: 1).
 This setting should appear alongside the "Stylus mode" setting at the top of the list of Settings.
 The value for this setting should be saved into browser local storage so that it is remembered / retained on this device.
 This setting controls how notes are shown within the notes list.  Notes should be shown in vertical columns, the number of columns being specified by this setting.
@@ -107,7 +107,7 @@ A pill shows a dark background if the new/editing note has that Tag.  A pill sho
 Clicking/tapping on the pill toggles whether the new/editing note has this Tag or not.  In stylus mode, finger touches on these pills does not cause them to toggle.
 For a single-select category, clicking on one of the tag pills in this category automatically deselects/un-tags any other tag pills from this category.
 The Lifetime Category continues to be not-shown in full-tag-list mode.
-
+If the 250px area is too short to show all of the available tags, then the part of this area showing the tags should scroll vertically.  The textbox/canvas for typing the note title should never scroll. 
 
 
 ## Stylus support
@@ -124,6 +124,13 @@ Handwritten notes can still have tags the same as typed notes.
 In stylus mode, the add-note area has a "Clear" button (as well as the Add button).  The Clear button should be the same size as the Add button and should use icon fa-delete-left and have no text.
 The "Clear" button should be shown underneath the "Add" button - this gives more horizontal space for handwriting.
 Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns: when in stylus mode, these controls should not respond to touch inputs - they should only respond to stylus or mouse inputs. Touch inputs should continue to work when not in stylus mode.
+
+### Pen thickness
+
+In the settings page, underneath the Stylus-mode/Columns section, and before the Lifetime section, add a new section for Pen controls.
+For now the only control is for Pen thickness.  There are 3 possible pen thicknesses: 1.5px, 2.5px, 4.5px.  Show a set of buttons for these, with exactly one selected (colour inverted) at any time.  Clicking on one of the buttons selects that thickness.
+The selected thickness should be remembered in browser local storage so that it persists on this device.
+When creating/editing a canvas-based note, also when creating/editing the details of a canvas-based long-form note: when the pen is in writing mode (i.e. not eraser mode), then touching down with the pen should cause a line to be drawn on the canvas with a width given by the current pen thickness setting.
 
 
 ## Tabs
@@ -196,6 +203,12 @@ A set of dropdowns for setting tags.  These appear underneath the title textbox.
 A large textarea (multiline text accepted) or canvas for entering the details of this note (canvas if in stylus-mode, textarea otherwise).
 A button with text "Finish" centred below the textarea/canvas.  The textarea/canvas should occupy all the vertical space between the dropdowns and the Finish button.
 
+### Eraser
+When creating/editing a long-form note in stylus mode, alongside the Finish button (and maybe Cancel button), right at the left-hand edge of the page, there should be an icon button with icon fa-eraser.
+This button can be in 2 states: unselected (default), and selected.  Pressing the button toggles between the states.  In selected state, the button colours should be inverted.
+Whilst this button is selected: if/when the stylus is touched down within the details-editing area, then instead of drawing a new line, the stylus acts as an eraser, wiping out any lines underneath it, within a circle of diameter 20 pixels centered on the point the stylus is touching.
+
+
 ### Workflow
 Details of a long form note can only be created / edited after the title has been set.  The title has to be non-empty.
 Clicking "accept title" causes the new long form note to be created (details initially empty) and makes the details available to be edited.
@@ -218,8 +231,6 @@ If the most recent previous save file was also created because of an edit of thi
 
 New long-form notes should start with the "New" lifetime tag (the same as regular notes).
 Long-form notes are displayed in the notes list the same as regular notes.  The only difference: after any tag pills, there should be an extra pill with text "Long Form".  This final pill should have a different colour.
-
-There will be no "clear" button for the stylus-mode long-form note details.  I will add an Eraser option in a future change.
 
 
 ### Editing a long-form note
@@ -327,7 +338,14 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Setting:** a "Stylus mode" switch at the top of the settings page, stored in the browser's local storage, so each device remembers its own setting. While it's on, an `fa-signature` icon sits just left of the cog in the header. The icon only shows the mode (tooltip "Stylus mode is on"); clicking it does nothing.
 - **Canvas:** while stylus mode is on, the title text box is hidden and a canvas takes its place, as wide as the text box would be and 80 CSS pixels high. To type a note instead, switch stylus mode off. Writing past the canvas edge is cut off.
 - **What draws:** only a stylus (`pointerType` "pen") and, for testing on a computer, a mouse. Fingers and palms touching the canvas are ignored. The page doesn't scroll while writing on the canvas (`touch-action: none`).
-- **Ink:** black, a fixed width of about 2.5 CSS pixels, with rounded ends and joins. No pressure sensitivity.
+- **Ink:** black, with rounded ends and joins, in the width chosen by the Pen thickness setting (1.5, 2.5 or 4.5 CSS pixels; default 2.5). No pressure sensitivity.
+- **Pen thickness:**
+  - **Settings:** a "Pen" section on the settings page, between Stylus mode/Columns and Lifetime. It's shown even when stylus mode is off, since handwritten notes can be edited without it.
+  - **Buttons:** three buttons in a row, one per thickness. Each shows a short sample line drawn at that thickness, with its size in small text ("1.5px", "2.5px", "4.5px").
+    - Exactly one is selected, shown with its colours inverted (accent background, light line and text) and marked as pressed for screen readers. Clicking one selects it.
+  - **Remembered:** the choice is kept on this device in local storage (default 2.5px). An unknown stored value counts as 2.5.
+  - **What it affects:** new strokes on every canvas, drawn with a stylus or mouse: the new-note canvas, editing a handwritten note, and long-form details. It doesn't change ink already drawn, or the eraser's size.
+  - **Saved images:** cropping allows for the thickest pen, so thick lines aren't clipped at the edge.
 - **Buttons:** "Clear" sits underneath "Add", leaving more width for the canvas; both buttons are the same width. "Add" saves the note and "Clear" wipes the canvas. Adding with nothing written shows "Nothing has been written yet." After a successful save the canvas clears. If saving fails, the error appears under the canvas and the writing is kept so you can retry. The tag dropdowns work exactly as for typed notes.
 - **Saved image:** black ink on a transparent background, cropped to the written area plus a 4-pixel margin, as a PNG data URL (`data:image/png;base64,...`). The canvas always works at 2× pixel density, so ink is crisp on tablets and every image is shown at half its pixel size (the size it was written).
 - **Paper:** the canvas and handwritten notes in the list sit on a light "paper" background. (The app is now always light, so this simply matches the page.)
@@ -371,7 +389,9 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 
 ### Full-tag-list mode
 - **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode.
-- **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match. If the pills don't fit, the area scrolls inside itself.
+- **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match.
+- **Scrolling:** the area itself never scrolls. The text box or canvas, any message under it, and the buttons stay put. If the pills don't fit, only the pills scroll up and down, in the space under the text box and beside the buttons.
+  - The collapsed 150px area is unchanged: if it overflows, the whole area scrolls. This is because the dropdowns' lists open below them and would be cut off in a separately scrolling strip.
 - **Layout:** the text box or canvas stays at the top, with the buttons in their column to its right; under the text box or canvas, instead of dropdowns, every user category gets its own line: its name in small grey text, then all its tags as pills. Lifetime isn't shown.
 - **Pills:** a chosen tag is dark (accent green, white text); an unchosen tag is light (the usual pill colour). Tapping toggles it. In a single-select category, choosing a tag unchooses the others, and tapping the chosen one clears it.
 - **Tab rules:** a tag the tab's filters lock in shows dark with a padlock and can't be turned off. In a single-select category where the filters require one of several tags, the other tags are greyed out and can't be chosen. Add shows the same "Choose a … tag" message if a required tag is missing. While editing a note there are no restrictions, as with the dropdowns.
@@ -379,7 +399,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
 
 ### Columns
-- **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as five small buttons labelled 1 to 5 (default 1). It's remembered on this device in local storage.
+- **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as four small buttons labelled 1 to 4 (default 1). It's remembered on this device in local storage. A device that saved 5 (allowed before) is treated as 4.
 - **Layout:** the note list is split into that many balanced columns (CSS multi-column), and the whole list scrolls up and down as now. Notes flow top to bottom down the first column, then the second, and so on from left to right, so the newest note is at the bottom of the last column. A note is never split across two columns.
 - A handwritten note wider than its column is shrunk to fit.
 - **Balanced columns (accepted):** adding a note can move other notes between columns, as the columns even out. If this feels jumpy in use, an alternative is to fill each column to the screen's height and scroll sideways.
@@ -474,7 +494,21 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
   - If a save fails, a small notice shows and it's retried at the next window.
   - Each save tells other open pages to reload. If two pages edit the same note, the last save wins; an open editor isn't changed by live updates.
 - **Fewer save-files while editing:** the server remembers what caused its last save. When a long-form note is updated and the previous save-file was also an update of that same note, the previous file is deleted after the new one is written. So a long editing session leaves one save-file, not one per 30 seconds. A note's creation, other changes in between (e.g. a child note being added) and server restarts all break the run, so those files are kept.
-- **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish" and "Cancel" are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas (an eraser will come later). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
+- **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish", "Cancel" and the eraser button are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas; the eraser is used instead (see below). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
+- **Eraser:**
+  - **When it shows:** whenever a long-form note's details are a canvas, whatever the stylus-mode setting. Handwritten details stay a canvas even with stylus mode off.
+  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row with Cancel and Finish, which stay centred.
+    - Tapping it toggles it between unselected and selected. When selected its colours are inverted (accent background, light icon) and it's marked as pressed for screen readers.
+    - It starts unselected each time the editor opens, and stays selected across strokes until tapped again.
+    - It's greyed out while the details are locked, i.e. while the title is being edited.
+    - In stylus mode, finger taps on it are ignored, like Finish.
+  - **Erasing:**
+    - While it's selected, a stylus or mouse on the canvas erases instead of drawing. Fingers still do nothing.
+    - It rubs out the ink under a circle 20 CSS pixels across (40 canvas pixels at 2× density), centred on the pointer.
+    - Dragging erases a continuous band, not just dots, and only the ink under the circle goes, so a line can be partly erased.
+    - While erasing, a thin circle outline the size of the eraser follows the pointer, and while hovering if the pen reports hover.
+  - **The pen's eraser end:** if the browser reports the stylus's eraser end or eraser button (`buttons` bit 32), that always erases, whether or not the button is selected. Whether a given tablet reports it can only be checked on the device.
+  - **Saving:** erasing counts as a change and is autosaved like drawing. When each erase stroke ends, the remaining ink is re-measured, so the saved image is cropped tightly again. A fully erased canvas counts as empty, so Cancel closes without asking.
 - **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters, in the same amber. Long-form notes get the usual buttons (edit, waiting, archive and so on).
 
 ### Note lifetime
@@ -507,7 +541,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - The header strip has a fixed height and the same background colour as the new-note area. Below it, the note list fills the page above the fixed 150px new-note area.
 - No app title is shown at the left of the header; on the notes page that space holds the tabs. The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes".
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
-- The settings page has, in order: Stylus mode and Columns (side by side), Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+- The settings page has, in order: Stylus mode and Columns (side by side), Pen, Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
 
 ### Live updates (WebSocket)
 - The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.

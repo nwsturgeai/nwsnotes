@@ -1,10 +1,16 @@
 import { useEffect, useImperativeHandle, useRef, type PointerEvent as ReactPointerEvent, type Ref } from "react";
+import { usePenWidth } from "./stylusMode";
 
 /** The canvas works at this many pixels per CSS pixel; saved images are shown at 1/INK_SCALE of their pixel size. */
 export const INK_SCALE = 2;
 /** Canvas height in CSS pixels. */
 const HEIGHT = 80;
-const LINE_WIDTH = 2.5;
+/** The eraser's diameter, in CSS pixels. */
+const ERASER_SIZE = 20;
+/** `PointerEvent.buttons` bit for a stylus's eraser end (or eraser button). */
+const PEN_ERASER_BUTTONS = 32;
+/** `PointerEvent.button` when a stylus's eraser end touches down. */
+const PEN_ERASER_BUTTON = 5;
 /** Space kept around the writing when cropping, in CSS pixels. */
 const CROP_MARGIN = 4;
 
@@ -19,8 +25,10 @@ export interface StylusPadHandle {
 interface Props {
   ref: Ref<StylusPadHandle>;
   disabled: boolean;
-  /** Called when a new stroke starts. */
+  /** Called when a new stroke (drawing or erasing) starts. */
   onInk?: () => void;
+  /** The eraser is selected: a stylus or mouse erases instead of drawing. A stylus's eraser end always erases. */
+  erasing?: boolean;
   /** A handwritten note's image (PNG data URL) to start from, when editing it. */
   initialImage?: string;
   /**
@@ -49,10 +57,14 @@ function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
  * A canvas to write a note on. Only a stylus (or a mouse, for testing on a computer) draws;
  * fingers and palms are ignored.
  */
-export function StylusPad({ ref, disabled, onInk, initialImage, fill, label = "Writing area for a new note" }: Props) {
+export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, label = "Writing area for a new note" }: Props) {
+  /** The Pen thickness setting, for new strokes (read when the pad opens; it's changed on the settings page). */
+  const [penWidth] = usePenWidth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  /** The stroke being drawn: which pointer, and where it last was. */
-  const stroke = useRef<{ pointerId: number; last: Point }>(undefined);
+  /** The eraser's outline, following the pointer while erasing. */
+  const ringRef = useRef<HTMLDivElement>(null);
+  /** The stroke being drawn or erased: which pointer, and where it last was. */
+  const stroke = useRef<{ pointerId: number; last: Point; erase: boolean }>(undefined);
   /** The area written on so far, in CSS pixels. */
   const bounds = useRef<{ minX: number; minY: number; maxX: number; maxY: number }>(undefined);
   /** True once anything has been drawn or cleared since `initialImage` was loaded. */
@@ -143,19 +155,58 @@ export function StylusPad({ ref, disabled, onInk, initialImage, fill, label = "W
     // The pad is remounted (keyed) for each note it edits, so this runs once per image.
   }, []);
 
-  function pen(): CanvasRenderingContext2D {
+  /** The drawing context, set up to draw ink, or to erase (clear whatever is under the eraser). */
+  function pen(erase = false): CanvasRenderingContext2D {
     const context = canvasRef.current!.getContext("2d")!;
     context.setTransform(INK_SCALE, 0, 0, INK_SCALE, 0, 0);
+    context.globalCompositeOperation = erase ? "destination-out" : "source-over";
     context.strokeStyle = "#000";
     context.fillStyle = "#000";
-    context.lineWidth = LINE_WIDTH;
+    context.lineWidth = erase ? ERASER_SIZE : penWidth;
     context.lineCap = "round";
     context.lineJoin = "round";
     return context;
   }
 
+  /** After erasing, finds the ink that's left (none means empty), so the saved image is cropped tightly. */
+  function measureInk() {
+    const canvas = canvasRef.current!;
+    const { data, width, height } = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    for (let y = 0; y < height; y++) {
+      const row = y * width * 4;
+      for (let x = 0; x < width; x++) {
+        if (data[row + x * 4 + 3] === 0) continue;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        maxY = y;
+      }
+    }
+    bounds.current =
+      maxX < 0
+        ? undefined
+        : { minX: minX / INK_SCALE, minY: minY / INK_SCALE, maxX: (maxX + 1) / INK_SCALE, maxY: (maxY + 1) / INK_SCALE };
+  }
+
+  /** Shows the eraser's outline centred on the pointer, or hides it. */
+  function showRing(event: { clientX: number; clientY: number } | undefined) {
+    const ring = ringRef.current;
+    if (!ring) return;
+    ring.style.display = event ? "block" : "none";
+    if (event) ring.style.transform = `translate(${event.clientX - ERASER_SIZE / 2}px, ${event.clientY - ERASER_SIZE / 2}px)`;
+  }
+
+  /** Whether this pointer erases: the eraser is selected, or it's a stylus's eraser end. */
+  function erases(event: ReactPointerEvent) {
+    return erasing || (event.pointerType === "pen" && (event.buttons & PEN_ERASER_BUTTONS) !== 0);
+  }
+
   function include(point: Point) {
-    const r = LINE_WIDTH / 2;
+    const r = penWidth / 2;
     const b = bounds.current;
     bounds.current = {
       minX: Math.min(b?.minX ?? Infinity, point.x - r),
@@ -173,55 +224,80 @@ export function StylusPad({ ref, disabled, onInk, initialImage, fill, label = "W
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLCanvasElement>) {
-    // Fingers and palms don't draw; nor do other mouse buttons.
-    if (disabled || event.pointerType === "touch" || event.button !== 0 || stroke.current) return;
+    // Fingers and palms don't draw; nor do other mouse buttons (a stylus's eraser end does, to erase).
+    const eraserEnd = event.pointerType === "pen" && event.button === PEN_ERASER_BUTTON;
+    if (disabled || event.pointerType === "touch" || (event.button !== 0 && !eraserEnd) || stroke.current) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
+    const erase = eraserEnd || erases(event);
     const point = pointOf(event);
-    // A dot, so a tap without moving still leaves a mark.
-    const context = pen();
+    // A dot, so a tap without moving still leaves a mark (or erases a spot).
+    const context = pen(erase);
     context.beginPath();
-    context.arc(point.x, point.y, LINE_WIDTH / 2, 0, Math.PI * 2);
+    context.arc(point.x, point.y, (erase ? ERASER_SIZE : penWidth) / 2, 0, Math.PI * 2);
     context.fill();
-    include(point);
-    stroke.current = { pointerId: event.pointerId, last: point };
+    if (erase) showRing(event);
+    else include(point);
+    stroke.current = { pointerId: event.pointerId, last: point, erase };
     changedSinceLoad.current = true;
     onInk?.();
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLCanvasElement>) {
     const current = stroke.current;
-    if (!current || event.pointerId !== current.pointerId) return;
+    if (!current || event.pointerId !== current.pointerId) {
+      // Hovering (a mouse, or a stylus that reports hover) shows where the eraser would rub out.
+      if (!current && !disabled && event.pointerType !== "touch" && erases(event)) showRing(event);
+      return;
+    }
     // Coalesced events give every point the stylus passed over since the last event, for smoother lines.
     const events = event.nativeEvent.getCoalescedEvents?.() ?? [];
     const points = (events.length > 0 ? events : [event]).map(pointOf);
-    const context = pen();
+    const context = pen(current.erase);
     context.beginPath();
     context.moveTo(current.last.x, current.last.y);
     for (const point of points) {
       context.lineTo(point.x, point.y);
-      include(point);
+      if (!current.erase) include(point);
     }
     context.stroke();
     current.last = points.at(-1)!;
+    if (current.erase) showRing(event);
   }
 
   function endStroke(event: ReactPointerEvent<HTMLCanvasElement>) {
-    if (stroke.current?.pointerId === event.pointerId) stroke.current = undefined;
+    const current = stroke.current;
+    if (current?.pointerId !== event.pointerId) return;
+    stroke.current = undefined;
+    if (current.erase) measureInk();
+    // The outline stays while hovering with the eraser selected; otherwise it goes.
+    if (!erasing || event.type !== "pointerup") showRing(undefined);
   }
 
+  // Unselecting the eraser hides its outline.
+  useEffect(() => {
+    if (!erasing && !stroke.current?.erase) showRing(undefined);
+  }, [erasing]);
+
   return (
-    <canvas
-      ref={canvasRef}
-      className={fill ? "stylus-pad fill" : "stylus-pad"}
-      role="img"
-      aria-label={label}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={endStroke}
-      onPointerCancel={endStroke}
-      onLostPointerCapture={endStroke}
-      onContextMenu={(event) => event.preventDefault()}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className={fill ? "stylus-pad fill" : "stylus-pad"}
+        role="img"
+        aria-label={label}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endStroke}
+        onPointerCancel={endStroke}
+        onLostPointerCapture={endStroke}
+        onPointerLeave={() => {
+          if (!stroke.current) showRing(undefined);
+        }}
+        onContextMenu={(event) => event.preventDefault()}
+      />
+      {/* Fixed to the viewport, so it takes no room in the layout. */}
+      <div ref={ringRef} className="eraser-ring" style={{ width: ERASER_SIZE, height: ERASER_SIZE }} aria-hidden />
+    </>
   );
 }

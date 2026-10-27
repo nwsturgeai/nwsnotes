@@ -11,7 +11,7 @@ import {
 import { ApiError, api } from "./api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { pathFor, type Page } from "./route";
-import { MAX_COLUMNS } from "./stylusMode";
+import { MAX_COLUMNS, PEN_WIDTHS, usePenWidth } from "./stylusMode";
 import { TagPills } from "./TagPills";
 
 interface Props {
@@ -49,6 +49,8 @@ export function SettingsPage({
 }: Props) {
   const [confirming, setConfirming] = useState<{ action: BulkAction; message: string; label: string }>();
   const [busy, setBusy] = useState(false);
+  /** Read by each canvas when it opens, so there's no need to pass it around. */
+  const [penWidth, setPenWidth] = usePenWidth();
   /** The result of the last Lifetime button, shown under the buttons. */
   const [result, setResult] = useState<{ text: string; error?: boolean }>();
 
@@ -132,6 +134,28 @@ export function SettingsPage({
           <p>How many columns the notes are shown in.</p>
         </div>
         <p className="device-note">These settings are remembered on this device only.</p>
+      </section>
+
+      <section>
+        <h2 id="pen-label">Pen</h2>
+        <div className="pen-widths" role="radiogroup" aria-labelledby="pen-label">
+          {PEN_WIDTHS.map((width) => (
+            <button
+              key={width}
+              type="button"
+              role="radio"
+              aria-checked={penWidth === width}
+              aria-label={`Pen thickness ${width}px`}
+              className={penWidth === width ? "pen-width chosen" : "pen-width"}
+              onClick={() => setPenWidth(width)}
+            >
+              {/* A sample line at this thickness. */}
+              <span className="pen-sample" style={{ height: width }} />
+              <span className="pen-size">{width}px</span>
+            </button>
+          ))}
+        </div>
+        <p>The thickness of lines drawn with the stylus. Remembered on this device only.</p>
       </section>
 
       <section>

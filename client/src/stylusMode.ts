@@ -41,15 +41,31 @@ export function useFullTagList(): [boolean, (on: boolean) => void] {
   return useDeviceSetting("nwsnotes.fullTagList", (stored) => stored === "on", onOff);
 }
 
-export const MAX_COLUMNS = 5;
+export const MAX_COLUMNS = 4;
 
-/** How many columns the note list is split into (1 to 5, default 1). */
+/** How many columns the note list is split into (1 to 4, default 1). A higher saved value (5 was allowed) counts as 4. */
 export function useColumns(): [number, (columns: number) => void] {
   return useDeviceSetting(
     "nwsnotes.columns",
     (stored) => {
       const columns = Number(stored);
-      return Number.isInteger(columns) && columns >= 1 && columns <= MAX_COLUMNS ? columns : 1;
+      return Number.isInteger(columns) && columns >= 1 ? Math.min(columns, MAX_COLUMNS) : 1;
+    },
+    String,
+  );
+}
+
+/** The pen thicknesses to choose from, in CSS pixels. */
+export const PEN_WIDTHS = [1.5, 2.5, 4.5] as const;
+export const DEFAULT_PEN_WIDTH = 2.5;
+
+/** The width new strokes are drawn with on every canvas (default 2.5; an unknown saved value counts as that). */
+export function usePenWidth(): [number, (width: number) => void] {
+  return useDeviceSetting(
+    "nwsnotes.penWidth",
+    (stored) => {
+      const width = Number(stored);
+      return (PEN_WIDTHS as readonly number[]).includes(width) ? width : DEFAULT_PEN_WIDTH;
     },
     String,
   );
