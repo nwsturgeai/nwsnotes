@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faPen } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faEraser, faPen } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -75,6 +75,8 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   const [isNew] = useState(note === undefined);
   /** Cancel with details written asks before deleting. */
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  /** The eraser button (handwritten details only): selected, a stylus or mouse erases. */
+  const [erasing, setErasing] = useState(false);
 
   // The latest values, for saves that run from a timer.
   const latest = useRef({ selection, detailsText });
@@ -212,6 +214,12 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
     onFinish();
   }
 
+  /** In stylus mode, finger and palm taps on the eraser button are ignored, like Finish. */
+  function onEraserClick(event: ReactMouseEvent) {
+    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    setErasing(!erasing);
+  }
+
   /** Cancel (new notes only): straight away if there are no details, otherwise after asking. */
   function onCancelClick(event: ReactMouseEvent) {
     if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
@@ -340,6 +348,7 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
             fill
             label="Details of the long-form note"
             disabled={!detailsEditable}
+            erasing={erasing}
             initialImage={note?.detailsImage || undefined}
             onInk={schedule}
           />
@@ -356,6 +365,20 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       )}
 
       <div className="lf-finish">
+        {/* At the far left; Cancel and Finish stay centred. Colours inverted while selected. */}
+        {kind === "image" && (
+          <button
+            type="button"
+            className={erasing ? "icon-button primary lf-eraser" : "icon-button lf-eraser"}
+            aria-label="Eraser"
+            aria-pressed={erasing}
+            title={erasing ? "Eraser on: tap to draw again" : "Eraser"}
+            disabled={busy || !detailsEditable}
+            onClick={onEraserClick}
+          >
+            <FontAwesomeIcon icon={faEraser} />
+          </button>
+        )}
         {isNew && (
           <button type="button" className="button" disabled={busy} onClick={onCancelClick}>
             Cancel

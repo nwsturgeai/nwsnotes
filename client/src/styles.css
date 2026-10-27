@@ -764,9 +764,31 @@ body:has(.note-list li.dragging) {
 }
 
 .lf-finish {
+  position: relative;
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 0.75rem;
+}
+
+/* At the far left of the row, so Cancel and Finish stay centred. */
+.lf-eraser {
+  position: absolute;
+  left: 0;
+}
+
+/* The eraser's size and position under the pointer while erasing (moved by script). */
+.eraser-ring {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  display: none;
+  box-sizing: border-box;
+  border: 1px solid #555;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7);
+  pointer-events: none;
 }
 
 .lf-finish .button {
