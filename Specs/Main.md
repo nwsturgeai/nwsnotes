@@ -338,7 +338,14 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Setting:** a "Stylus mode" switch at the top of the settings page, stored in the browser's local storage, so each device remembers its own setting. While it's on, an `fa-signature` icon sits just left of the cog in the header. The icon only shows the mode (tooltip "Stylus mode is on"); clicking it does nothing.
 - **Canvas:** while stylus mode is on, the title text box is hidden and a canvas takes its place, as wide as the text box would be and 80 CSS pixels high. To type a note instead, switch stylus mode off. Writing past the canvas edge is cut off.
 - **What draws:** only a stylus (`pointerType` "pen") and, for testing on a computer, a mouse. Fingers and palms touching the canvas are ignored. The page doesn't scroll while writing on the canvas (`touch-action: none`).
-- **Ink:** black, a fixed width of about 2.5 CSS pixels, with rounded ends and joins. No pressure sensitivity.
+- **Ink:** black, with rounded ends and joins, in the width chosen by the Pen thickness setting (1.5, 2.5 or 4.5 CSS pixels; default 2.5). No pressure sensitivity.
+- **Pen thickness:**
+  - **Settings:** a "Pen" section on the settings page, between Stylus mode/Columns and Lifetime. It's shown even when stylus mode is off, since handwritten notes can be edited without it.
+  - **Buttons:** three buttons in a row, one per thickness. Each shows a short sample line drawn at that thickness, with its size in small text ("1.5px", "2.5px", "4.5px").
+    - Exactly one is selected, shown with its colours inverted (accent background, light line and text) and marked as pressed for screen readers. Clicking one selects it.
+  - **Remembered:** the choice is kept on this device in local storage (default 2.5px). An unknown stored value counts as 2.5.
+  - **What it affects:** new strokes on every canvas, drawn with a stylus or mouse: the new-note canvas, editing a handwritten note, and long-form details. It doesn't change ink already drawn, or the eraser's size.
+  - **Saved images:** cropping allows for the thickest pen, so thick lines aren't clipped at the edge.
 - **Buttons:** "Clear" sits underneath "Add", leaving more width for the canvas; both buttons are the same width. "Add" saves the note and "Clear" wipes the canvas. Adding with nothing written shows "Nothing has been written yet." After a successful save the canvas clears. If saving fails, the error appears under the canvas and the writing is kept so you can retry. The tag dropdowns work exactly as for typed notes.
 - **Saved image:** black ink on a transparent background, cropped to the written area plus a 4-pixel margin, as a PNG data URL (`data:image/png;base64,...`). The canvas always works at 2× pixel density, so ink is crisp on tablets and every image is shown at half its pixel size (the size it was written).
 - **Paper:** the canvas and handwritten notes in the list sit on a light "paper" background. (The app is now always light, so this simply matches the page.)
@@ -382,7 +389,9 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 
 ### Full-tag-list mode
 - **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode.
-- **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match. If the pills don't fit, the area scrolls inside itself.
+- **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match.
+- **Scrolling:** the area itself never scrolls. The text box or canvas, any message under it, and the buttons stay put. If the pills don't fit, only the pills scroll up and down, in the space under the text box and beside the buttons.
+  - The collapsed 150px area is unchanged: if it overflows, the whole area scrolls. This is because the dropdowns' lists open below them and would be cut off in a separately scrolling strip.
 - **Layout:** the text box or canvas stays at the top, with the buttons in their column to its right; under the text box or canvas, instead of dropdowns, every user category gets its own line: its name in small grey text, then all its tags as pills. Lifetime isn't shown.
 - **Pills:** a chosen tag is dark (accent green, white text); an unchosen tag is light (the usual pill colour). Tapping toggles it. In a single-select category, choosing a tag unchooses the others, and tapping the chosen one clears it.
 - **Tab rules:** a tag the tab's filters lock in shows dark with a padlock and can't be turned off. In a single-select category where the filters require one of several tags, the other tags are greyed out and can't be chosen. Add shows the same "Choose a … tag" message if a required tag is missing. While editing a note there are no restrictions, as with the dropdowns.
@@ -390,7 +399,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
 
 ### Columns
-- **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as five small buttons labelled 1 to 5 (default 1). It's remembered on this device in local storage.
+- **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as four small buttons labelled 1 to 4 (default 1). It's remembered on this device in local storage. A device that saved 5 (allowed before) is treated as 4.
 - **Layout:** the note list is split into that many balanced columns (CSS multi-column), and the whole list scrolls up and down as now. Notes flow top to bottom down the first column, then the second, and so on from left to right, so the newest note is at the bottom of the last column. A note is never split across two columns.
 - A handwritten note wider than its column is shrunk to fit.
 - **Balanced columns (accepted):** adding a note can move other notes between columns, as the columns even out. If this feels jumpy in use, an alternative is to fill each column to the screen's height and scroll sideways.
@@ -532,7 +541,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - The header strip has a fixed height and the same background colour as the new-note area. Below it, the note list fills the page above the fixed 150px new-note area.
 - No app title is shown at the left of the header; on the notes page that space holds the tabs. The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes".
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
-- The settings page has, in order: Stylus mode and Columns (side by side), Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+- The settings page has, in order: Stylus mode and Columns (side by side), Pen, Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
 
 ### Live updates (WebSocket)
 - The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
