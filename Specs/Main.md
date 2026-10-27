@@ -107,7 +107,28 @@ A pill shows a dark background if the new/editing note has that Tag.  A pill sho
 Clicking/tapping on the pill toggles whether the new/editing note has this Tag or not.  In stylus mode, finger touches on these pills does not cause them to toggle.
 For a single-select category, clicking on one of the tag pills in this category automatically deselects/un-tags any other tag pills from this category.
 The Lifetime Category continues to be not-shown in full-tag-list mode.
-If the 250px area is too short to show all of the available tags, then the part of this area showing the tags should scroll vertically.  The textbox/canvas for typing the note title should never scroll. 
+If the 250px area is too short to show all of the available tags, then the part of this area showing the tags should scroll vertically.  The textbox/canvas for typing the note title should never scroll.
+
+### Multi-select
+When in full-tag-list mode, an extra button should appear on the right of the edit-note area.  This button has icon fa-list-check.
+Whilst the new-note title (text or details) is empty, this button can be clicked and toggled on.  Whilst switched on, the button colours are inverted.
+The list-check button can also only be clicked whilst drag-mode is off.
+Once this button is toggled on, it is no longer possible to enter a new note title - the text-box/canvas controls for entering a new note title should be hidden.
+The add-note, clear-canvas, and new-long-form-note buttons should also be hidden whilst list-check is active.
+Whilst the list-check button is on: all the notes in the notes-list gain an icon to their left.  This icon can either be unselected (fa-circle) or selected (fa-circle-check).  Clicking the note causes the note selection state to be toggled between unselected and selected.
+Whilst the list-check button is on, it is not possible to edit / wait / archive / bin any notes.
+Whilst the list-check button is on but no notes have been selected or no tag pills have been clicked, then clicking the list-check button again just toggles it off and the page returns to regular behaviour.
+Any note-selections are lost when list-check mode is ended - restarting list-check mode always starts with no notes selected.
+
+The point of multi-selecting notes is to be able to bulk-edit their tags.
+The tag pill statuses (selected or unselected) in the new-note area should be updated to reflect which tags are set on the notes that have been selected.
+This means that the tag pills in the new-note area now need to have a third "partially selected" state, to indicate that some of the selected notes have this tag, and others do not.
+
+Once one or more notes have been selected, it is possible to click on any of the tag pills in the new-note area.  Clicking on a tag pill toggles it between selected and unselected (as before).  If a tag pill is partially-selected, clicking it sets it to fully-selected, and further clicks toggle between selected and unselected.
+Once any tag pills have been clicked, it is no longer possible to select or deselect any notes in the notes list.
+Once any tag pills have been clicked, a new "accept bulk tag updates" icon-button (fa-check) appears above the list-check button.
+At this point, clicking "accept bulk tag updates" causes the selected notes' tags to be updated.  Tags should be added and removed only according to which tag pills were clicked on.  Any tag pills that weren't clicked on retain their state - i.e. an untouched tag-pill in partially-selected state means that selected notes retain whether they have that tag or not.
+Clicking the list-check button still turns list-check mode off without making any changes, effectively discarding any note selections and tag-update selections.
 
 
 ## Stylus support
