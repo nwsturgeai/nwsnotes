@@ -56,7 +56,7 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 
 ### Columns
 
-The Settings page should have a "Columns" setting, where a number between 1 and 5 can be chosen (default: 1).
+The Settings page should have a "Columns" setting, where a number between 1 and 4 can be chosen (default: 1).
 This setting should appear alongside the "Stylus mode" setting at the top of the list of Settings.
 The value for this setting should be saved into browser local storage so that it is remembered / retained on this device.
 This setting controls how notes are shown within the notes list.  Notes should be shown in vertical columns, the number of columns being specified by this setting.
@@ -107,7 +107,7 @@ A pill shows a dark background if the new/editing note has that Tag.  A pill sho
 Clicking/tapping on the pill toggles whether the new/editing note has this Tag or not.  In stylus mode, finger touches on these pills does not cause them to toggle.
 For a single-select category, clicking on one of the tag pills in this category automatically deselects/un-tags any other tag pills from this category.
 The Lifetime Category continues to be not-shown in full-tag-list mode.
-
+If the 250px area is too short to show all of the available tags, then the part of this area showing the tags should scroll vertically.  The textbox/canvas for typing the note title should never scroll. 
 
 
 ## Stylus support
@@ -124,6 +124,13 @@ Handwritten notes can still have tags the same as typed notes.
 In stylus mode, the add-note area has a "Clear" button (as well as the Add button).  The Clear button should be the same size as the Add button and should use icon fa-delete-left and have no text.
 The "Clear" button should be shown underneath the "Add" button - this gives more horizontal space for handwriting.
 Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns: when in stylus mode, these controls should not respond to touch inputs - they should only respond to stylus or mouse inputs. Touch inputs should continue to work when not in stylus mode.
+
+### Pen thickness
+
+In the settings page, underneath the Stylus-mode/Columns section, and before the Lifetime section, add a new section for Pen controls.
+For now the only control is for Pen thickness.  There are 3 possible pen thicknesses: 1.5px, 2.5px, 4.5px.  Show a set of buttons for these, with exactly one selected (colour inverted) at any time.  Clicking on one of the buttons selects that thickness.
+The selected thickness should be remembered in browser local storage so that it persists on this device.
+When creating/editing a canvas-based note, also when creating/editing the details of a canvas-based long-form note: when the pen is in writing mode (i.e. not eraser mode), then touching down with the pen should cause a line to be drawn on the canvas with a width given by the current pen thickness setting.
 
 
 ## Tabs
