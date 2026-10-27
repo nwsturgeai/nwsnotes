@@ -196,6 +196,12 @@ A set of dropdowns for setting tags.  These appear underneath the title textbox.
 A large textarea (multiline text accepted) or canvas for entering the details of this note (canvas if in stylus-mode, textarea otherwise).
 A button with text "Finish" centred below the textarea/canvas.  The textarea/canvas should occupy all the vertical space between the dropdowns and the Finish button.
 
+### Eraser
+When creating/editing a long-form note in stylus mode, alongside the Finish button (and maybe Cancel button), right at the left-hand edge of the page, there should be an icon button with icon fa-eraser.
+This button can be in 2 states: unselected (default), and selected.  Pressing the button toggles between the states.  In selected state, the button colours should be inverted.
+Whilst this button is selected: if/when the stylus is touched down within the details-editing area, then instead of drawing a new line, the stylus acts as an eraser, wiping out any lines underneath it, within a circle of diameter 20 pixels centered on the point the stylus is touching.
+
+
 ### Workflow
 Details of a long form note can only be created / edited after the title has been set.  The title has to be non-empty.
 Clicking "accept title" causes the new long form note to be created (details initially empty) and makes the details available to be edited.
@@ -218,8 +224,6 @@ If the most recent previous save file was also created because of an edit of thi
 
 New long-form notes should start with the "New" lifetime tag (the same as regular notes).
 Long-form notes are displayed in the notes list the same as regular notes.  The only difference: after any tag pills, there should be an extra pill with text "Long Form".  This final pill should have a different colour.
-
-There will be no "clear" button for the stylus-mode long-form note details.  I will add an Eraser option in a future change.
 
 
 ### Editing a long-form note
