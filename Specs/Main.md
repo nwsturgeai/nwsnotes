@@ -419,6 +419,31 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - Both modes share the same choices, so switching mode keeps the chosen tags. It works the same when adding and when editing a note.
 - **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
 
+### Multi-select (bulk tag editing)
+- **The list-check button** (`fa-list-check`) appears only in full-tag-list mode. It's in the right-hand button column, below the long-form button.
+  - **When it can be turned on:** only while the new-note title box is empty or the canvas has no ink, no note or long-form note is being edited, and edit-order mode is off. Otherwise it's greyed out, with a hint saying why.
+  - **Two modes never overlap:** while list-check is on, the Edit order button is greyed out too.
+  - **While it's on:** its colours are inverted (accent background, light icon) and it's marked as pressed. The title box or canvas, and the Add, Clear and long-form buttons, are hidden, so it's the only button in the column until Accept appears.
+- **Turning it off:** clicking it again, or pressing Escape, always turns it off with no changes. Note selections and pill clicks are discarded, and the next time starts with nothing selected. The normal new-note tag choices come back as they were.
+- **While it's on, the page is held still, as during an edit:** the tabs, the filter row and the expand/collapse toggle are blocked. So selected notes can't disappear from the list, and the pills can't be collapsed away.
+- **Selecting notes:**
+  - Every note in the list shows a circle at its left: `fa-circle` when unselected, `fa-circle-check` (accent colour) when selected.
+  - Tapping anywhere on a note row, or its circle, toggles it. Any listed note can be selected, long-form notes included.
+  - The note buttons (edit, waiting, archive, reinstate, bin) stay in place but are greyed out and do nothing. The creation date still shows.
+  - Once any pill has been clicked, selection is locked: the rows stop responding and the circles are dimmed.
+- **Pills:**
+  - Before any note is selected, they're greyed out and can't be clicked.
+  - Once notes are selected, each pill shows whether all, some or none of the selected notes have that tag: chosen (dark), partly (a pale accent tint with an accent border, announced as "mixed"), or not chosen (light).
+  - **Clicking:** a not-chosen or partly pill becomes chosen, and a chosen one becomes not chosen. Each click marks that tag as one to change.
+  - **Single-select categories:** choosing a tag also makes the category's other tags not chosen, all counting as clicked. Unchoosing the chosen tag just removes it.
+  - **Tab rules:** a tab's locked and required tags don't apply here, as when editing a note. Notes may leave the tab after Accept.
+  - **Stylus mode:** the canvas is hidden in this mode, so finger taps work normally on the pills, the buttons and the note rows.
+- **Accept** (`fa-check`, accent colour, "Accept bulk tag updates") appears above the list-check button once any pill has been clicked.
+  - It sends `PUT /api/notes/bulk-tags` with `{ noteIds, addTagIds, removeTagIds }`: the clicked tags that ended chosen are added, and the clicked tags that ended not chosen are removed. Untouched tags, including partly ones, are left as each note has them.
+  - The server checks the ids, applies everything in one save, and tells other pages to reload. Adding a single-select tag removes that category's other tags from the note. Lifetime tags can't be sent, and each note's Lifetime isn't touched.
+  - **On success:** list-check turns off, the list shows the new tags, and a short notice says "Tags updated on 3 notes".
+  - **On failure:** the mode stays on with the selections and clicks kept, and the error shows in the area.
+
 ### Columns
 - **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as four small buttons labelled 1 to 4 (default 1). It's remembered on this device in local storage. A device that saved 5 (allowed before) is treated as 4.
 - **Layout:** the note list is split into that many balanced columns (CSS multi-column), and the whole list scrolls up and down as now. Notes flow top to bottom down the first column, then the second, and so on from left to right, so the newest note is at the bottom of the last column. A note is never split across two columns.
