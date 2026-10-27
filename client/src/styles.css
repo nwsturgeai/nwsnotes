@@ -658,6 +658,50 @@ body:has(.note-list li.dragging) {
   color: var(--accent-text);
 }
 
+/* Multi-select: some of the selected notes have this tag. Halfway between chosen and not. */
+.tag-pill.mixed {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--pill-bg));
+  color: var(--pill-text);
+}
+
+/* ---- Multi-select: a circle on each note, and the list-check / accept buttons ---- */
+
+.note-select {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: stretch;
+  width: 24px;
+  margin-left: -0.8rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.note-list li.selected .note-select {
+  color: var(--accent);
+}
+
+.note-list li.archived .note-select,
+.note-list li.binned .note-select {
+  color: #f2f2f2;
+}
+
+/* Tapping anywhere on the row toggles it, until a pill has been clicked. */
+.note-list li.selectable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.note-list li.selection-locked .note-select {
+  opacity: 0.45;
+}
+
+.note-list li.selected:not(.waiting, .archived, .binned) {
+  background: var(--editing-bg);
+}
+
 .tag-pill.locked {
   cursor: default;
 }
@@ -711,9 +755,9 @@ body:has(.note-list li.dragging) {
   gap: 2px;
 }
 
-/* In the expanded area there's room for a third button underneath (create long-form note). */
+/* In the expanded area there's room for more buttons underneath (create long-form note, list-check). */
 .new-note.full .new-note-buttons {
-  grid-template-rows: repeat(3, auto);
+  grid-template-rows: repeat(4, auto);
 }
 
 .lf-add-hint {

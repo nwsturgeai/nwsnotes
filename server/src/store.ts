@@ -13,6 +13,7 @@ import {
   validateCategory,
   validateTab,
   validateTagIds,
+  type BulkTagsRequest,
   type Category,
   type CategoryRequest,
   type LifetimeChange,
@@ -268,6 +269,63 @@ export class NoteStore {
       // Repeated saves of a long-form note being edited replace each other (see save()).
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, longForm ? id : undefined);
       return note;
+    });
+  }
+
+  /**
+   * Multi-select: adds and removes tags on several notes in one save. Adding a single-select tag
+   * removes that category's other tags from the note. Lifetime tags can't be changed this way.
+   * Returns the updated notes.
+   */
+  bulkTags(raw: unknown): Promise<Note[]> {
+    return this.enqueue(async () => {
+      const body = (raw ?? {}) as Partial<Record<keyof BulkTagsRequest, unknown>>;
+      const ids = (value: unknown, name: string): number[] => {
+        if (!Array.isArray(value) || !value.every((id) => Number.isInteger(id))) {
+          throw new RequestError(400, `"${name}" must be a list of ids.`);
+        }
+        return [...new Set(value as number[])];
+      };
+      const noteIds = ids(body.noteIds, "noteIds");
+      const add = ids(body.addTagIds ?? [], "addTagIds");
+      const remove = ids(body.removeTagIds ?? [], "removeTagIds");
+      if (noteIds.length === 0) throw new RequestError(400, "Choose at least one note.");
+      const missing = noteIds.find((id) => !this.notes.some((n) => n.id === id));
+      if (missing !== undefined) throw new RequestError(404, `There is no note with id ${missing}.`);
+      // Only user categories' tags: Lifetime isn't among this.categories.
+      const categoryOf = (tagId: number) => this.categories.find((c) => c.tags.some((t) => t.id === tagId));
+      const unknown = [...add, ...remove].find((id) => !categoryOf(id));
+      if (unknown !== undefined) throw new RequestError(400, `Tag ${unknown} doesn't exist or can't be changed this way.`);
+      if (add.some((id) => remove.includes(id))) throw new RequestError(400, "A tag can't be both added and removed.");
+      for (const category of this.categories) {
+        if (!category.multiSelect && add.filter((id) => category.tags.some((t) => t.id === id)).length > 1) {
+          throw new RequestError(400, `Only one tag can be chosen from "${category.name}".`);
+        }
+      }
+
+      const now = this.nextSaveTime();
+      const updated: Note[] = [];
+      const notes = this.notes.map((note) => {
+        if (!noteIds.includes(note.id)) return note;
+        let tagIds = note.tagIds.filter((id) => !remove.includes(id));
+        for (const tagId of add) {
+          const category = categoryOf(tagId)!;
+          // A single-select category keeps only the added tag.
+          if (!category.multiSelect) tagIds = tagIds.filter((id) => id === tagId || !category.tags.some((t) => t.id === id));
+          if (!tagIds.includes(tagId)) tagIds.push(tagId);
+        }
+        // The Lifetime tag stays last, as everywhere else.
+        const lifetime = lifetimeOf(note);
+        const next: Note = {
+          ...note,
+          lastModifiedDateTime: now.toISOString(),
+          tagIds: [...tagIds.filter((id) => id !== lifetime), lifetime],
+        };
+        updated.push(next);
+        return next;
+      });
+      await this.save(now, { notes });
+      return updated;
     });
   }
 

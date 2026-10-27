@@ -8,10 +8,12 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCircle } from "@fortawesome/free-regular-svg-icons";
 import {
   faArrowDownWideShort,
   faBoxArchive,
   faChartDiagram,
+  faCheck,
   faChevronDown,
   faChevronUp,
   faCircleCheck,
@@ -20,6 +22,7 @@ import {
   faDeleteLeft,
   faGripVertical,
   faHourglass,
+  faListCheck,
   faPen,
   faReplyAll,
   faRotateLeft,
@@ -55,12 +58,14 @@ import { useFullTagList } from "./stylusMode";
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
 import {
+  BulkTagPicker,
   constraintsFor,
   missingRequiredCategory,
   selectedTagIds,
   selectionToFilters,
   TagPickers,
   TagPillPicker,
+  type BulkTagChanges,
   type TagSelection,
 } from "./TagPickers";
 import { TagPills } from "./TagPills";
@@ -89,6 +94,8 @@ interface Props {
   onNotesChanged: () => void;
   /** A tab's note order changed (shown straight away, before it's saved). */
   onTabUpdated: (tab: Tab) => void;
+  /** Multi-select mode started or ended; the app blocks the tabs and Settings while it's on, as during an edit. */
+  onBulkChange: (active: boolean) => void;
   onSessionExpired: () => void;
 }
 
@@ -119,6 +126,7 @@ export function NotesPage({
   onNoteUpdated,
   onNotesChanged,
   onTabUpdated,
+  onBulkChange,
   onSessionExpired,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -143,6 +151,21 @@ export function NotesPage({
   /** Edit-order mode: notes get grips for dragging. Not remembered; never on "All". */
   const [ordering, setOrdering] = useState(false);
 
+  /**
+   * Multi-select (list-check) mode, for bulk tag editing: the selected notes and the pills clicked so
+   * far. Undefined when it's off. It never overlaps editing, a long-form note or edit-order mode.
+   */
+  const [bulk, setBulk] = useState<{ noteIds: number[]; changes: BulkTagChanges }>();
+  const bulkActive = bulk !== undefined;
+  /** Whether the new-note canvas has writing on it, so list-check can't start over an unsaved note. */
+  const [padInked, setPadInked] = useState(false);
+
+  const onBulkChangeRef = useRef(onBulkChange);
+  onBulkChangeRef.current = onBulkChange;
+  useEffect(() => onBulkChangeRef.current(bulkActive), [bulkActive]);
+  // Leaving the page ends it, so the tabs aren't left blocked.
+  useEffect(() => () => onBulkChangeRef.current(false), []);
+
   function openLongForm(note: Note | undefined) {
     setOrdering(false);
     setLongForm({ note, key: Date.now() });
@@ -164,8 +187,11 @@ export function NotesPage({
   /** The tag choosers in the add/edit area: dropdowns, or pills in full-tag-list mode. */
   const TagChooser = fullTagList ? TagPillPicker : TagPickers;
 
-  /** The canvas is shown in stylus mode, and when editing a handwritten note whatever the mode. */
-  const showCanvas = editingNote ? editingNote.titleImage !== undefined : stylusMode;
+  /**
+   * The canvas is shown in stylus mode, and when editing a handwritten note whatever the mode. Neither
+   * it nor the title box shows in multi-select mode.
+   */
+  const showCanvas = !bulkActive && (editingNote ? editingNote.titleImage !== undefined : stylusMode);
   /** Categories with a dropdown in the new-note area: not the built-in Lifetime one. */
   const userCategories = useMemo(() => categories.filter((category) => !category.system), [categories]);
 
@@ -398,8 +424,10 @@ export function NotesPage({
         // While a long-form note is open, new notes are its children.
         const note = await api.addNote({ ...noteTitle, tagIds, ...(longFormId !== undefined && { parentId: longFormId }) });
         onNoteAdded(note);
-        if (showCanvas) padRef.current?.clear();
-        else setTitle("");
+        if (showCanvas) {
+          padRef.current?.clear();
+          setPadInked(false);
+        } else setTitle("");
         // New notes are always New; say so if this tab's filters don't show New notes.
         if (!noteMatchesFilters(note, allFilters)) {
           setNotice({ text: "Note added, but this tab doesn't show New notes." });
@@ -421,6 +449,76 @@ export function NotesPage({
 
   const blocked = editingNote !== undefined;
 
+  /** Why list-check can't be turned on now, if it can't. */
+  const titleEmpty = showCanvas ? !padInked : title.trim() === "";
+  const listCheckHint =
+    blocked || longForm
+      ? "Finish or cancel the edit first"
+      : ordering
+        ? "Finish ordering first"
+        : !titleEmpty
+          ? "Add or clear the new note first"
+          : undefined;
+
+  /** The list-check button: on starts with nothing selected; off discards any selections and pill clicks. */
+  function toggleBulk() {
+    if (bulk) {
+      setBulk(undefined);
+      setSaveError(undefined);
+    } else if (!listCheckHint) {
+      setBulk({ noteIds: [], changes: new Map() });
+      setSaveError(undefined);
+      setPadInked(false);
+    }
+  }
+
+  /** Selects or unselects a note, until a pill has been clicked. */
+  function toggleBulkNote(noteId: number) {
+    if (!bulk || bulk.changes.size > 0) return;
+    const noteIds = bulk.noteIds.includes(noteId) ? bulk.noteIds.filter((id) => id !== noteId) : [...bulk.noteIds, noteId];
+    setBulk({ ...bulk, noteIds });
+  }
+
+  /** Accept: clicked pills that ended chosen are added to every selected note, the others removed. */
+  async function acceptBulk() {
+    if (!bulk || saving) return;
+    const changes = [...bulk.changes];
+    setSaving(true);
+    setSaveError(undefined);
+    try {
+      const updated = await api.bulkTags({
+        noteIds: bulk.noteIds,
+        addTagIds: changes.filter(([, chosen]) => chosen).map(([id]) => id),
+        removeTagIds: changes.filter(([, chosen]) => !chosen).map(([id]) => id),
+      });
+      for (const note of updated) onNoteUpdated(note);
+      setBulk(undefined);
+      setNotice({ text: `Tags updated on ${updated.length} ${updated.length === 1 ? "note" : "notes"}.` });
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      // The selections and clicks are kept, to try again.
+      setSaveError(`The tags weren't updated: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Escape turns list-check off, like its button.
+  useEffect(() => {
+    if (!bulk) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) {
+        setBulk(undefined);
+        setSaveError(undefined);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  });
+
   /** Messages, then the dropdowns (or every tag as a pill in full-tag-list mode). Both share the same choices. */
   const belowTitle = (
     <>
@@ -430,7 +528,15 @@ export function NotesPage({
           {saveError}
         </p>
       )}
-      {editingNote ? (
+      {bulk ? (
+        <BulkTagPicker
+          categories={userCategories}
+          notes={notes.filter((note) => bulk.noteIds.includes(note.id))}
+          changes={bulk.changes}
+          onChange={(changes) => setBulk({ ...bulk, changes })}
+          disabled={saving}
+        />
+      ) : editingNote ? (
         <TagChooser categories={userCategories} selection={editSelection} onChange={setEditSelection} disabled={saving} />
       ) : (
         <TagChooser
@@ -460,7 +566,10 @@ export function NotesPage({
       rows.splice(drag.target <= start ? start + 1 : start, 0, dragged);
     }
   }
-  const editBlocked = blocked || longForm !== undefined;
+  const editBlocked = blocked || longForm !== undefined || bulkActive;
+  /** The tabs-like controls (filter row, expand/collapse) are held still during an edit or multi-select. */
+  const rowBlocked = blocked || bulkActive;
+  const rowHint = bulkActive ? "Finish selecting notes first" : "Finish or cancel the edit first";
 
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
@@ -472,21 +581,21 @@ export function NotesPage({
               categories={extraCategories}
               selection={extraSelection}
               onChange={setExtraSelection}
-              disabled={blocked}
+              disabled={rowBlocked}
               checkLists
             />
           )}
           <IconButton
             icon={faReplyAll}
-            label={blocked ? "Finish or cancel the edit first" : "Reset filters"}
-            disabled={blocked}
+            label={rowBlocked ? rowHint : "Reset filters"}
+            disabled={rowBlocked}
             onClick={() => setExtraSelection({})}
           />
           {selectedTab && (
             <div className="filter-row-end">
               <IconButton
                 icon={ordering ? faClipboardCheck : faArrowDownWideShort}
-                label={ordering ? "Finish ordering" : editBlocked ? "Finish or cancel the edit first" : "Edit order"}
+                label={ordering ? "Finish ordering" : editBlocked ? rowHint : "Edit order"}
                 disabled={!ordering && editBlocked}
                 onClick={() => setOrdering(!ordering)}
               />
@@ -507,6 +616,7 @@ export function NotesPage({
               if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
               const note = row.note;
               const dragging = note.id === drag?.noteId;
+              const selected = bulk?.noteIds.includes(note.id) ?? false;
               const lifetime = lifetimeOf(note);
               const classes = [
                 dragging && "dragging",
@@ -515,16 +625,30 @@ export function NotesPage({
                 lifetime === LIFETIME_ARCHIVED && "archived",
                 lifetime === LIFETIME_BIN && "binned",
                 note.titleImage !== undefined && "handwritten",
+                selected && "selected",
+                bulk && (bulk.changes.size > 0 ? "selection-locked" : "selectable"),
               ].filter(Boolean);
-              const busy = blocked || busyNoteId !== undefined;
-              const hint = blocked ? "Finish or cancel the current edit first" : undefined;
+              const busy = blocked || busyNoteId !== undefined || bulkActive;
+              const hint = bulkActive
+                ? "Not while selecting notes"
+                : blocked
+                  ? "Finish or cancel the current edit first"
+                  : undefined;
               return (
                 <li
                   key={note.id}
                   data-note-id={note.id}
                   className={classes.join(" ") || undefined}
                   style={dragging ? { top: drag.top, left: drag.left, width: drag.width, height: drag.height } : undefined}
+                  // Multi-select: tapping anywhere on the row toggles it (the greyed buttons do nothing).
+                  onClick={bulk ? () => toggleBulkNote(note.id) : undefined}
+                  aria-selected={bulk ? selected : undefined}
                 >
+                  {bulk && (
+                    <span className="note-select" aria-hidden>
+                      <FontAwesomeIcon icon={selected ? faCircleCheck : faCircle} />
+                    </span>
+                  )}
                   {ordering && (
                     <span
                       className="note-grip"
@@ -546,7 +670,8 @@ export function NotesPage({
                       categories={categories}
                       extra={specialPills(note)}
                       hideCategoryIds={filteredSingleSelect}
-                      onNewClick={() => setConfirmResetNew(true)}
+                      // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
+                      onNewClick={bulk ? undefined : () => setConfirmResetNew(true)}
                       newClickDisabled={resettingNew}
                     />
                   </div>
@@ -655,8 +780,9 @@ export function NotesPage({
           aria-pressed={fullTagList}
           aria-label={fullTagList ? "Show tag dropdowns" : "Show all tags"}
           title={fullTagList ? "Show tag dropdowns" : "Show all tags"}
-          // Not while a long-form note is open, so the editor's space doesn't change under it.
-          disabled={longForm !== undefined}
+          // Not while a long-form note is open, so the editor's space doesn't change under it,
+          // nor in multi-select, which needs the pills.
+          disabled={longForm !== undefined || bulkActive}
           onClick={() => setFullTagList(!fullTagList)}
         >
           <FontAwesomeIcon icon={fullTagList ? faChevronDown : faChevronUp} />
@@ -675,14 +801,17 @@ export function NotesPage({
           <div className="new-note-row">
             {/* The dropdowns or pills sit under the title, using the space beside the buttons. */}
             <div className="new-note-main">
-            {showCanvas ? (
+            {bulk ? null : showCanvas ? (
               <StylusPad
                 // A fresh pad for each note edited (loaded with its image), and an empty one for new notes.
                 key={editingNote ? `edit-${editingNote.id}` : "new"}
                 ref={padRef}
                 disabled={saving || addBlocked}
                 initialImage={editingNote?.titleImage}
-                onInk={() => setSaveError(undefined)}
+                onInk={() => {
+                  setSaveError(undefined);
+                  setPadInked(true);
+                }}
               />
             ) : (
               <input
@@ -705,15 +834,30 @@ export function NotesPage({
             </div>
             {/* Icon-only buttons; Clear sits under Add, leaving more width for handwriting. */}
             <div className="new-note-buttons">
-              <button
-                type="submit"
-                className="icon-button primary"
-                aria-label={editingNote ? "Update" : "Add"}
-                title={editingNote ? "Update" : addBlocked ? LONG_FORM_TITLE_FIRST : "Add"}
-                disabled={saving || addBlocked}
-              >
-                <FontAwesomeIcon icon={editingNote ? faCircleCheck : faCirclePlus} />
-              </button>
+              {/* Multi-select: Accept appears (above list-check) once a pill has been clicked. */}
+              {bulk && bulk.changes.size > 0 && (
+                <button
+                  type="button"
+                  className="icon-button primary"
+                  aria-label="Accept bulk tag updates"
+                  title="Accept bulk tag updates"
+                  disabled={saving}
+                  onClick={() => void acceptBulk()}
+                >
+                  <FontAwesomeIcon icon={faCheck} />
+                </button>
+              )}
+              {!bulk && (
+                <button
+                  type="submit"
+                  className="icon-button primary"
+                  aria-label={editingNote ? "Update" : "Add"}
+                  title={editingNote ? "Update" : addBlocked ? LONG_FORM_TITLE_FIRST : "Add"}
+                  disabled={saving || addBlocked}
+                >
+                  <FontAwesomeIcon icon={editingNote ? faCircleCheck : faCirclePlus} />
+                </button>
+              )}
               {editingNote && (
                 <button
                   type="button"
@@ -735,6 +879,7 @@ export function NotesPage({
                   disabled={saving}
                   onClick={() => {
                     padRef.current?.clear();
+                    setPadInked(false);
                     setSaveError(undefined);
                   }}
                 >
@@ -742,7 +887,7 @@ export function NotesPage({
                 </button>
               )}
               {/* In the expanded (250px) area: start a long-form note. */}
-              {fullTagList && !editingNote && !longForm && (
+              {fullTagList && !editingNote && !longForm && !bulk && (
                 <button
                   type="button"
                   className="icon-button"
@@ -752,6 +897,20 @@ export function NotesPage({
                   onClick={() => openLongForm(undefined)}
                 >
                   <FontAwesomeIcon icon={faChartDiagram} />
+                </button>
+              )}
+              {/* In the expanded area: multi-select notes to change their tags together. Inverted while on. */}
+              {fullTagList && (
+                <button
+                  type="button"
+                  className={bulk ? "icon-button primary" : "icon-button"}
+                  aria-label={bulk ? "Stop selecting notes" : "Select notes to change their tags"}
+                  aria-pressed={bulkActive}
+                  title={bulk ? "Stop selecting notes (no changes)" : (listCheckHint ?? "Select notes to change their tags")}
+                  disabled={saving || (!bulk && listCheckHint !== undefined)}
+                  onClick={toggleBulk}
+                >
+                  <FontAwesomeIcon icon={faListCheck} />
                 </button>
               )}
             </div>
