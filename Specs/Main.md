@@ -661,8 +661,9 @@ Notes created offline keep the date and time they were created offline.
 - **Creation times:** an add made offline sends its `createdDateTime`. The server uses it if it's a valid time and not in the future; otherwise it uses its own clock. Online adds don't send it.
 - **Detecting offline:** the browser's own online/offline flag isn't trusted.
   - Any change request that fails without reaching the server (a network error, or no reply within 10 seconds) puts the app offline, and that change goes into the outbox.
-  - A failed background reload also puts it offline. A reply from the server, even an error, means it's online.
-  - While offline, the app checks the server about every 15 seconds, and also when the browser reports being back online, when the app comes back on screen, and when the live-update connection reconnects.
+  - So does a 502, 503 or 504: that's the proxy in front of the server saying the server itself is down. In development the Vite proxy answers 502 too when the API server isn't running, so offline use can be tried by stopping it.
+  - A failed background reload also puts it offline. Any other reply from the server, even an error, means it's online.
+  - While offline, the app checks the server about every 15 seconds with `GET /api/notes/ping` (which needs the session and returns `{ ok: true }`, so it doesn't download every note). It also checks when the browser reports being back online, when the app comes back on screen, and when the live-update connection reconnects.
 - **Syncing:** once the server answers again, the outbox is sent in order, one entry at a time, and then the whole data is reloaded.
   - A network or server failure (no reply, or a 5xx error) stops the sync, which is tried again at the next check. Nothing is lost.
   - An entry the server rejects (a 4xx error, e.g. the note was emptied from the Bin on another device meanwhile) is dropped, and a notice names the note whose change was lost.
@@ -675,7 +676,7 @@ Notes created offline keep the date and time they were created offline.
   - Note ordering: the Edit order button is greyed out, with the same hint. If edit-order mode is on when the connection drops, it turns off.
   - The "New" pill's "reset the New tags" pop-up, and the long-form editor's Cancel for a note created online (deleting needs the server). Cancel still works for a long-form note created offline.
 - **Showing the state:**
-  - While offline, a small `fa-cloud-slash` icon sits just left of the stylus icon in the header, at the same 24px size. Hovering shows "Offline" plus the number of changes waiting, e.g. "Offline: 3 changes waiting".
+  - While offline, a small red cloud-with-a-slash icon sits just left of the stylus icon in the header, at the same 24px size. `fa-cloud-slash` itself is only in Font Awesome Pro, so it's `fa-cloud` with `fa-slash` drawn over it. Hovering shows "Offline" plus the number of changes waiting, e.g. "Offline: 3 changes waiting".
   - A note with changes still waiting to be sent shows a small `fa-clock` icon beside its creation date, until it's synced.
   - After a sync, a short notice says how many changes were saved ("3 offline changes saved").
 - **Live updates:** while offline, the WebSocket keeps trying to reconnect as now. Messages that arrive mid-sync are ignored, as the sync ends with a full reload anyway.

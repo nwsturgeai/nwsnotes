@@ -252,6 +252,33 @@ body:has(.app) {
   font-size: 16px;
 }
 
+/* Offline: a cloud with a slash drawn over it (both icons in the same grid cell), at the stylus icon's size. */
+.offline-indicator {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--error);
+  font-size: 16px;
+}
+
+.offline-indicator > svg {
+  grid-area: 1 / 1;
+}
+
+/* The slash has a header-coloured outline, so it reads as cutting through the cloud. */
+.offline-slash {
+  stroke: var(--bg);
+  stroke-width: 60px;
+  paint-order: stroke;
+}
+
+/* A note with changes still waiting to be sent while offline, beside its date. */
+.note-pending {
+  margin-right: 0.25rem;
+  color: var(--muted);
+}
+
 .cog:hover:not(.blocked) {
   color: var(--text);
   background: var(--bg);

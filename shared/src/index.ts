@@ -20,7 +20,15 @@ export interface Note {
   detailsImage?: string;
   /** For a note added while a long-form note was open: that long-form note's id. */
   parentId?: number;
+  /**
+   * The random id the page sent when adding the note. An add sent again with the same one (e.g. an
+   * offline add retried after its reply was lost) returns this note instead of making a second.
+   */
+  clientId?: string;
 }
+
+/** Longest `clientId` the server accepts. */
+export const CLIENT_ID_MAX_LENGTH = 64;
 
 export function isLongForm(note: Note): boolean {
   return note.detailsText !== undefined || note.detailsImage !== undefined;
@@ -152,9 +160,13 @@ export type NoteDetails = { detailsText: string; detailsImage?: never } | { deta
 
 /**
  * Body of POST /api/notes and PUT /api/notes/:id. Details make it a long-form note;
- * parentId (POST only) makes it a child of an open long-form note.
+ * parentId (POST only) makes it a child of an open long-form note. Also POST only: clientId (see
+ * Note), and createdDateTime for a note created offline (used if it's valid and not in the future).
  */
-export type NewNoteRequest = NoteTitle & { tagIds: number[]; parentId?: number } & (NoteDetails | { detailsText?: never; detailsImage?: never });
+export type NewNoteRequest = NoteTitle & { tagIds: number[]; parentId?: number; clientId?: string; createdDateTime?: string } & (
+    | NoteDetails
+    | { detailsText?: never; detailsImage?: never }
+  );
 
 /** Body of POST /api/categories and PUT /api/categories/:id. Tags without an id are new. */
 export interface CategoryRequest {

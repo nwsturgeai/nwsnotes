@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  CLIENT_ID_MAX_LENGTH,
   isLifetimeTag,
   isLongForm,
   lifetimeOf,
@@ -183,9 +184,27 @@ export class NoteStore {
   /**
    * Adds a note (title and details already validated) and saves. Resolves once it is on disk.
    * With details it's a long-form note; with a parent id it's a child of an open long-form note.
+   * `created` says whether it was new: an add with a `clientId` the store already has returns that
+   * note unchanged (a retried add whose reply was lost). A valid `createdDateTime` that isn't in the
+   * future (a note written offline) is kept as its created time.
    */
-  add(title: NoteTitle, rawTagIds: unknown, details: NoteDetails | undefined, rawParentId: unknown): Promise<Note> {
+  add(
+    title: NoteTitle,
+    rawTagIds: unknown,
+    details: NoteDetails | undefined,
+    rawParentId: unknown,
+    options: { clientId?: unknown; createdDateTime?: unknown } = {},
+  ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
+      let clientId: string | undefined;
+      if (options.clientId !== undefined && options.clientId !== null) {
+        if (typeof options.clientId !== "string" || options.clientId === "" || options.clientId.length > CLIENT_ID_MAX_LENGTH) {
+          throw new RequestError(400, `"clientId" must be a string of at most ${CLIENT_ID_MAX_LENGTH} characters.`);
+        }
+        clientId = options.clientId;
+        const existing = this.notes.find((n) => n.clientId === clientId);
+        if (existing) return { note: existing, created: false };
+      }
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       if (details && title.titleText === undefined) {
@@ -203,18 +222,21 @@ export class NoteStore {
 
       const now = this.nextSaveTime();
       const timestamp = now.toISOString();
+      const offlineCreated = typeof options.createdDateTime === "string" ? Date.parse(options.createdDateTime) : NaN;
       const note: Note = {
         id: this.lastNoteId + 1,
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        createdDateTime: timestamp,
+        // NaN (none sent, or invalid) fails the comparison, so the server's own time is used.
+        createdDateTime: offlineCreated <= now.getTime() ? new Date(offlineCreated).toISOString() : timestamp,
         lastModifiedDateTime: timestamp,
         // New notes are always New.
         tagIds: [...tagIds.value, LIFETIME_NEW],
+        ...(clientId !== undefined && { clientId }),
       };
       await this.save(now, { notes: [...this.notes, note], lastNoteId: note.id });
-      return note;
+      return { note, created: true };
     });
   }
 
