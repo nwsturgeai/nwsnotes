@@ -416,8 +416,10 @@ body:has(.note-list li.dragging) {
   background: transparent;
 }
 
+/* The title and pills sit in the middle of the row's height (the buttons and date stay at the top). */
 .note-body {
   flex: 1;
+  align-self: center;
   min-width: 0;
 }
 
