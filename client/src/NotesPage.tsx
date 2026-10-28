@@ -626,7 +626,6 @@ export function NotesPage({
                 lifetime === LIFETIME_WAITING && "waiting",
                 lifetime === LIFETIME_ARCHIVED && "archived",
                 lifetime === LIFETIME_BIN && "binned",
-                note.titleImage !== undefined && "handwritten",
                 selected && "selected",
                 bulk && (bulk.changes.size > 0 ? "selection-locked" : "selectable"),
               ].filter(Boolean);

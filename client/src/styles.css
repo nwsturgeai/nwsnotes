@@ -335,17 +335,12 @@ a:focus-visible {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 0.6rem 0.4rem 0.6rem 1rem;
+  /* Little space above and below, the same for typed and handwritten notes. */
+  padding: 0.2rem 0.4rem 0.2rem 1rem;
   border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
   /* A note is never split across two columns. */
   break-inside: avoid;
-}
-
-/* The handwriting image has its own space around the writing, so these rows need less. */
-.note-list > ul > li.handwritten {
-  padding-top: 0.2rem;
-  padding-bottom: 0.2rem;
 }
 
 /* ---- Edit-order mode: a grip on each note, and the note being dragged --- */
