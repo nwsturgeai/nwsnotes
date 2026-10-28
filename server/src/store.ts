@@ -428,7 +428,8 @@ export class NoteStore {
         id,
         name: check.category.name,
         multiSelect: check.category.multiSelect,
-        tags: this.withTagIds(check.category.tags).sort((a, b) => a.id - b.id),
+        // The tags keep the order they were sent in: that is the category's tag order.
+        tags: this.withTagIds(check.category.tags),
       };
       const categories = this.categories.map((c) => (c.id === id ? category : c));
 

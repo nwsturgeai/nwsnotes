@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTrashCan } from "@fortawesome/free-solid-svg-icons";
+import { faArrowDown, faArrowUp, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { NAME_MAX_LENGTH, validateCategory, type Category, type CategoryRequest, type Note } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -77,6 +77,38 @@ function CategoryForm({
   /** Deletes a tag row. A saved tag is only deleted (and removed from notes) when the category is saved. */
   function deleteRow(key: number) {
     setRows((current) => current.filter((row) => row.key !== key));
+  }
+
+  /** The arrow to focus after a move, so pressing it again keeps moving the same tag. */
+  const focusArrow = useRef<{ key: number; direction: "up" | "down" }>(undefined);
+
+  /** Moves a tag row up (-1) or down (+1); the new order is saved with the category. */
+  function moveRow(key: number, by: -1 | 1) {
+    setRows((current) => {
+      const from = current.findIndex((row) => row.key === key);
+      const to = from + by;
+      const moving = current[from];
+      const other = current[to];
+      if (!moving || !other) return current;
+      const next = [...current];
+      next[from] = other;
+      next[to] = moving;
+      // At the top or bottom that arrow is greyed out, so the other one takes the focus.
+      const edge = by < 0 ? to === 0 : to === next.length - 1;
+      focusArrow.current = { key, direction: (by < 0) !== edge ? "up" : "down" };
+      return next;
+    });
+  }
+
+  /** Ref for a row's arrow button: focuses it if it's the one to focus after a move. */
+  function arrowRef(key: number, direction: "up" | "down") {
+    return (button: HTMLButtonElement | null) => {
+      const target = focusArrow.current;
+      if (button && target?.key === key && target.direction === direction) {
+        focusArrow.current = undefined;
+        button.focus();
+      }
+    };
   }
 
   function onTagKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -186,6 +218,29 @@ function CategoryForm({
                 onChange={(event) => setRowName(row.key, event.target.value)}
                 onKeyDown={onTagKeyDown}
               />
+              {/* Up and down change the tag order; like renames and deletes, it's saved with the category. */}
+              <button
+                type="button"
+                className="note-button"
+                ref={arrowRef(row.key, "up")}
+                aria-label={`Move up ${row.name || `tag ${index + 1}`}`}
+                title="Move up"
+                disabled={saving || index === 0}
+                onClick={() => moveRow(row.key, -1)}
+              >
+                <FontAwesomeIcon icon={faArrowUp} />
+              </button>
+              <button
+                type="button"
+                className="note-button"
+                ref={arrowRef(row.key, "down")}
+                aria-label={`Move down ${row.name || `tag ${index + 1}`}`}
+                title="Move down"
+                disabled={saving || index === rows.length - 1}
+                onClick={() => moveRow(row.key, 1)}
+              >
+                <FontAwesomeIcon icon={faArrowDown} />
+              </button>
               <button
                 type="button"
                 className="note-button"

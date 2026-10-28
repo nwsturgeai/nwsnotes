@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
 import { LIFETIME_CATEGORY_ID, type Category, type Note, type TabFilter } from "@nwsnotes/shared";
@@ -113,8 +113,12 @@ interface DropdownProps {
   onChange: (tagIds: number[]) => void;
 }
 
-/** Room needed below the button to open the list downwards. */
-const LIST_SPACE = 260;
+/** An open list's rows are 2.1rem (33.6px) high, plus 0.7rem of padding and a 1px border; it shows up to 15 before scrolling. */
+const LIST_ROW_PX = 33.6;
+const LIST_PADDING_PX = 13.2;
+const LIST_MAX_ROWS = 15;
+/** Space kept between an open list and the window's edge. */
+const LIST_MARGIN_PX = 8;
 
 /**
  * A button showing the chosen tags (or the category name when none is chosen) that opens a list.
@@ -124,7 +128,7 @@ const LIST_SPACE = 260;
  */
 function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled, onChange }: DropdownProps) {
   /** Where the open list sits. It is positioned on the window, so a scrolling area can't clip it. */
-  const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number }>();
+  const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; room: number }>();
   const open = position !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -150,12 +154,16 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
       close();
       return;
     }
-    // Opens downwards when there's room (e.g. in Settings); otherwise upwards (the new-note area is at the bottom).
-    const spaceBelow = window.innerHeight - rect.bottom;
+    // Opens downwards when the whole list fits (e.g. in Settings); otherwise towards the side with more
+    // room (upwards from the new-note area at the bottom). It's limited to the room there, and scrolls.
+    const rows = checkList ? category.tags.length : options.length + (tabTagIds ? 0 : 1);
+    const needed = Math.min(rows, LIST_MAX_ROWS) * LIST_ROW_PX + LIST_PADDING_PX;
+    const spaceBelow = window.innerHeight - rect.bottom - 4 - LIST_MARGIN_PX;
+    const spaceAbove = rect.top - 4 - LIST_MARGIN_PX;
     setPosition(
-      spaceBelow >= LIST_SPACE || spaceBelow > rect.top
-        ? { left: rect.left, top: rect.bottom + 4 }
-        : { left: rect.left, bottom: window.innerHeight - rect.top + 4 },
+      spaceBelow >= needed || spaceBelow >= spaceAbove
+        ? { left: rect.left, top: rect.bottom + 4, room: spaceBelow }
+        : { left: rect.left, bottom: window.innerHeight - rect.top + 4, room: spaceAbove },
     );
   }
 
@@ -219,7 +227,7 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
           id={listId}
           role="group"
           aria-label={category.name}
-          style={{ left: position.left, top: position.top, bottom: position.bottom }}
+          style={{ left: position.left, top: position.top, bottom: position.bottom, "--list-room": `${position.room}px` } as CSSProperties}
         >
           {checkList ? (
             category.tags.map((tag) => {

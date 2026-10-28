@@ -40,7 +40,7 @@ export interface Category {
   name: string;
   /** True: a note can have several tags from this category. False: at most one. */
   multiSelect: boolean;
-  /** In the order they were created (id order). */
+  /** In the category's tag order: the order set with the arrows on the category page. */
   tags: Tag[];
   /** True for the built-in Lifetime category, which can't be edited and has no new-note dropdown. */
   system?: boolean;
@@ -476,7 +476,7 @@ export function validateTab(
         return { ok: false, error: `Tag ${String(id)} appears twice in "${category.name}".` };
       }
     }
-    filters.push({ categoryId: category.id, tagIds: (tagIds as number[]).slice().sort((a, b) => a - b) });
+    filters.push({ categoryId: category.id, tagIds: category.tags.map((tag) => tag.id).filter((id) => tagIds.includes(id)) });
   }
   if (filters.length === 0) {
     return { ok: false, error: `A tab needs at least one tag; otherwise it would show the same notes as "${ALL_TAB_NAME}".` };

@@ -85,6 +85,11 @@ When editing a category, there should be bin icons alongside each Tag allowing T
 For now, it will not be possible to delete categories.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
+### Tag sort order
+The tags within each category have a sort order.
+When editing a category, there should be up and down arrows alongside each tag, which can be clicked to move that tag up or down the list and so change the order.
+The tag dropdowns (everywhere they appear) and the lists of tags in the expanded new-note section should all show the tags in this order.
+
 ### On the main notes page:
 Each note should also display its tags.  These should be shown in a list of pills underneath the note title.  If 2 categories have tags with the same name, there is a possibility that a note has 2 tags with the same text.  This is OK.
 
@@ -384,7 +389,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - A tag can't have the same name as its own category (ignoring upper/lower case), as the category name is what an unset dropdown shows. Tags in other categories may share it. Categories saved before this rule still load and work; saving one that breaks it is refused, with a message naming the clashing tag, until the tag or the category is renamed.
 - No user category can be called "Lifetime" (ignoring upper/lower case); that name belongs to the built-in category.
 - `multiSelect` can be changed from false to true, but not back. A note's `tagIds` must all exist, with at most one from each single-select category.
-- Categories, tags within a category, and the dropdowns all appear in the order they were created (id order). A note's pills appear in category order, then tag order.
+- Categories and their dropdowns appear in the order they were created (id order). Tags within a category appear in the category's tag order (see "Tag sort order" below). A note's pills appear in category order, then tag order.
 - Renaming a tag changes it on every note that has it, because notes store only the tag id.
 
 ### Category editing
@@ -396,6 +401,22 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - "Cancel" discards the edits and returns to the settings page; for a new category nothing is created.
 - If another page saves the same category while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
 
+### Tag sort order
+- **Stored as the list order:** a category's tag order is simply the order of its `tags` list in the save-file. No new field is needed, and the save-file stays version 2. Existing categories are already in creation (id) order, so they keep their current order until someone changes it. Tag ids no longer say anything about order.
+- **Server:** saving a category keeps its tags in the order sent; it no longer sorts them by id. New tags get the next ids as before, wherever they sit in the list.
+- **Editing page:** each tag row has, after its text box, an up arrow (`fa-arrow-up`) and a down arrow (`fa-arrow-down`), then the bin. They're the same 24px icon buttons as the bin, labelled "Move up"/"Move down" with the tag's name for screen readers.
+  - Clicking one swaps the row with the one above or below. The first row's up arrow and the last row's down arrow are greyed out.
+  - New, not-yet-saved rows can be moved too. "Add tag" still adds its row at the bottom.
+  - Like renaming and deleting, nothing changes until Save, and Cancel discards a new order.
+  - After a move, the focus stays on the same arrow (now on the moved row), so pressing it again keeps moving the tag.
+- **Where the order is used:** everywhere tags are listed in a category's order:
+  - the new-note, editing and long-form dropdowns, and the filter row and tab editor check-lists;
+  - the full-tag-list pills and multi-select pills;
+  - the pills on notes, and the tag pills on the settings page's category and tab lists.
+  - A note's own `tagIds`, and a tab's filter tags, are also saved in this order, though nothing depends on that.
+- **Lifetime:** the built-in Lifetime category's order is fixed (New, Active, Waiting, Archived, Bin) and can't be changed.
+- **Live updates:** another page sees the new order after Save, as with other category changes. An open new-note selection keeps its chosen tags; only their display order changes.
+
 ### Tags on the notes page
 - Each note shows its tags as small pills under the title, showing the tag name only.
 - Under a tab whose own filter includes a single-select category (including Lifetime) with just one tag, that category's pills are left off the notes, as they only repeat the tab. If the tab's filter allows more than one tag in that category, the pills show, since they say which of those tags each note has. Pills from multi-select categories, from categories the tab doesn't filter on, and from the additional filters always show.
@@ -403,6 +424,9 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - The button shows the chosen tag names, or the category name in grey when no tag is chosen. Hovering shows the category name (useful once a tag is chosen), and screen readers announce it as the button's label.
 - Single-select: the list shows the category name first (meaning no tag), then the tags, with the chosen one marked. Choosing an option replaces the previous choice and closes the list.
 - Multi-select: the list is a check-list of the tags; it stays open while ticking, and closes when clicking elsewhere or pressing Escape.
+- **List size:** an open list (in every dropdown and check-list) shows up to 15 rows before it scrolls.
+  - It opens downwards if the whole list fits there. Otherwise it opens towards the side of the button with more room, which is upwards from the new-note area at the bottom.
+  - It's never taller than the room on that side, leaving 8px to the window's edge, so in a short window it shows fewer rows and scrolls.
 - After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
 - If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area).
 - The text in the new-note dropdowns (their buttons and the lists they open) can't be selected, so a drag or long press doesn't highlight it.
@@ -468,7 +492,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - If another page saves the same tab while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
 
 ### Tabs on the notes page
-- The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it.
+- The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it. Each tab has 0.3rem of padding at its left and right.
 - **Too many to fit:** all tabs shrink equally so they always fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
 - **Selected tab:** "All" is selected when the page opens or is reloaded. The selection is kept while moving around the app (e.g. to Settings and back). If another page deletes the selected tab, "All" is selected; if it edits it, the filter updates straight away.
 - Only notes matching the selected tab are listed; an empty result shows "No notes in this tab yet." Changing tab scrolls the list to the bottom.
@@ -530,6 +554,10 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **API:** `POST /api/notes` with `{ "titleText": "...", "detailsText": "" | "detailsImage": "", "tagIds": [...] }` creates a long-form note (New, like any new note). `PUT /api/notes/:id` updates it with the same fields; the details kind can't change. Child notes are created with `POST /api/notes` plus `"parentId": <id>`.
 - **Opening the editor:** the "create long-form note" button (`fa-chart-diagram`, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
 - **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
+- **Tags band:** so the note's tags stand out, the dropdowns sit in a full-width band between the title and the details.
+  - The band has the header's background colour and a thin line above and below, with a small grey "Tags" label at its left.
+  - Its dropdown buttons have a 2px border: dark grey when no tag is chosen, and accent green, with dark text, once one is.
+  - This is only in the long-form editor; the new-note area's dropdowns are unchanged.
 - **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note and follow the selected tab's rules as usual.
 - **Saving:**
   - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it. After accepting, typed details get the focus.
