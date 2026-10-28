@@ -736,6 +736,13 @@ body:has(.note-list li.dragging) {
   min-width: 0;
 }
 
+/* The title box is the same height as the 40px Add button beside it. */
+.new-note-main > input[type="text"] {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 /* The canvas fills the column's width (its 1px border is outside the drawing area). */
 .new-note-main .stylus-pad {
   width: calc(100% - 2px);
@@ -785,9 +792,13 @@ body:has(.note-list li.dragging) {
   gap: 4px;
 }
 
+/* The same height as the 40px accept / edit-title button beside it. */
 .lf-title-row input {
   flex: 1;
   min-width: 0;
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* A locked title looks fixed; clicking it starts editing it. */
