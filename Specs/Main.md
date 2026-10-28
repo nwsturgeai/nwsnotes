@@ -424,6 +424,9 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - The button shows the chosen tag names, or the category name in grey when no tag is chosen. Hovering shows the category name (useful once a tag is chosen), and screen readers announce it as the button's label.
 - Single-select: the list shows the category name first (meaning no tag), then the tags, with the chosen one marked. Choosing an option replaces the previous choice and closes the list.
 - Multi-select: the list is a check-list of the tags; it stays open while ticking, and closes when clicking elsewhere or pressing Escape.
+- **List size:** an open list (in every dropdown and check-list) shows up to 15 rows before it scrolls.
+  - It opens downwards if the whole list fits there. Otherwise it opens towards the side of the button with more room, which is upwards from the new-note area at the bottom.
+  - It's never taller than the room on that side, leaving 8px to the window's edge, so in a short window it shows fewer rows and scrolls.
 - After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
 - If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area).
 - The text in the new-note dropdowns (their buttons and the lists they open) can't be selected, so a drag or long press doesn't highlight it.
