@@ -164,6 +164,7 @@ Categories: an array of structures, each containing a category id and one or mor
 
 The Settings page will have a new section "Tabs".  This allows Tab definitions to be added, edited and deleted.  WIthin the section will be a list of existing tabs, and a button to create a new tab.
 Existing tabs should show their name and the associated tag ids (rendered as pills the same as for notes in the Notes page).
+When a tab has a filter that includes more than one possible tag for a particular category, any tags in that category should still show as pills under each note title in the list.
 When creating or editing a tab, dropdowns for all the Categories are shown, the same as the dropdowns shown when adding a new Note.
 After the user begins to add or edit a tab, there should be "Save" and "Cancel" buttons.
 
@@ -356,7 +357,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
 
 ### Stylus mode
-- **Setting:** a "Stylus mode" switch at the top of the settings page, stored in the browser's local storage, so each device remembers its own setting. While it's on, an `fa-signature` icon sits just left of the cog in the header. The icon only shows the mode (tooltip "Stylus mode is on"); clicking it does nothing.
+- **Setting:** a "Stylus mode" switch at the top of the settings page, stored in the browser's local storage, so each device remembers its own setting. While it's on, an `fa-signature` icon sits just left of the cog in the header, the same size as the note buttons (a 16px icon in a 24px box). The icon only shows the mode (tooltip "Stylus mode is on"); clicking it does nothing.
 - **Canvas:** while stylus mode is on, the title text box is hidden and a canvas takes its place, as wide as the text box would be and 80 CSS pixels high. To type a note instead, switch stylus mode off. Writing past the canvas edge is cut off.
 - **What draws:** only a stylus (`pointerType` "pen") and, for testing on a computer, a mouse. Fingers and palms touching the canvas are ignored. The page doesn't scroll while writing on the canvas (`touch-action: none`).
 - **Ink:** black, with rounded ends and joins, in the width chosen by the Pen thickness setting (1.5, 2.5 or 4.5 CSS pixels; default 2.5). No pressure sensitivity.
@@ -370,7 +371,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Buttons:** "Clear" sits underneath "Add", leaving more width for the canvas; both buttons are the same width. "Add" saves the note and "Clear" wipes the canvas. Adding with nothing written shows "Nothing has been written yet." After a successful save the canvas clears. If saving fails, the error appears under the canvas and the writing is kept so you can retry. The tag dropdowns work exactly as for typed notes.
 - **Saved image:** black ink on a transparent background, cropped to the written area plus a 4-pixel margin, as a PNG data URL (`data:image/png;base64,...`). The canvas always works at 2× pixel density, so ink is crisp on tablets and every image is shown at half its pixel size (the size it was written).
 - **Paper:** the canvas and handwritten notes in the list sit on a light "paper" background. (The app is now always light, so this simply matches the page.)
-- **Notes list:** a handwritten note shows its image at the size it was written, with the alt text "Handwritten note", and its tag pills underneath as usual. Handwritten rows have less vertical padding than typed ones (0.2rem above and below instead of 0.6rem).
+- **Notes list:** a handwritten note shows its image at the size it was written, with the alt text "Handwritten note", and its tag pills underneath as usual. Every row in the list, typed or handwritten, has 0.2rem of padding above and below. A note's content (its title or handwriting, and its pills) is centred vertically in the row. The buttons and creation date stay at the top right, and the grip or selection circle stays the full height of the row.
 - **Server checks:** exactly one of `titleText` and `titleImage`; the image must be a PNG data URL of at most 200 KB (counting the data URL's characters). The server's request size limit rises from 20 KB to 256 KB to allow for this.
 - **Ignoring finger touches:** whenever the canvas is showing (stylus mode, or editing a handwritten note), finger taps on Add, Update, Cancel, Clear, the tag dropdown buttons and the lists they open do nothing, and fingers still don't draw or erase on the canvas; a stylus or mouse works as normal. Fingers can still scroll the new-note area if it overflows. Outside stylus mode, touch works everywhere as before. This can only be partly tested on a computer, so it is to be checked on the Android device: a palm or finger resting on the controls mustn't open a dropdown or add a note.
 - **Screen rotation:** if the canvas size changes (e.g. the device is rotated), anything written but not yet added is cleared.
@@ -397,7 +398,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 
 ### Tags on the notes page
 - Each note shows its tags as small pills under the title, showing the tag name only.
-- Under a tab whose own filter includes a single-select category (including Lifetime), that category's pills are left off the notes, as they only repeat the tab. Pills from multi-select categories, from categories the tab doesn't filter on, and from the additional filters still show.
+- Under a tab whose own filter includes a single-select category (including Lifetime) with just one tag, that category's pills are left off the notes, as they only repeat the tab. If the tab's filter allows more than one tag in that category, the pills show, since they say which of those tags each note has. Pills from multi-select categories, from categories the tab doesn't filter on, and from the additional filters always show.
 - Under the title text box there is one dropdown per category, with no visible title. Every dropdown is the app's own button-and-list control, not the browser's built-in dropdown, so single- and multi-select look and behave alike (and the app controls which inputs they respond to).
 - The button shows the chosen tag names, or the category name in grey when no tag is chosen. Hovering shows the category name (useful once a tag is chosen), and screen readers announce it as the button's label.
 - Single-select: the list shows the category name first (meaning no tag), then the tags, with the chosen one marked. Choosing an option replaces the previous choice and closes the list.
@@ -405,7 +406,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
 - If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area).
 - The text in the new-note dropdowns (their buttons and the lists they open) can't be selected, so a drag or long press doesn't highlight it.
-- The buttons (Add/Update, Cancel, Clear, long-form) have their own column at the right of the area. The text box or canvas, any message, and the dropdowns (or the pills in full-tag-list mode) share the column to its left, so the dropdowns and pills start straight under the title rather than below the last button.
+- The buttons (Add/Update, Cancel, Clear, long-form) have their own column at the right of the area. The text box or canvas, any message, and the dropdowns (or the pills in full-tag-list mode) share the column to its left, so the dropdowns and pills start straight under the title rather than below the last button. The title text box is 40px high, the same as the Add button beside it.
 - Changing tab resets every dropdown (see "Tabs on the notes page"); adding a note still keeps the selections.
 
 ### Full-tag-list mode
@@ -528,7 +529,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Image size:** handwritten details fill a much larger canvas than a title, so `detailsImage` may be up to 2 MB (counting the data URL's characters), and the server's request size limit rises to 3 MB. Like titles, the drawing is cropped to what's written plus a margin, and stored at 2× pixel density.
 - **API:** `POST /api/notes` with `{ "titleText": "...", "detailsText": "" | "detailsImage": "", "tagIds": [...] }` creates a long-form note (New, like any new note). `PUT /api/notes/:id` updates it with the same fields; the details kind can't change. Child notes are created with `POST /api/notes` plus `"parentId": <id>`.
 - **Opening the editor:** the "create long-form note" button (`fa-chart-diagram`, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
-- **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
+- **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
 - **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note and follow the selected tab's rules as usual.
 - **Saving:**
   - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it. After accepting, typed details get the focus.

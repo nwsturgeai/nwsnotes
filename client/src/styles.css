@@ -244,8 +244,12 @@ body:has(.app) {
   font-size: 1.2rem;
 }
 
+/* Smaller than the cog: the same 16px icon in a 24px box as the note buttons. */
 .stylus-indicator {
+  width: 24px;
+  height: 24px;
   color: var(--accent);
+  font-size: 16px;
 }
 
 .cog:hover:not(.blocked) {
@@ -335,17 +339,12 @@ a:focus-visible {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 0.6rem 0.4rem 0.6rem 1rem;
+  /* Little space above and below, the same for typed and handwritten notes. */
+  padding: 0.2rem 0.4rem 0.2rem 1rem;
   border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
   /* A note is never split across two columns. */
   break-inside: avoid;
-}
-
-/* The handwriting image has its own space around the writing, so these rows need less. */
-.note-list > ul > li.handwritten {
-  padding-top: 0.2rem;
-  padding-bottom: 0.2rem;
 }
 
 /* ---- Edit-order mode: a grip on each note, and the note being dragged --- */
@@ -421,8 +420,10 @@ body:has(.note-list li.dragging) {
   background: transparent;
 }
 
+/* The title and pills sit in the middle of the row's height (the buttons and date stay at the top). */
 .note-body {
   flex: 1;
+  align-self: center;
   min-width: 0;
 }
 
@@ -739,6 +740,13 @@ body:has(.note-list li.dragging) {
   min-width: 0;
 }
 
+/* The title box is the same height as the 40px Add button beside it. */
+.new-note-main > input[type="text"] {
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 /* The canvas fills the column's width (its 1px border is outside the drawing area). */
 .new-note-main .stylus-pad {
   width: calc(100% - 2px);
@@ -788,9 +796,13 @@ body:has(.note-list li.dragging) {
   gap: 4px;
 }
 
+/* The same height as the 40px accept / edit-title button beside it. */
 .lf-title-row input {
   flex: 1;
   min-width: 0;
+  height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 /* A locked title looks fixed; clicking it starts editing it. */
