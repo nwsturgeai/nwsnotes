@@ -244,8 +244,12 @@ body:has(.app) {
   font-size: 1.2rem;
 }
 
+/* Smaller than the cog: the same 16px icon in a 24px box as the note buttons. */
 .stylus-indicator {
+  width: 24px;
+  height: 24px;
   color: var(--accent);
+  font-size: 16px;
 }
 
 .cog:hover:not(.blocked) {
