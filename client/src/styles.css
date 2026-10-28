@@ -168,7 +168,7 @@ body:has(.app) {
   flex: 0 1 9rem;
   min-width: 0;
   height: 2.3rem;
-  padding: 0 0.75rem;
+  padding: 0 0.3rem;
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 8px 8px 0 0;
