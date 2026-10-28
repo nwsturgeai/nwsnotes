@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faGear, faSignature } from "@fortawesome/free-solid-svg-icons";
+import { faCloud, faGear, faSignature, faSlash } from "@fortawesome/free-solid-svg-icons";
 import { ALL_TAB_NAME, type Tab } from "@nwsnotes/shared";
 import { pathFor, type Page } from "./route";
 
@@ -17,10 +17,15 @@ interface Props {
   /** Set when a background reload of the notes failed. */
   refreshError?: string;
   onRetryRefresh: () => void;
+  /** The server can't be reached: an icon says so, and Settings isn't available. */
+  offline: boolean;
+  /** Changes waiting to be sent, for the offline icon's tooltip. */
+  pendingCount: number;
 }
 
 /** Why the tabs and the cog can't be used while a note is being edited. */
 const BLOCKED_HINT = "Finish or cancel the edit first";
+export const OFFLINE_HINT = "Not available offline";
 
 /** The strip across the top of the app, plus a notice when the notes couldn't be reloaded. */
 export function Header({
@@ -33,7 +38,12 @@ export function Header({
   onNavigate,
   refreshError,
   onRetryRefresh,
+  offline,
+  pendingCount,
 }: Props) {
+  const cogBlocked = editing || offline;
+  const offlineTitle =
+    pendingCount === 0 ? "Offline" : `Offline: ${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting`;
   function go(event: MouseEvent, target: Page) {
     event.preventDefault();
     onNavigate(target);
@@ -58,6 +68,14 @@ export function Header({
           </a>
         )}
         <div className="header-icons">
+          {offline && (
+            // Only shows the state; it isn't a button.
+            // A cloud with a slash over it: fa-cloud-slash itself isn't in the free icons.
+            <span className="offline-indicator" role="img" aria-label={offlineTitle} title={offlineTitle}>
+              <FontAwesomeIcon icon={faCloud} />
+              <FontAwesomeIcon icon={faSlash} className="offline-slash" />
+            </span>
+          )}
           {stylusMode && (
             // Only shows the mode; it isn't a button.
             <span className="stylus-indicator" role="img" aria-label="Stylus mode is on" title="Stylus mode is on">
@@ -67,11 +85,11 @@ export function Header({
           {page.name === "notes" && (
             <a
               href="/settings"
-              className={editing ? "cog blocked" : "cog"}
+              className={cogBlocked ? "cog blocked" : "cog"}
               aria-label="Settings"
-              aria-disabled={editing || undefined}
-              title={editing ? BLOCKED_HINT : "Settings"}
-              onClick={(event) => (editing ? event.preventDefault() : go(event, { name: "settings" }))}
+              aria-disabled={cogBlocked || undefined}
+              title={offline ? OFFLINE_HINT : editing ? BLOCKED_HINT : "Settings"}
+              onClick={(event) => (cogBlocked ? event.preventDefault() : go(event, { name: "settings" }))}
             >
               <FontAwesomeIcon icon={faGear} />
             </a>

@@ -16,6 +16,7 @@ import {
   faCheck,
   faChevronDown,
   faChevronUp,
+  faClock,
   faCircleCheck,
   faCirclePlus,
   faClipboardCheck,
@@ -49,6 +50,7 @@ import {
   type Tab,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
@@ -96,8 +98,16 @@ interface Props {
   onTabUpdated: (tab: Tab) => void;
   /** Multi-select mode started or ended; the app blocks the tabs and Settings while it's on, as during an edit. */
   onBulkChange: (active: boolean) => void;
+  /** The server can't be reached: bulk tag updates, note ordering and resetting New aren't available. */
+  offline: boolean;
+  /** Notes with changes still waiting to be sent; they show a clock by their date. */
+  pendingIds: ReadonlySet<number>;
+  /** A message from syncing offline changes, shown like the page's own notices. */
+  syncNotice?: { text: string; error?: boolean; key: number };
   onSessionExpired: () => void;
 }
+
+const OFFLINE_HINT = "Not available offline";
 
 /** A note's tags as dropdown selections: category id -> tag ids. */
 function selectionFor(note: Note, categories: Category[]): TagSelection {
@@ -127,6 +137,9 @@ export function NotesPage({
   onNotesChanged,
   onTabUpdated,
   onBulkChange,
+  offline,
+  pendingIds,
+  syncNotice,
   onSessionExpired,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -366,7 +379,7 @@ export function NotesPage({
     if (busyNoteId !== undefined) return;
     setBusyNoteId(note.id);
     try {
-      onNoteUpdated(await api.setLifetime(note.id, lifetime));
+      onNoteUpdated(await offlineApi.setLifetime(note.id, lifetime));
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -418,13 +431,13 @@ export function NotesPage({
     try {
       if (editingNote) {
         const tagIds = selectedTagIds(userCategories, editSelection);
-        onNoteUpdated(await api.updateNote(editingNote.id, { ...noteTitle, tagIds }));
+        onNoteUpdated(await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds }));
         finishEdit();
       } else {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
         const tagIds = selectedTagIds(userCategories, tagSelection, constraints);
         // While a long-form note is open, new notes are its children.
-        const note = await api.addNote({ ...noteTitle, tagIds, ...(longFormId !== undefined && { parentId: longFormId }) });
+        const note = await offlineApi.addNote({ ...noteTitle, tagIds, ...(longFormId !== undefined && { parentId: longFormId }) });
         onNoteAdded(note);
         if (showCanvas) {
           padRef.current?.clear();
@@ -453,14 +466,25 @@ export function NotesPage({
 
   /** Why list-check can't be turned on now, if it can't. */
   const titleEmpty = showCanvas ? !padInked : title.trim() === "";
-  const listCheckHint =
-    blocked || longForm
+  const listCheckHint = offline
+    ? OFFLINE_HINT
+    : blocked || longForm
       ? "Finish or cancel the edit first"
       : ordering
         ? "Finish ordering first"
         : !titleEmpty
           ? "Add or clear the new note first"
           : undefined;
+
+  // Note ordering needs the server: edit-order mode ends if the connection drops.
+  useEffect(() => {
+    if (offline) setOrdering(false);
+  }, [offline]);
+
+  // Messages from syncing offline changes show like the page's own.
+  useEffect(() => {
+    if (syncNotice) setNotice({ text: syncNotice.text, error: syncNotice.error });
+  }, [syncNotice]);
 
   /** The list-check button: on starts with nothing selected; off discards any selections and pill clicks. */
   function toggleBulk() {
@@ -597,8 +621,8 @@ export function NotesPage({
             <div className="filter-row-end">
               <IconButton
                 icon={ordering ? faClipboardCheck : faArrowDownWideShort}
-                label={ordering ? "Finish ordering" : editBlocked ? rowHint : "Edit order"}
-                disabled={!ordering && editBlocked}
+                label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
+                disabled={!ordering && (editBlocked || offline)}
                 onClick={() => setOrdering(!ordering)}
               />
             </div>
@@ -672,7 +696,8 @@ export function NotesPage({
                       extra={specialPills(note)}
                       hideCategoryIds={filteredSingleSelect}
                       // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
-                      onNewClick={bulk ? undefined : () => setConfirmResetNew(true)}
+                      // Offline it's plain too: resetting the New tags needs the server.
+                      onNewClick={bulk || offline ? undefined : () => setConfirmResetNew(true)}
                       newClickDisabled={resettingNew}
                     />
                   </div>
@@ -721,6 +746,9 @@ export function NotesPage({
                     )}
                   </div>
                   <time className="note-date" dateTime={note.createdDateTime} title={`Created ${new Date(note.createdDateTime).toLocaleString()}`}>
+                    {pendingIds.has(note.id) && (
+                      <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
+                    )}
                     {formatCreated(note.createdDateTime)}
                   </time>
                   </div>
@@ -769,6 +797,7 @@ export function NotesPage({
             setLongFormId(undefined);
             if (deleted) onNotesChanged();
           }}
+          offline={offline}
           onSessionExpired={onSessionExpired}
         />
       )}
@@ -841,8 +870,9 @@ export function NotesPage({
                   type="button"
                   className="icon-button primary"
                   aria-label="Accept bulk tag updates"
-                  title="Accept bulk tag updates"
-                  disabled={saving}
+                  title={offline ? OFFLINE_HINT : "Accept bulk tag updates"}
+                  // Bulk updates need the server; the selections wait for the connection.
+                  disabled={saving || offline}
                   onClick={() => void acceptBulk()}
                 >
                   <FontAwesomeIcon icon={faCheck} />

@@ -67,17 +67,34 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.json(store.getAll());
   });
 
-  notesRouter.post("/", async (req: Request<object, object, { tagIds?: unknown; parentId?: unknown } | undefined>, res) => {
-    const check = validateNoteTitle(req.body);
-    const details = validateNoteDetails(req.body);
-    if (!check.ok || !details.ok) {
-      res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : "" });
-      return;
-    }
-    const note = await store.add(check.title, req.body?.tagIds, details.details, req.body?.parentId);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
-    res.status(201).json(note);
+  // A small request the app sends while offline, to find out when the server can be reached again
+  // (and whether the session is still valid) without downloading every note.
+  notesRouter.get("/ping", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true });
   });
+
+  notesRouter.post(
+    "/",
+    async (
+      req: Request<object, object, { tagIds?: unknown; parentId?: unknown; clientId?: unknown; createdDateTime?: unknown } | undefined>,
+      res,
+    ) => {
+      const check = validateNoteTitle(req.body);
+      const details = validateNoteDetails(req.body);
+      if (!check.ok || !details.ok) {
+        res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : "" });
+        return;
+      }
+      const { note, created } = await store.add(check.title, req.body?.tagIds, details.details, req.body?.parentId, {
+        clientId: req.body?.clientId,
+        createdDateTime: req.body?.createdDateTime,
+      });
+      // An add sent again (its reply was lost) changes nothing, so there's nothing to tell other pages.
+      if (created) live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+      res.status(created ? 201 : 200).json(note);
+    },
+  );
 
   // Multi-select: add and remove tags on several notes at once. (Before "/:id", which would match it.)
   notesRouter.put("/bulk-tags", async (req, res) => {

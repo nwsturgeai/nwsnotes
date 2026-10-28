@@ -37,7 +37,19 @@ export default defineConfig({
     port: 5173,
     // In development, API calls and the live-updates WebSocket go to the Express server.
     proxy: {
-      "/api": "http://localhost:3000",
+      "/api": {
+        target: "http://localhost:3000",
+        // If the Express server isn't running, answer 502 like the live site's proxy does (rather
+        // than Vite's 500), so the app treats it as offline, as it would on the live site.
+        configure: (proxy) => {
+          proxy.on("error", (_error, _req, res) => {
+            if ("writeHead" in res && !res.headersSent) {
+              res.writeHead(502, { "Content-Type": "text/plain" });
+              res.end("The API server isn't running.");
+            }
+          });
+        },
+      },
       "/ws": { target: "ws://localhost:3000", ws: true },
     },
   },

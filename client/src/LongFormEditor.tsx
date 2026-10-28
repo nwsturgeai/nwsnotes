@@ -15,7 +15,8 @@ import {
   type Note,
   type NoteDetails,
 } from "@nwsnotes/shared";
-import { ApiError, api } from "./api";
+import { ApiError } from "./api";
+import { offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
@@ -35,6 +36,11 @@ interface Props {
   onSaved: (note: Note, created: boolean) => void;
   /** The editor closes; `deleted` when Cancel deleted the new note. */
   onFinish: (deleted?: boolean) => void;
+  /**
+   * The server can't be reached. Cancel then only works for a note created offline (it's simply
+   * forgotten); deleting one that's already on the server has to wait for the connection.
+   */
+  offline: boolean;
   onSessionExpired: () => void;
 }
 
@@ -52,7 +58,7 @@ function selectionFor(note: Note | undefined, categories: Category[]): TagSelect
  * creates the note the first time) unlocks the details; "edit title" locks them again. Details and tag
  * changes are saved at most every 30 seconds, and straight away on Finish or when the app is hidden.
  */
-export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, onFinish, onSessionExpired }: Props) {
+export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, onFinish, offline, onSessionExpired }: Props) {
   const [noteId, setNoteId] = useState(note?.id);
   const [title, setTitle] = useState(note?.titleText ?? "");
   /** The title as last saved; updates of the details are sent with it. */
@@ -113,7 +119,7 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       if (!dirty.current || noteId === undefined) return;
       dirty.current = false;
       try {
-        onSaved(await api.updateNote(noteId, request(savedTitle.current)), false);
+        onSaved(await offlineApi.updateNote(noteId, request(savedTitle.current)), false);
         setError(undefined);
       } catch (err) {
         // Try again at the next window.
@@ -156,13 +162,13 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
     try {
       // Tag changes made while editing the title are saved with it.
       if (noteId === undefined) {
-        const created = await api.addNote(request(check.title));
+        const created = await offlineApi.addNote(request(check.title));
         setNoteId(created.id);
         onSaved(created, true);
       } else {
         await saving.current;
         dirty.current = false;
-        onSaved(await api.updateNote(noteId, request(check.title)), false);
+        onSaved(await offlineApi.updateNote(noteId, request(check.title)), false);
       }
       savedTitle.current = check.title;
       setTitle(check.title);
@@ -204,7 +210,7 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
     const check = validateTitle(title);
     if (!titleLocked && noteId !== undefined && check.ok && check.title !== savedTitle.current) {
       try {
-        onSaved(await api.updateNote(noteId, request(check.title)), false);
+        onSaved(await offlineApi.updateNote(noteId, request(check.title)), false);
       } catch (err) {
         failed(err, "The title wasn't saved");
         setBusy(false);
@@ -243,7 +249,7 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
     dropPending();
     if (noteId !== undefined) {
       try {
-        await api.deleteNote(noteId);
+        await offlineApi.deleteNote(noteId);
       } catch (err) {
         failed(err, "The note wasn't deleted");
         setBusy(false);
@@ -386,7 +392,14 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
           </button>
         )}
         {isNew && (
-          <button type="button" className="button" disabled={busy} onClick={onCancelClick}>
+          <button
+            type="button"
+            className="button"
+            // A note already on the server (positive id) can't be deleted offline.
+            disabled={busy || (offline && noteId !== undefined && noteId > 0)}
+            title={offline && noteId !== undefined && noteId > 0 ? "Not available offline" : undefined}
+            onClick={onCancelClick}
+          >
             Cancel
           </button>
         )}

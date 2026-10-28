@@ -34,11 +34,26 @@ export class ApiError extends Error {
   get isUnauthorized(): boolean {
     return this.status === 401;
   }
+
+  /**
+   * The server couldn't be reached (no connection, or no reply in time), or the proxy in front of it
+   * says it's down (502, 503, 504): the app is offline.
+   */
+  get isNetworkError(): boolean {
+    return this.status === undefined || this.status === 502 || this.status === 503 || this.status === 504;
+  }
 }
+
+/** A change, or a ping, with no reply in this long counts as the server being unreachable. */
+const CHANGE_TIMEOUT_MS = 10_000;
 
 async function request<T>(method: string, url: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   const headers: Record<string, string> = { ...extraHeaders };
   if (body !== undefined) headers["Content-Type"] = "application/json";
+  // Loading every note can take a while on a slow connection, so only changes and pings time out.
+  const timesOut = method !== "GET" || url === PING_URL;
+  const controller = new AbortController();
+  const timer = timesOut ? window.setTimeout(() => controller.abort(), CHANGE_TIMEOUT_MS) : undefined;
   let response: Response;
   try {
     response = await fetch(url, {
@@ -46,10 +61,13 @@ async function request<T>(method: string, url: string, body?: unknown, extraHead
       credentials: "same-origin",
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
+    const reason = controller.signal.aborted ? "no reply in time" : error instanceof Error ? error.message : String(error);
     throw new ApiError(`Couldn't reach the server (${reason}).`, method, url, undefined, undefined, undefined, error);
+  } finally {
+    window.clearTimeout(timer);
   }
 
   const text = await response.text();
@@ -74,8 +92,16 @@ async function request<T>(method: string, url: string, body?: unknown, extraHead
 /** Changes send this page's connection id, so the server doesn't notify this page about them. */
 const changeHeaders = () => ({ [CONNECTION_ID_HEADER]: connectionId });
 
+const PING_URL = "/api/notes/ping";
+
+/**
+ * The server API. The note changes here always go to the server; the notes page and long-form editor
+ * make them through `offline.ts` instead, which queues them while offline.
+ */
 export const api = {
   getNotes: () => request<NotesData>("GET", "/api/notes"),
+  /** Whether the server can be reached (and the session is still valid), without loading every note. */
+  ping: () => request<{ ok: true }>("GET", PING_URL),
   addNote: (body: NewNoteRequest) => request<Note>("POST", "/api/notes", body, changeHeaders()),
   updateNote: (id: number, body: NewNoteRequest) => request<Note>("PUT", `/api/notes/${id}`, body, changeHeaders()),
   deleteNote: (id: number) => request<{ ok: true }>("DELETE", `/api/notes/${id}`, undefined, changeHeaders()),
