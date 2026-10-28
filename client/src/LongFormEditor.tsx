@@ -325,7 +325,13 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
         )}
       </div>
 
-      <TagPickers categories={categories} selection={selection} onChange={changeTags} disabled={busy} />
+      {/* A tinted, labelled band, so the note's tags stand out between the title and the details. */}
+      <div className="lf-tags" role="group" aria-labelledby="lf-tags-label">
+        <span id="lf-tags-label" className="lf-tags-label">
+          Tags
+        </span>
+        <TagPickers categories={categories} selection={selection} onChange={changeTags} disabled={busy} />
+      </div>
 
       <div className={detailsEditable ? "lf-details" : "lf-details locked"}>
         {kind === "text" ? (

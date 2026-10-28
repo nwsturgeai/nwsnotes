@@ -815,6 +815,43 @@ body:has(.note-list li.dragging) {
   margin-top: 0;
 }
 
+/*
+ * The long-form note's tags: a full-width tinted band (the header's colour) with a small "Tags" label.
+ * Its dropdowns have a darker, thicker border, and an accent one once a tag is chosen.
+ */
+.lf-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  /* Out to the editor's edges. */
+  margin: 0 -4px;
+  padding: 0.45rem 0.6rem;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.lf-tags-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.lf-tags .tag-pickers {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 2px rather than 1.5px, which ordinary (non-high-density) screens round down to 1px. */
+.lf-tags .tag-dropdown-button {
+  border: 2px solid var(--muted);
+}
+
+.lf-tags .tag-dropdown-button:not(.unset) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 /* The details take all the space between the dropdowns and Finish. */
 .lf-details {
   position: relative;
