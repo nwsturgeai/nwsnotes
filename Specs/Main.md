@@ -164,6 +164,7 @@ Categories: an array of structures, each containing a category id and one or mor
 
 The Settings page will have a new section "Tabs".  This allows Tab definitions to be added, edited and deleted.  WIthin the section will be a list of existing tabs, and a button to create a new tab.
 Existing tabs should show their name and the associated tag ids (rendered as pills the same as for notes in the Notes page).
+When a tab has a filter that includes more than one possible tag for a particular category, any tags in that category should still show as pills under each note title in the list.
 When creating or editing a tab, dropdowns for all the Categories are shown, the same as the dropdowns shown when adding a new Note.
 After the user begins to add or edit a tab, there should be "Save" and "Cancel" buttons.
 
@@ -397,7 +398,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 
 ### Tags on the notes page
 - Each note shows its tags as small pills under the title, showing the tag name only.
-- Under a tab whose own filter includes a single-select category (including Lifetime), that category's pills are left off the notes, as they only repeat the tab. Pills from multi-select categories, from categories the tab doesn't filter on, and from the additional filters still show.
+- Under a tab whose own filter includes a single-select category (including Lifetime) with just one tag, that category's pills are left off the notes, as they only repeat the tab. If the tab's filter allows more than one tag in that category, the pills show, since they say which of those tags each note has. Pills from multi-select categories, from categories the tab doesn't filter on, and from the additional filters always show.
 - Under the title text box there is one dropdown per category, with no visible title. Every dropdown is the app's own button-and-list control, not the browser's built-in dropdown, so single- and multi-select look and behave alike (and the app controls which inputs they respond to).
 - The button shows the chosen tag names, or the category name in grey when no tag is chosen. Hovering shows the category name (useful once a tag is chosen), and screen readers announce it as the button's label.
 - Single-select: the list shows the category name first (meaning no tag), then the tags, with the chosen one marked. Choosing an option replaces the previous choice and closes the list.

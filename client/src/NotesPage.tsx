@@ -214,12 +214,14 @@ export function NotesPage({
   // categories the tab doesn't filter on).
   const tabFilters = useMemo(() => selectedTab?.categories ?? [], [selectedTab]);
   /**
-   * Single-select categories the tab itself filters on: their pills are left off the notes, since
-   * they only repeat what the tab already shows. (Multi-select ones, and the additional filters, still show.)
+   * Single-select categories the tab itself filters on with just one tag: their pills are left off the
+   * notes, since they only repeat what the tab already shows. When the filter allows several tags, the
+   * pill says which one a note has, so it shows. (Multi-select ones, and the additional filters, always show.)
    */
   const filteredSingleSelect = useMemo(
     () =>
       tabFilters
+        .filter((filter) => filter.tagIds.length === 1)
         .map((filter) => filter.categoryId)
         .filter((id) => categories.some((category) => category.id === id && !category.multiSelect)),
     [tabFilters, categories],
