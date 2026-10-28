@@ -85,6 +85,11 @@ When editing a category, there should be bin icons alongside each Tag allowing T
 For now, it will not be possible to delete categories.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
+### Tag sort order
+The tags within each category have a sort order.
+When editing a category, there should be up and down arrows alongside each tag, which can be clicked to move that tag up or down the list and so change the order.
+The tag dropdowns (everywhere they appear) and the lists of tags in the expanded new-note section should all show the tags in this order.
+
 ### On the main notes page:
 Each note should also display its tags.  These should be shown in a list of pills underneath the note title.  If 2 categories have tags with the same name, there is a possibility that a note has 2 tags with the same text.  This is OK.
 
@@ -384,7 +389,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - A tag can't have the same name as its own category (ignoring upper/lower case), as the category name is what an unset dropdown shows. Tags in other categories may share it. Categories saved before this rule still load and work; saving one that breaks it is refused, with a message naming the clashing tag, until the tag or the category is renamed.
 - No user category can be called "Lifetime" (ignoring upper/lower case); that name belongs to the built-in category.
 - `multiSelect` can be changed from false to true, but not back. A note's `tagIds` must all exist, with at most one from each single-select category.
-- Categories, tags within a category, and the dropdowns all appear in the order they were created (id order). A note's pills appear in category order, then tag order.
+- Categories and their dropdowns appear in the order they were created (id order). Tags within a category appear in the category's tag order (see "Tag sort order" below). A note's pills appear in category order, then tag order.
 - Renaming a tag changes it on every note that has it, because notes store only the tag id.
 
 ### Category editing
@@ -395,6 +400,22 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - "Save" sends the whole category in one call and returns to the settings page. If saving fails, the error is shown on the page and the edits are kept so you can retry.
 - "Cancel" discards the edits and returns to the settings page; for a new category nothing is created.
 - If another page saves the same category while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
+
+### Tag sort order
+- **Stored as the list order:** a category's tag order is simply the order of its `tags` list in the save-file. No new field is needed, and the save-file stays version 2. Existing categories are already in creation (id) order, so they keep their current order until someone changes it. Tag ids no longer say anything about order.
+- **Server:** saving a category keeps its tags in the order sent; it no longer sorts them by id. New tags get the next ids as before, wherever they sit in the list.
+- **Editing page:** each tag row has, after its text box, an up arrow (`fa-arrow-up`) and a down arrow (`fa-arrow-down`), then the bin. They're the same 24px icon buttons as the bin, labelled "Move up"/"Move down" with the tag's name for screen readers.
+  - Clicking one swaps the row with the one above or below. The first row's up arrow and the last row's down arrow are greyed out.
+  - New, not-yet-saved rows can be moved too. "Add tag" still adds its row at the bottom.
+  - Like renaming and deleting, nothing changes until Save, and Cancel discards a new order.
+  - After a move, the focus stays on the same arrow (now on the moved row), so pressing it again keeps moving the tag.
+- **Where the order is used:** everywhere tags are listed in a category's order:
+  - the new-note, editing and long-form dropdowns, and the filter row and tab editor check-lists;
+  - the full-tag-list pills and multi-select pills;
+  - the pills on notes, and the tag pills on the settings page's category and tab lists.
+  - A note's own `tagIds`, and a tab's filter tags, are also saved in this order, though nothing depends on that.
+- **Lifetime:** the built-in Lifetime category's order is fixed (New, Active, Waiting, Archived, Bin) and can't be changed.
+- **Live updates:** another page sees the new order after Save, as with other category changes. An open new-note selection keeps its chosen tags; only their display order changes.
 
 ### Tags on the notes page
 - Each note shows its tags as small pills under the title, showing the tag name only.
