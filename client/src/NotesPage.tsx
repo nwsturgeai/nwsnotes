@@ -24,6 +24,7 @@ import {
   faGripVertical,
   faHourglass,
   faListCheck,
+  faMaximize,
   faPen,
   faReplyAll,
   faRotateLeft,
@@ -155,7 +156,7 @@ export function NotesPage({
   /** The note whose archive / reinstate / bin button is being handled. */
   const [busyNoteId, setBusyNoteId] = useState<number>();
   /** The open long-form editor: the note being edited, or none when creating one. */
-  const [longForm, setLongForm] = useState<{ note: Note | undefined; key: number }>();
+  const [longForm, setLongForm] = useState<{ note: Note | undefined; key: number; converted?: boolean }>();
   /** The open long-form note's id, once its title has been accepted; new notes become its children. */
   const [longFormId, setLongFormId] = useState<number>();
   /** Before a new long-form note's title is first accepted, regular notes can't be added. */
@@ -179,9 +180,10 @@ export function NotesPage({
   // Leaving the page ends it, so the tabs aren't left blocked.
   useEffect(() => () => onBulkChangeRef.current(false), []);
 
-  function openLongForm(note: Note | undefined) {
+  /** Opens the long-form editor; `converted` when the note has just become long-form (its details get the focus). */
+  function openLongForm(note: Note | undefined, converted = false) {
     setOrdering(false);
-    setLongForm({ note, key: Date.now() });
+    setLongForm({ note, key: Date.now(), converted });
     setLongFormId(note?.id);
   }
 
@@ -409,6 +411,46 @@ export function NotesPage({
       inputRef.current?.focus();
     }
     return check.ok ? { titleText: check.title } : undefined;
+  }
+
+  /** Why the note being edited can't become a long-form note, if it can't (as one couldn't be created that way). */
+  const convertHint =
+    editingNote?.titleImage !== undefined
+      ? "Only typed notes can become long-form notes"
+      : editingNote?.parentId !== undefined
+        ? "This note belongs to a long-form note, so it can't become one"
+        : undefined;
+
+  /**
+   * Turns the note being edited into a long-form note: saved with its title and tags as they are now,
+   * and empty details (handwritten in stylus mode, typed otherwise), then opened in the long-form
+   * editor with its title accepted, ready for the details.
+   */
+  async function convertToLongForm() {
+    if (!editingNote || saving || convertHint) return;
+    const check = validateTitle(title);
+    if (!check.ok) {
+      setSaveError(check.error);
+      return;
+    }
+    setSaving(true);
+    setSaveError(undefined);
+    try {
+      const tagIds = selectedTagIds(userCategories, editSelection);
+      const details = stylusMode ? { detailsImage: "" } : { detailsText: "" };
+      const note = await offlineApi.updateNote(editingNote.id, { titleText: check.title, tagIds, ...details });
+      onNoteUpdated(note);
+      finishEdit();
+      openLongForm(note, true);
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setSaveError(`The note wasn't converted: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function submit(event: FormEvent) {
@@ -781,6 +823,7 @@ export function NotesPage({
           // A fresh editor for each note opened.
           key={longForm.key}
           note={longForm.note}
+          startInDetails={longForm.converted}
           categories={userCategories}
           stylusMode={stylusMode}
           bottom={fullTagList ? 250 : 150}
@@ -930,8 +973,21 @@ export function NotesPage({
                   <FontAwesomeIcon icon={faChartDiagram} />
                 </button>
               )}
-              {/* In the expanded area: multi-select notes to change their tags together. Inverted while on. */}
-              {fullTagList && (
+              {/* In the expanded area while editing: turn the note into a long-form note. */}
+              {fullTagList && editingNote && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Convert to long-form note"
+                  title={convertHint ?? "Convert to long-form note"}
+                  disabled={saving || convertHint !== undefined}
+                  onClick={() => void convertToLongForm()}
+                >
+                  <FontAwesomeIcon icon={faMaximize} />
+                </button>
+              )}
+              {/* In the expanded area: multi-select notes to change their tags together. Inverted while on. Not while editing. */}
+              {fullTagList && !editingNote && (
                 <button
                   type="button"
                   className={bulk ? "icon-button primary" : "icon-button"}

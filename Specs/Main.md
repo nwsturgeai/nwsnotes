@@ -264,6 +264,10 @@ Long-form notes are displayed in the notes list the same as regular notes.  The 
 Within the notes list, when the Edit button is clicked on a long-form note:
 The main page area should switch into long-form note editing mode.  The current title and details of the note should be populated into the appropriate controls.  The title is initially locked so that the details can be edited.  The button "edit title" is shown (i.e. not "accept title").
 
+### Converting a regular note to a long-form note
+When editing a regular note with the new-note area expanded, the "go into select mode" (list-check) button should be hidden instead of just being greyed out.
+In its place there should be a new "Convert to long-form note" button, icon fa-maximize.  Clicking this causes the note to open into the long-form note editor with the title accepted.
+
 ### Regular notes whilst creating / editing a long-form note
 Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
 New regular notes created whilst creating/editing a long-form note will be given the Tags matching the currently-active Tab (i.e. the same as when creating regular notes just from the notes list).
@@ -455,7 +459,7 @@ Notes created offline keep the date and time they were created offline.
 - **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
 
 ### Multi-select (bulk tag editing)
-- **The list-check button** (`fa-list-check`) appears only in full-tag-list mode. It's in the right-hand button column, below the long-form button.
+- **The list-check button** (`fa-list-check`) appears only in full-tag-list mode. It's in the right-hand button column, below the long-form button. It's hidden while a note is being edited, where the "Convert to long-form note" button takes its place (see Long-form notes).
   - **When it can be turned on:** only while the new-note title box is empty or the canvas has no ink, no note or long-form note is being edited, and edit-order mode is off. Otherwise it's greyed out, with a hint saying why.
   - **Two modes never overlap:** while list-check is on, the Edit order button is greyed out too.
   - **While it's on:** its colours are inverted (accent background, light icon) and it's marked as pressed. The title box or canvas, and the Add, Clear and long-form buttons, are hidden, so it's the only button in the column until Accept appears.
@@ -562,6 +566,13 @@ Notes created offline keep the date and time they were created offline.
 - **Titles** follow the usual title rules (trimmed, not empty, at most 500 characters). They don't need to be unique.
 - **Image size:** handwritten details fill a much larger canvas than a title, so `detailsImage` may be up to 2 MB (counting the data URL's characters), and the server's request size limit rises to 3 MB. Like titles, the drawing is cropped to what's written plus a margin, and stored at 2× pixel density.
 - **API:** `POST /api/notes` with `{ "titleText": "...", "detailsText": "" | "detailsImage": "", "tagIds": [...] }` creates a long-form note (New, like any new note). `PUT /api/notes/:id` updates it with the same fields; the details kind can't change. Child notes are created with `POST /api/notes` plus `"parentId": <id>`.
+- **Converting a regular note:** while a regular note is being edited in the expanded (full-tag-list) area, a "Convert to long-form note" button (`fa-maximize`) takes the list-check button's place.
+  - Clicking it saves the note with its title and tags as they are in the edit, plus empty details, using `PUT /api/notes/:id` with `detailsText: ""`, or `detailsImage: ""` in stylus mode. The details kind is chosen from stylus mode, as when creating one.
+  - It then opens in the long-form editor with the title accepted, ready for the details (typed details get the focus), like editing an existing long-form note: no Cancel button, and new regular notes become its children.
+  - The note keeps its id, created time, Lifetime and place in the list.
+  - The server allows a regular note to gain details only if it could have been created as a long-form note: a typed title, and no parent. Otherwise the button is greyed out, with the hint "Only typed notes can become long-form notes" (handwritten notes) or "This note belongs to a long-form note, so it can't become one" (child notes).
+  - A long-form note can't be turned back into a regular one.
+  - Offline, it's queued like any other edit.
 - **Opening the editor:** the "create long-form note" button (`fa-chart-diagram`, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
 - **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
 - **Tags band:** so the note's tags stand out, the dropdowns sit in a full-width band between the title and the details.

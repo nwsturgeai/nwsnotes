@@ -41,6 +41,8 @@ interface Props {
    * forgotten); deleting one that's already on the server has to wait for the connection.
    */
   offline: boolean;
+  /** Typed details take the focus when the editor opens (a note just converted to long-form). */
+  startInDetails?: boolean;
   onSessionExpired: () => void;
 }
 
@@ -58,7 +60,17 @@ function selectionFor(note: Note | undefined, categories: Category[]): TagSelect
  * creates the note the first time) unlocks the details; "edit title" locks them again. Details and tag
  * changes are saved at most every 30 seconds, and straight away on Finish or when the app is hidden.
  */
-export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, onFinish, offline, onSessionExpired }: Props) {
+export function LongFormEditor({
+  note,
+  categories,
+  stylusMode,
+  bottom,
+  onSaved,
+  onFinish,
+  offline,
+  startInDetails,
+  onSessionExpired,
+}: Props) {
   const [noteId, setNoteId] = useState(note?.id);
   const [title, setTitle] = useState(note?.titleText ?? "");
   /** The title as last saved; updates of the details are sent with it. */
@@ -73,8 +85,8 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   const padRef = useRef<StylusPadHandle>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const detailsRef = useRef<HTMLTextAreaElement>(null);
-  /** Set when the title is accepted, so the typed details take the focus once enabled. */
-  const focusDetails = useRef(false);
+  /** Set when the title is accepted (or on opening a converted note), so the typed details take the focus once enabled. */
+  const focusDetails = useRef(startInDetails === true && kind === "text");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   /** Only a note created in this editor can be cancelled (deleted); editing an existing one can't. */
