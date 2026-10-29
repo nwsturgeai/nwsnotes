@@ -163,10 +163,13 @@ body:has(.app) {
   margin: 0 0.5rem -1px -0.75rem;
 }
 
-/* Every tab has the same width and shrinks equally when space runs out. */
+/*
+ * Every tab has the same width and shrinks equally when space runs out, down to 55px; tabs that
+ * would be narrower go into the "…" menu (Header.tsx works out which).
+ */
 .tab {
   flex: 0 1 9rem;
-  min-width: 0;
+  min-width: 55px;
   height: 2.3rem;
   padding: 0 0.3rem;
   border: 1px solid transparent;
@@ -184,6 +187,25 @@ body:has(.app) {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* The "…" button for the tabs that don't fit: a narrow tab at the end of the strip. */
+.tab-more {
+  display: flex;
+  flex: none;
+  align-self: stretch;
+  align-items: flex-end;
+}
+
+.tab.tab-more-button {
+  flex: none;
+  width: 36px;
+  min-width: 0;
+}
+
+/* Its menu: like a tag dropdown's list, lined up with the button's right edge. */
+.tab-more-list {
+  min-width: 10rem;
 }
 
 .tab:hover:not(.selected, [aria-disabled]) {

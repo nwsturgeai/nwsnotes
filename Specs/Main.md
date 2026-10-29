@@ -174,6 +174,9 @@ When a tab has a filter that includes more than one possible tag for a particula
 When creating or editing a tab, dropdowns for all the Categories are shown, the same as the dropdowns shown when adding a new Note.
 After the user begins to add or edit a tab, there should be "Save" and "Cancel" buttons.
 
+When the browser window is too narrow, the rightmost tabs are replaced with an ellipsis button (fa-ellipsis).  Tabs that don't fit well in the limited width are hidden; clicking the ellipsis opens a dropdown listing all of the hidden tabs.  The user can click on one of those tabs: it becomes selected and appears in the visible list of tabs, bumping the previous rightmost visible tab so that it is no longer visible but instead appears in the ellipsis dropdown list.
+No tab should be narrower than 55 pixels; tabs that would be narrower than that go into the ellipsis dropdown.
+
 The first Tab should be called "All" and should have no filters.  This Tab cannot be edited or deleted.
 
 Tab definitions should be stored in the same json file as notes and Category definitions.
@@ -516,7 +519,15 @@ Notes created offline keep the date and time they were created offline.
 
 ### Tabs on the notes page
 - The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it. Each tab has 0.3rem of padding at its left and right.
-- **Too many to fit:** all tabs shrink equally so they always fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
+- **Too many to fit:** all tabs shrink equally so they fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
+- **Tabs menu:** no tab is narrower than 55px. When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
+  - How many fit is worked out from the tab strip's actual width (measured whenever it changes), with no breakpoints.
+  - The menu opens from a narrow "…" button (`fa-ellipsis`) in the last place on the right. It's a list like the tag dropdowns, with each hidden tab's full name, in the tabs' usual order.
+  - Choosing a tab there selects it and closes the menu.
+  - **The selected tab is always shown:** if it's one that wouldn't fit, it takes the last shown place, and the tab normally there moves into the menu. After a resize the tabs are worked out again from their usual order, with this same rule.
+  - "All" comes first, so it stays visible, unless only one tab fits at all.
+  - While a note is being edited (or in multi-select), the "…" button is greyed out like the tabs.
+  - The menu closes on a click elsewhere, Escape, or a resize.
 - **Selected tab:** "All" is selected when the page opens or is reloaded. The selection is kept while moving around the app (e.g. to Settings and back). If another page deletes the selected tab, "All" is selected; if it edits it, the filter updates straight away.
 - Only notes matching the selected tab are listed; an empty result shows "No notes in this tab yet." Changing tab scrolls the list to the bottom.
 - Tabs respond to touch in stylus mode too; the touch-ignoring rule only covers the new-note controls.
