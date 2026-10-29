@@ -163,10 +163,13 @@ body:has(.app) {
   margin: 0 0.5rem -1px -0.75rem;
 }
 
-/* Every tab has the same width and shrinks equally when space runs out. */
+/*
+ * Every tab has the same width and shrinks equally when space runs out, down to 55px; tabs that
+ * would be narrower go into the "…" menu (Header.tsx works out which).
+ */
 .tab {
   flex: 0 1 9rem;
-  min-width: 0;
+  min-width: 55px;
   height: 2.3rem;
   padding: 0 0.3rem;
   border: 1px solid transparent;
@@ -184,6 +187,25 @@ body:has(.app) {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* The "…" button for the tabs that don't fit: a narrow tab at the end of the strip. */
+.tab-more {
+  display: flex;
+  flex: none;
+  align-self: stretch;
+  align-items: flex-end;
+}
+
+.tab.tab-more-button {
+  flex: none;
+  width: 36px;
+  min-width: 0;
+}
+
+/* Its menu: like a tag dropdown's list, lined up with the button's right edge. */
+.tab-more-list {
+  min-width: 10rem;
 }
 
 .tab:hover:not(.selected, [aria-disabled]) {
@@ -340,6 +362,28 @@ a:focus-visible {
   padding: 0.35rem 0.5rem;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
+}
+
+/* Multi-select: "All" and "None" take the filters' place in the row. */
+.bulk-select-all {
+  display: flex;
+  gap: 0.35rem;
+}
+
+/* Small text buttons, the height of the filter dropdowns. */
+.small-button {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.small-button:hover:not(:disabled) {
+  border-color: var(--muted);
 }
 
 /* The reset button sits just right of the dropdowns; the edit-order button is at the far right. */
@@ -843,8 +887,8 @@ body:has(.note-list li.dragging) {
 }
 
 /*
- * The long-form note's tags: a full-width tinted band (the header's colour) with a small "Tags" label.
- * Its dropdowns have a darker, thicker border, and an accent one once a tag is chosen.
+ * The long-form note's tags: a full-width tinted band (the header's colour), with the "match the tab"
+ * button at its far right. Its dropdowns have a darker, thicker border, and an accent one once a tag is chosen.
  */
 .lf-tags {
   display: flex;
@@ -858,10 +902,8 @@ body:has(.note-list li.dragging) {
   background: var(--bg);
 }
 
-.lf-tags-label {
+.lf-tags > .note-button {
   flex: none;
-  color: var(--muted);
-  font-size: 0.75rem;
 }
 
 .lf-tags .tag-pickers {

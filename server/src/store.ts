@@ -243,6 +243,7 @@ export class NoteStore {
   /**
    * Replaces a note's title (already validated) and tags, then saves. The note keeps its id, its
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
+   * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
    */
   updateNote(id: number, title: NoteTitle, rawTagIds: unknown, details: NoteDetails | undefined): Promise<Note> {
     return this.enqueue(async () => {
@@ -257,15 +258,19 @@ export class NoteStore {
             : "This note is typed, so it must be updated with new text, not an image.",
         );
       }
-      // A long-form note stays long-form, with the same kind of details; a regular note stays regular.
+      // A long-form note stays long-form, with the same kind of details. A regular note sent with
+      // details becomes long-form, if it could have been created as one: a typed title, and no parent.
       const longForm = isLongForm(existing);
-      if (longForm !== (details !== undefined)) {
-        throw new RequestError(
-          400,
-          longForm ? "This is a long-form note, so it must be updated with its details." : "This note isn't long-form, so it can't have details.",
-        );
+      if (longForm && details === undefined) {
+        throw new RequestError(400, "This is a long-form note, so it must be updated with its details.");
       }
-      if (details && (existing.detailsImage !== undefined) !== (details.detailsImage !== undefined)) {
+      if (!longForm && details !== undefined) {
+        if (title.titleText === undefined) throw new RequestError(400, "A long-form note's title must be typed text.");
+        if (existing.parentId !== undefined) {
+          throw new RequestError(400, "This note belongs to a long-form note, so it can't become one itself.");
+        }
+      }
+      if (longForm && details && (existing.detailsImage !== undefined) !== (details.detailsImage !== undefined)) {
         throw new RequestError(
           400,
           existing.detailsImage !== undefined

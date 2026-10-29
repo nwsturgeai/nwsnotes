@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faEraser, faPen } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faEraser, faPen, faRectangleList } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -41,6 +41,15 @@ interface Props {
    * forgotten); deleting one that's already on the server has to wait for the connection.
    */
   offline: boolean;
+  /** Typed details take the focus when the editor opens (a note just converted to long-form). */
+  startInDetails?: boolean;
+  /**
+   * The tags the selected tab (and its additional filters) fix to one value: category id -> tag id.
+   * The "match the tab" button sets these. Empty under "All", or a tab with no one-tag filters.
+   */
+  tabTags: ReadonlyMap<number, number>;
+  /** The selected tab's name, for the button's hint. */
+  tabName?: string;
   onSessionExpired: () => void;
 }
 
@@ -58,7 +67,19 @@ function selectionFor(note: Note | undefined, categories: Category[]): TagSelect
  * creates the note the first time) unlocks the details; "edit title" locks them again. Details and tag
  * changes are saved at most every 30 seconds, and straight away on Finish or when the app is hidden.
  */
-export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, onFinish, offline, onSessionExpired }: Props) {
+export function LongFormEditor({
+  note,
+  categories,
+  stylusMode,
+  bottom,
+  onSaved,
+  onFinish,
+  offline,
+  startInDetails,
+  tabTags,
+  tabName,
+  onSessionExpired,
+}: Props) {
   const [noteId, setNoteId] = useState(note?.id);
   const [title, setTitle] = useState(note?.titleText ?? "");
   /** The title as last saved; updates of the details are sent with it. */
@@ -73,8 +94,8 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
   const padRef = useRef<StylusPadHandle>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const detailsRef = useRef<HTMLTextAreaElement>(null);
-  /** Set when the title is accepted, so the typed details take the focus once enabled. */
-  const focusDetails = useRef(false);
+  /** Set when the title is accepted (or on opening a converted note), so the typed details take the focus once enabled. */
+  const focusDetails = useRef(startInDetails === true && kind === "text");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   /** Only a note created in this editor can be cancelled (deleted); editing an existing one can't. */
@@ -187,6 +208,28 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
     latest.current.selection = next;
     if (detailsEditable) schedule();
   }
+
+  /**
+   * "Match the tab": each tag the selected tab fixes to one value is chosen. In a single-select
+   * category it replaces whatever was chosen; in a multi-select one it's added to the others.
+   */
+  function matchTab() {
+    const next: TagSelection = { ...selection };
+    for (const category of categories) {
+      const tagId = tabTags.get(category.id);
+      if (tagId === undefined) continue;
+      const chosen = next[category.id] ?? [];
+      next[category.id] = category.multiSelect ? (chosen.includes(tagId) ? chosen : [...chosen, tagId]) : [tagId];
+    }
+    changeTags(next);
+  }
+
+  const matchHint =
+    tabTags.size === 0
+      ? tabName
+        ? `The "${tabName}" tab has no one-tag filters to match`
+        : `Choose a tab to match its tags`
+      : `Set the tags to match the ${tabName ? `"${tabName}" tab` : "tab"}`;
 
   /** In stylus mode, Finish ignores finger and palm taps (a stylus or mouse works). */
   function onFinishClick(event: ReactMouseEvent) {
@@ -332,11 +375,19 @@ export function LongFormEditor({ note, categories, stylusMode, bottom, onSaved, 
       </div>
 
       {/* A tinted, labelled band, so the note's tags stand out between the title and the details. */}
-      <div className="lf-tags" role="group" aria-labelledby="lf-tags-label">
-        <span id="lf-tags-label" className="lf-tags-label">
-          Tags
-        </span>
+      <div className="lf-tags" role="group" aria-label="Tags">
         <TagPickers categories={categories} selection={selection} onChange={changeTags} disabled={busy} />
+        {/* At the far right: choose the tags the selected tab fixes. */}
+        <button
+          type="button"
+          className="note-button"
+          aria-label={matchHint}
+          title={matchHint}
+          disabled={busy || tabTags.size === 0}
+          onClick={matchTab}
+        >
+          <FontAwesomeIcon icon={faRectangleList} />
+        </button>
       </div>
 
       <div className={detailsEditable ? "lf-details" : "lf-details locked"}>

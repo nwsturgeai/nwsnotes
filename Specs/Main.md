@@ -134,6 +134,7 @@ Once any tag pills have been clicked, it is no longer possible to select or dese
 Once any tag pills have been clicked, a new "accept bulk tag updates" icon-button (fa-check) appears above the list-check button.
 At this point, clicking "accept bulk tag updates" causes the selected notes' tags to be updated.  Tags should be added and removed only according to which tag pills were clicked on.  Any tag pills that weren't clicked on retain their state - i.e. an untouched tag-pill in partially-selected state means that selected notes retain whether they have that tag or not.
 Clicking the list-check button still turns list-check mode off without making any changes, effectively discarding any note selections and tag-update selections.
+Whilst selecting multiple notes, the dynamic Tag filter dropdowns (and the reset-all button) are hidden rather than greyed out, and replaced by 2 small buttons with text "All" and "None".  Clicking "All" causes all notes in the tab to become selected; clicking "None" causes all notes in the tab to become unselected.
 
 
 ## Stylus support
@@ -172,6 +173,9 @@ Existing tabs should show their name and the associated tag ids (rendered as pil
 When a tab has a filter that includes more than one possible tag for a particular category, any tags in that category should still show as pills under each note title in the list.
 When creating or editing a tab, dropdowns for all the Categories are shown, the same as the dropdowns shown when adding a new Note.
 After the user begins to add or edit a tab, there should be "Save" and "Cancel" buttons.
+
+When the browser window is too narrow, the rightmost tabs are replaced with an ellipsis button (fa-ellipsis).  Tabs that don't fit well in the limited width are hidden; clicking the ellipsis opens a dropdown listing all of the hidden tabs.  The user can click on one of those tabs: it becomes selected and appears in the visible list of tabs, bumping the previous rightmost visible tab so that it is no longer visible but instead appears in the ellipsis dropdown list.
+No tab should be narrower than 55 pixels; tabs that would be narrower than that go into the ellipsis dropdown.
 
 The first Tab should be called "All" and should have no filters.  This Tab cannot be edited or deleted.
 
@@ -263,6 +267,14 @@ Long-form notes are displayed in the notes list the same as regular notes.  The 
 ### Editing a long-form note
 Within the notes list, when the Edit button is clicked on a long-form note:
 The main page area should switch into long-form note editing mode.  The current title and details of the note should be populated into the appropriate controls.  The title is initially locked so that the details can be edited.  The button "edit title" is shown (i.e. not "accept title").
+
+### Converting a regular note to a long-form note
+When editing a regular note with the new-note area expanded, the "go into select mode" (list-check) button should be hidden instead of just being greyed out.
+In its place there should be a new "Convert to long-form note" button, icon fa-maximize.  Clicking this causes the note to open into the long-form note editor with the title accepted.
+
+### Matching the tab's tags in the long-form editor
+In the long-form note editor's tag dropdowns bar (just under the title), there is no "Tags" text label.
+On the far right of this bar there is an icon button (the same size as the single-note edit button), with icon fa-rectangle-list.  Clicking this button causes the tag dropdown selections to be updated to match the current Tab: within this Tab, any filters that have single values cause that Tag to be selected within the corresponding Category dropdown.
 
 ### Regular notes whilst creating / editing a long-form note
 Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
@@ -455,12 +467,16 @@ Notes created offline keep the date and time they were created offline.
 - **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
 
 ### Multi-select (bulk tag editing)
-- **The list-check button** (`fa-list-check`) appears only in full-tag-list mode. It's in the right-hand button column, below the long-form button.
+- **The list-check button** (`fa-list-check`) appears only in full-tag-list mode. It's in the right-hand button column, below the long-form button. It's hidden while a note is being edited, where the "Convert to long-form note" button takes its place (see Long-form notes).
   - **When it can be turned on:** only while the new-note title box is empty or the canvas has no ink, no note or long-form note is being edited, and edit-order mode is off. Otherwise it's greyed out, with a hint saying why.
   - **Two modes never overlap:** while list-check is on, the Edit order button is greyed out too.
   - **While it's on:** its colours are inverted (accent background, light icon) and it's marked as pressed. The title box or canvas, and the Add, Clear and long-form buttons, are hidden, so it's the only button in the column until Accept appears.
 - **Turning it off:** clicking it again, or pressing Escape, always turns it off with no changes. Note selections and pill clicks are discarded, and the next time starts with nothing selected. The normal new-note tag choices come back as they were.
-- **While it's on, the page is held still, as during an edit:** the tabs, the filter row and the expand/collapse toggle are blocked. So selected notes can't disappear from the list, and the pills can't be collapsed away.
+- **While it's on, the page is held still, as during an edit:** the tabs and the expand/collapse toggle are blocked. So selected notes can't disappear from the list, and the pills can't be collapsed away.
+- **The filter row** keeps its filters as they are, but hides its dropdowns and "reset filters" button. In their place are two small text buttons, "All" and "None". The Edit order button stays at the far right, greyed out.
+  - "All" selects every note listed (the notes in the tab, as narrowed by the filters), and "None" unselects them all.
+  - Like tapping rows, they only work until a pill has been clicked. Then they're greyed out, with the hint "Selection is fixed once a tag has been clicked".
+  - Turning list-check off brings the dropdowns back, with the same choices.
 - **Selecting notes:**
   - Every note in the list shows a circle at its left: `fa-circle` when unselected, `fa-circle-check` (accent colour) when selected.
   - Tapping anywhere on a note row, or its circle, toggles it. Any listed note can be selected, long-form notes included.
@@ -503,7 +519,15 @@ Notes created offline keep the date and time they were created offline.
 
 ### Tabs on the notes page
 - The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it. Each tab has 0.3rem of padding at its left and right.
-- **Too many to fit:** all tabs shrink equally so they always fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
+- **Too many to fit:** all tabs shrink equally so they fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
+- **Tabs menu:** no tab is narrower than 55px. When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
+  - How many fit is worked out from the tab strip's actual width (measured whenever it changes), with no breakpoints.
+  - The menu opens from a narrow "…" button (`fa-ellipsis`) in the last place on the right. It's a list like the tag dropdowns, with each hidden tab's full name, in the tabs' usual order.
+  - Choosing a tab there selects it and closes the menu.
+  - **The selected tab is always shown:** if it's one that wouldn't fit, it takes the last shown place, and the tab normally there moves into the menu. After a resize the tabs are worked out again from their usual order, with this same rule.
+  - "All" comes first, so it stays visible, unless only one tab fits at all.
+  - While a note is being edited (or in multi-select), the "…" button is greyed out like the tabs.
+  - The menu closes on a click elsewhere, Escape, or a resize.
 - **Selected tab:** "All" is selected when the page opens or is reloaded. The selection is kept while moving around the app (e.g. to Settings and back). If another page deletes the selected tab, "All" is selected; if it edits it, the filter updates straight away.
 - Only notes matching the selected tab are listed; an empty result shows "No notes in this tab yet." Changing tab scrolls the list to the bottom.
 - Tabs respond to touch in stylus mode too; the touch-ignoring rule only covers the new-note controls.
@@ -562,12 +586,25 @@ Notes created offline keep the date and time they were created offline.
 - **Titles** follow the usual title rules (trimmed, not empty, at most 500 characters). They don't need to be unique.
 - **Image size:** handwritten details fill a much larger canvas than a title, so `detailsImage` may be up to 2 MB (counting the data URL's characters), and the server's request size limit rises to 3 MB. Like titles, the drawing is cropped to what's written plus a margin, and stored at 2× pixel density.
 - **API:** `POST /api/notes` with `{ "titleText": "...", "detailsText": "" | "detailsImage": "", "tagIds": [...] }` creates a long-form note (New, like any new note). `PUT /api/notes/:id` updates it with the same fields; the details kind can't change. Child notes are created with `POST /api/notes` plus `"parentId": <id>`.
+- **Converting a regular note:** while a regular note is being edited in the expanded (full-tag-list) area, a "Convert to long-form note" button (`fa-maximize`) takes the list-check button's place.
+  - Clicking it saves the note with its title and tags as they are in the edit, plus empty details, using `PUT /api/notes/:id` with `detailsText: ""`, or `detailsImage: ""` in stylus mode. The details kind is chosen from stylus mode, as when creating one.
+  - It then opens in the long-form editor with the title accepted, ready for the details (typed details get the focus), like editing an existing long-form note: no Cancel button, and new regular notes become its children.
+  - The note keeps its id, created time, Lifetime and place in the list.
+  - The server allows a regular note to gain details only if it could have been created as a long-form note: a typed title, and no parent. Otherwise the button is greyed out, with the hint "Only typed notes can become long-form notes" (handwritten notes) or "This note belongs to a long-form note, so it can't become one" (child notes).
+  - A long-form note can't be turned back into a regular one.
+  - Offline, it's queued like any other edit.
 - **Opening the editor:** the "create long-form note" button (`fa-chart-diagram`, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
 - **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
 - **Tags band:** so the note's tags stand out, the dropdowns sit in a full-width band between the title and the details.
-  - The band has the header's background colour and a thin line above and below, with a small grey "Tags" label at its left.
+  - The band has the header's background colour and a thin line above and below. It has no text label (it's labelled "Tags" for screen readers).
   - Its dropdown buttons have a 2px border: dark grey when no tag is chosen, and accent green, with dark text, once one is.
   - This is only in the long-form editor; the new-note area's dropdowns are unchanged.
+- **Match the tab:** at the far right of the tags band, an `fa-rectangle-list` icon button, the same 24px size as the note buttons.
+  - Clicking it chooses every tag that the selected tab's filters (and the additional filters) fix to a single value. These are the same tags the new-note area locks in.
+  - In a single-select category the tag replaces whatever was chosen. In a multi-select category it's added to the tags already chosen.
+  - Other categories, and filters that allow several tags, are left alone.
+  - It's saved like any other tag change.
+  - It's greyed out when there's nothing to match: under "All", or a tab whose filters all allow several tags. The hint says why.
 - **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note and follow the selected tab's rules as usual.
 - **Saving:**
   - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it. After accepting, typed details get the focus.

@@ -24,6 +24,7 @@ import {
   faGripVertical,
   faHourglass,
   faListCheck,
+  faMaximize,
   faPen,
   faReplyAll,
   faRotateLeft,
@@ -155,7 +156,7 @@ export function NotesPage({
   /** The note whose archive / reinstate / bin button is being handled. */
   const [busyNoteId, setBusyNoteId] = useState<number>();
   /** The open long-form editor: the note being edited, or none when creating one. */
-  const [longForm, setLongForm] = useState<{ note: Note | undefined; key: number }>();
+  const [longForm, setLongForm] = useState<{ note: Note | undefined; key: number; converted?: boolean }>();
   /** The open long-form note's id, once its title has been accepted; new notes become its children. */
   const [longFormId, setLongFormId] = useState<number>();
   /** Before a new long-form note's title is first accepted, regular notes can't be added. */
@@ -179,9 +180,10 @@ export function NotesPage({
   // Leaving the page ends it, so the tabs aren't left blocked.
   useEffect(() => () => onBulkChangeRef.current(false), []);
 
-  function openLongForm(note: Note | undefined) {
+  /** Opens the long-form editor; `converted` when the note has just become long-form (its details get the focus). */
+  function openLongForm(note: Note | undefined, converted = false) {
     setOrdering(false);
-    setLongForm({ note, key: Date.now() });
+    setLongForm({ note, key: Date.now(), converted });
     setLongFormId(note?.id);
   }
 
@@ -299,6 +301,14 @@ export function NotesPage({
   }
   /** What the filters require of new notes, so they always match and stay visible. */
   const constraints = useMemo(() => constraintsFor(allFilters), [allFilters]);
+  /** The tags the filters fix to one value (category id -> tag id), for the long-form editor's "match the tab". */
+  const tabTags = useMemo(
+    () =>
+      new Map(
+        [...constraints].flatMap(([categoryId, tagIds]) => (tagIds.length === 1 && tagIds[0] !== undefined ? [[categoryId, tagIds[0]] as const] : [])),
+      ),
+    [constraints],
+  );
 
   // Newest notes are at the bottom, so keep the list scrolled to the bottom
   // when the page opens, whenever a note is added, and when the tab changes.
@@ -411,6 +421,46 @@ export function NotesPage({
     return check.ok ? { titleText: check.title } : undefined;
   }
 
+  /** Why the note being edited can't become a long-form note, if it can't (as one couldn't be created that way). */
+  const convertHint =
+    editingNote?.titleImage !== undefined
+      ? "Only typed notes can become long-form notes"
+      : editingNote?.parentId !== undefined
+        ? "This note belongs to a long-form note, so it can't become one"
+        : undefined;
+
+  /**
+   * Turns the note being edited into a long-form note: saved with its title and tags as they are now,
+   * and empty details (handwritten in stylus mode, typed otherwise), then opened in the long-form
+   * editor with its title accepted, ready for the details.
+   */
+  async function convertToLongForm() {
+    if (!editingNote || saving || convertHint) return;
+    const check = validateTitle(title);
+    if (!check.ok) {
+      setSaveError(check.error);
+      return;
+    }
+    setSaving(true);
+    setSaveError(undefined);
+    try {
+      const tagIds = selectedTagIds(userCategories, editSelection);
+      const details = stylusMode ? { detailsImage: "" } : { detailsText: "" };
+      const note = await offlineApi.updateNote(editingNote.id, { titleText: check.title, tagIds, ...details });
+      onNoteUpdated(note);
+      finishEdit();
+      openLongForm(note, true);
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setSaveError(`The note wasn't converted: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
@@ -502,6 +552,12 @@ export function NotesPage({
   function toggleBulkNote(noteId: number) {
     if (!bulk || bulk.changes.size > 0) return;
     const noteIds = bulk.noteIds.includes(noteId) ? bulk.noteIds.filter((id) => id !== noteId) : [...bulk.noteIds, noteId];
+    setBulk({ ...bulk, noteIds });
+  }
+
+  /** The filter row's "All" and "None": selects exactly these notes, until a pill has been clicked. */
+  function selectBulkNotes(noteIds: number[]) {
+    if (!bulk || bulk.changes.size > 0) return;
     setBulk({ ...bulk, noteIds });
   }
 
@@ -600,23 +656,49 @@ export function NotesPage({
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* A tab that filters on every category has no dropdowns, but still needs the edit-order button. */}
-      {(extraCategories.length > 0 || selectedTab) && (
+      {(extraCategories.length > 0 || selectedTab || bulk) && (
         <div className="filter-row" aria-label="More filters for this tab">
-          {extraCategories.length > 0 && (
-            <TagPickers
-              categories={extraCategories}
-              selection={extraSelection}
-              onChange={setExtraSelection}
-              disabled={rowBlocked}
-              checkLists
-            />
+          {bulk ? (
+            // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
+            <div className="bulk-select-all" role="group" aria-label="Select notes">
+              <button
+                type="button"
+                className="small-button"
+                title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Select every note in the list"}
+                disabled={bulk.changes.size > 0}
+                onClick={() => selectBulkNotes(visibleNotes.map((note) => note.id))}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className="small-button"
+                title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Unselect every note"}
+                disabled={bulk.changes.size > 0}
+                onClick={() => selectBulkNotes([])}
+              >
+                None
+              </button>
+            </div>
+          ) : (
+            <>
+              {extraCategories.length > 0 && (
+                <TagPickers
+                  categories={extraCategories}
+                  selection={extraSelection}
+                  onChange={setExtraSelection}
+                  disabled={rowBlocked}
+                  checkLists
+                />
+              )}
+              <IconButton
+                icon={faReplyAll}
+                label={rowBlocked ? rowHint : "Reset filters"}
+                disabled={rowBlocked}
+                onClick={() => setExtraSelection({})}
+              />
+            </>
           )}
-          <IconButton
-            icon={faReplyAll}
-            label={rowBlocked ? rowHint : "Reset filters"}
-            disabled={rowBlocked}
-            onClick={() => setExtraSelection({})}
-          />
           {selectedTab && (
             <div className="filter-row-end">
               <IconButton
@@ -781,6 +863,9 @@ export function NotesPage({
           // A fresh editor for each note opened.
           key={longForm.key}
           note={longForm.note}
+          startInDetails={longForm.converted}
+          tabTags={tabTags}
+          tabName={selectedTab?.name}
           categories={userCategories}
           stylusMode={stylusMode}
           bottom={fullTagList ? 250 : 150}
@@ -930,8 +1015,21 @@ export function NotesPage({
                   <FontAwesomeIcon icon={faChartDiagram} />
                 </button>
               )}
-              {/* In the expanded area: multi-select notes to change their tags together. Inverted while on. */}
-              {fullTagList && (
+              {/* In the expanded area while editing: turn the note into a long-form note. */}
+              {fullTagList && editingNote && (
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Convert to long-form note"
+                  title={convertHint ?? "Convert to long-form note"}
+                  disabled={saving || convertHint !== undefined}
+                  onClick={() => void convertToLongForm()}
+                >
+                  <FontAwesomeIcon icon={faMaximize} />
+                </button>
+              )}
+              {/* In the expanded area: multi-select notes to change their tags together. Inverted while on. Not while editing. */}
+              {fullTagList && !editingNote && (
                 <button
                   type="button"
                   className={bulk ? "icon-button primary" : "icon-button"}
