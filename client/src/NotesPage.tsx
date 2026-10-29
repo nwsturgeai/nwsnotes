@@ -555,6 +555,12 @@ export function NotesPage({
     setBulk({ ...bulk, noteIds });
   }
 
+  /** The filter row's "All" and "None": selects exactly these notes, until a pill has been clicked. */
+  function selectBulkNotes(noteIds: number[]) {
+    if (!bulk || bulk.changes.size > 0) return;
+    setBulk({ ...bulk, noteIds });
+  }
+
   /** Accept: clicked pills that ended chosen are added to every selected note, the others removed. */
   async function acceptBulk() {
     if (!bulk || saving) return;
@@ -650,23 +656,49 @@ export function NotesPage({
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* A tab that filters on every category has no dropdowns, but still needs the edit-order button. */}
-      {(extraCategories.length > 0 || selectedTab) && (
+      {(extraCategories.length > 0 || selectedTab || bulk) && (
         <div className="filter-row" aria-label="More filters for this tab">
-          {extraCategories.length > 0 && (
-            <TagPickers
-              categories={extraCategories}
-              selection={extraSelection}
-              onChange={setExtraSelection}
-              disabled={rowBlocked}
-              checkLists
-            />
+          {bulk ? (
+            // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
+            <div className="bulk-select-all" role="group" aria-label="Select notes">
+              <button
+                type="button"
+                className="small-button"
+                title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Select every note in the list"}
+                disabled={bulk.changes.size > 0}
+                onClick={() => selectBulkNotes(visibleNotes.map((note) => note.id))}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                className="small-button"
+                title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Unselect every note"}
+                disabled={bulk.changes.size > 0}
+                onClick={() => selectBulkNotes([])}
+              >
+                None
+              </button>
+            </div>
+          ) : (
+            <>
+              {extraCategories.length > 0 && (
+                <TagPickers
+                  categories={extraCategories}
+                  selection={extraSelection}
+                  onChange={setExtraSelection}
+                  disabled={rowBlocked}
+                  checkLists
+                />
+              )}
+              <IconButton
+                icon={faReplyAll}
+                label={rowBlocked ? rowHint : "Reset filters"}
+                disabled={rowBlocked}
+                onClick={() => setExtraSelection({})}
+              />
+            </>
           )}
-          <IconButton
-            icon={faReplyAll}
-            label={rowBlocked ? rowHint : "Reset filters"}
-            disabled={rowBlocked}
-            onClick={() => setExtraSelection({})}
-          />
           {selectedTab && (
             <div className="filter-row-end">
               <IconButton

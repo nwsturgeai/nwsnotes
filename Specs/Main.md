@@ -134,6 +134,7 @@ Once any tag pills have been clicked, it is no longer possible to select or dese
 Once any tag pills have been clicked, a new "accept bulk tag updates" icon-button (fa-check) appears above the list-check button.
 At this point, clicking "accept bulk tag updates" causes the selected notes' tags to be updated.  Tags should be added and removed only according to which tag pills were clicked on.  Any tag pills that weren't clicked on retain their state - i.e. an untouched tag-pill in partially-selected state means that selected notes retain whether they have that tag or not.
 Clicking the list-check button still turns list-check mode off without making any changes, effectively discarding any note selections and tag-update selections.
+Whilst selecting multiple notes, the dynamic Tag filter dropdowns (and the reset-all button) are hidden rather than greyed out, and replaced by 2 small buttons with text "All" and "None".  Clicking "All" causes all notes in the tab to become selected; clicking "None" causes all notes in the tab to become unselected.
 
 
 ## Stylus support
@@ -468,7 +469,11 @@ Notes created offline keep the date and time they were created offline.
   - **Two modes never overlap:** while list-check is on, the Edit order button is greyed out too.
   - **While it's on:** its colours are inverted (accent background, light icon) and it's marked as pressed. The title box or canvas, and the Add, Clear and long-form buttons, are hidden, so it's the only button in the column until Accept appears.
 - **Turning it off:** clicking it again, or pressing Escape, always turns it off with no changes. Note selections and pill clicks are discarded, and the next time starts with nothing selected. The normal new-note tag choices come back as they were.
-- **While it's on, the page is held still, as during an edit:** the tabs, the filter row and the expand/collapse toggle are blocked. So selected notes can't disappear from the list, and the pills can't be collapsed away.
+- **While it's on, the page is held still, as during an edit:** the tabs and the expand/collapse toggle are blocked. So selected notes can't disappear from the list, and the pills can't be collapsed away.
+- **The filter row** keeps its filters as they are, but hides its dropdowns and "reset filters" button. In their place are two small text buttons, "All" and "None". The Edit order button stays at the far right, greyed out.
+  - "All" selects every note listed (the notes in the tab, as narrowed by the filters), and "None" unselects them all.
+  - Like tapping rows, they only work until a pill has been clicked. Then they're greyed out, with the hint "Selection is fixed once a tag has been clicked".
+  - Turning list-check off brings the dropdowns back, with the same choices.
 - **Selecting notes:**
   - Every note in the list shows a circle at its left: `fa-circle` when unselected, `fa-circle-check` (accent colour) when selected.
   - Tapping anywhere on a note row, or its circle, toggles it. Any listed note can be selected, long-form notes included.

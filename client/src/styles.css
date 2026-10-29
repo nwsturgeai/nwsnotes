@@ -342,6 +342,28 @@ a:focus-visible {
   background: var(--surface);
 }
 
+/* Multi-select: "All" and "None" take the filters' place in the row. */
+.bulk-select-all {
+  display: flex;
+  gap: 0.35rem;
+}
+
+/* Small text buttons, the height of the filter dropdowns. */
+.small-button {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.small-button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
 /* The reset button sits just right of the dropdowns; the edit-order button is at the far right. */
 .filter-row .tag-pickers {
   flex: 0 1 auto;
