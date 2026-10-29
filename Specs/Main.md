@@ -268,6 +268,10 @@ The main page area should switch into long-form note editing mode.  The current 
 When editing a regular note with the new-note area expanded, the "go into select mode" (list-check) button should be hidden instead of just being greyed out.
 In its place there should be a new "Convert to long-form note" button, icon fa-maximize.  Clicking this causes the note to open into the long-form note editor with the title accepted.
 
+### Matching the tab's tags in the long-form editor
+In the long-form note editor's tag dropdowns bar (just under the title), there is no "Tags" text label.
+On the far right of this bar there is an icon button (the same size as the single-note edit button), with icon fa-rectangle-list.  Clicking this button causes the tag dropdown selections to be updated to match the current Tab: within this Tab, any filters that have single values cause that Tag to be selected within the corresponding Category dropdown.
+
 ### Regular notes whilst creating / editing a long-form note
 Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
 New regular notes created whilst creating/editing a long-form note will be given the Tags matching the currently-active Tab (i.e. the same as when creating regular notes just from the notes list).
@@ -576,9 +580,15 @@ Notes created offline keep the date and time they were created offline.
 - **Opening the editor:** the "create long-form note" button (`fa-chart-diagram`, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
 - **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
 - **Tags band:** so the note's tags stand out, the dropdowns sit in a full-width band between the title and the details.
-  - The band has the header's background colour and a thin line above and below, with a small grey "Tags" label at its left.
+  - The band has the header's background colour and a thin line above and below. It has no text label (it's labelled "Tags" for screen readers).
   - Its dropdown buttons have a 2px border: dark grey when no tag is chosen, and accent green, with dark text, once one is.
   - This is only in the long-form editor; the new-note area's dropdowns are unchanged.
+- **Match the tab:** at the far right of the tags band, an `fa-rectangle-list` icon button, the same 24px size as the note buttons.
+  - Clicking it chooses every tag that the selected tab's filters (and the additional filters) fix to a single value. These are the same tags the new-note area locks in.
+  - In a single-select category the tag replaces whatever was chosen. In a multi-select category it's added to the tags already chosen.
+  - Other categories, and filters that allow several tags, are left alone.
+  - It's saved like any other tag change.
+  - It's greyed out when there's nothing to match: under "All", or a tab whose filters all allow several tags. The hint says why.
 - **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note and follow the selected tab's rules as usual.
 - **Saving:**
   - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it. After accepting, typed details get the focus.

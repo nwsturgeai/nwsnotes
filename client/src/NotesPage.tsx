@@ -301,6 +301,14 @@ export function NotesPage({
   }
   /** What the filters require of new notes, so they always match and stay visible. */
   const constraints = useMemo(() => constraintsFor(allFilters), [allFilters]);
+  /** The tags the filters fix to one value (category id -> tag id), for the long-form editor's "match the tab". */
+  const tabTags = useMemo(
+    () =>
+      new Map(
+        [...constraints].flatMap(([categoryId, tagIds]) => (tagIds.length === 1 && tagIds[0] !== undefined ? [[categoryId, tagIds[0]] as const] : [])),
+      ),
+    [constraints],
+  );
 
   // Newest notes are at the bottom, so keep the list scrolled to the bottom
   // when the page opens, whenever a note is added, and when the tab changes.
@@ -824,6 +832,8 @@ export function NotesPage({
           key={longForm.key}
           note={longForm.note}
           startInDetails={longForm.converted}
+          tabTags={tabTags}
+          tabName={selectedTab?.name}
           categories={userCategories}
           stylusMode={stylusMode}
           bottom={fullTagList ? 250 : 150}

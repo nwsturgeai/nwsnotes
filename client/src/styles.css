@@ -843,8 +843,8 @@ body:has(.note-list li.dragging) {
 }
 
 /*
- * The long-form note's tags: a full-width tinted band (the header's colour) with a small "Tags" label.
- * Its dropdowns have a darker, thicker border, and an accent one once a tag is chosen.
+ * The long-form note's tags: a full-width tinted band (the header's colour), with the "match the tab"
+ * button at its far right. Its dropdowns have a darker, thicker border, and an accent one once a tag is chosen.
  */
 .lf-tags {
   display: flex;
@@ -858,10 +858,8 @@ body:has(.note-list li.dragging) {
   background: var(--bg);
 }
 
-.lf-tags-label {
+.lf-tags > .note-button {
   flex: none;
-  color: var(--muted);
-  font-size: 0.75rem;
 }
 
 .lf-tags .tag-pickers {

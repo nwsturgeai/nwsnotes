@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faEraser, faPen } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faEraser, faPen, faRectangleList } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -43,6 +43,13 @@ interface Props {
   offline: boolean;
   /** Typed details take the focus when the editor opens (a note just converted to long-form). */
   startInDetails?: boolean;
+  /**
+   * The tags the selected tab (and its additional filters) fix to one value: category id -> tag id.
+   * The "match the tab" button sets these. Empty under "All", or a tab with no one-tag filters.
+   */
+  tabTags: ReadonlyMap<number, number>;
+  /** The selected tab's name, for the button's hint. */
+  tabName?: string;
   onSessionExpired: () => void;
 }
 
@@ -69,6 +76,8 @@ export function LongFormEditor({
   onFinish,
   offline,
   startInDetails,
+  tabTags,
+  tabName,
   onSessionExpired,
 }: Props) {
   const [noteId, setNoteId] = useState(note?.id);
@@ -199,6 +208,28 @@ export function LongFormEditor({
     latest.current.selection = next;
     if (detailsEditable) schedule();
   }
+
+  /**
+   * "Match the tab": each tag the selected tab fixes to one value is chosen. In a single-select
+   * category it replaces whatever was chosen; in a multi-select one it's added to the others.
+   */
+  function matchTab() {
+    const next: TagSelection = { ...selection };
+    for (const category of categories) {
+      const tagId = tabTags.get(category.id);
+      if (tagId === undefined) continue;
+      const chosen = next[category.id] ?? [];
+      next[category.id] = category.multiSelect ? (chosen.includes(tagId) ? chosen : [...chosen, tagId]) : [tagId];
+    }
+    changeTags(next);
+  }
+
+  const matchHint =
+    tabTags.size === 0
+      ? tabName
+        ? `The "${tabName}" tab has no one-tag filters to match`
+        : `Choose a tab to match its tags`
+      : `Set the tags to match the ${tabName ? `"${tabName}" tab` : "tab"}`;
 
   /** In stylus mode, Finish ignores finger and palm taps (a stylus or mouse works). */
   function onFinishClick(event: ReactMouseEvent) {
@@ -344,11 +375,19 @@ export function LongFormEditor({
       </div>
 
       {/* A tinted, labelled band, so the note's tags stand out between the title and the details. */}
-      <div className="lf-tags" role="group" aria-labelledby="lf-tags-label">
-        <span id="lf-tags-label" className="lf-tags-label">
-          Tags
-        </span>
+      <div className="lf-tags" role="group" aria-label="Tags">
         <TagPickers categories={categories} selection={selection} onChange={changeTags} disabled={busy} />
+        {/* At the far right: choose the tags the selected tab fixes. */}
+        <button
+          type="button"
+          className="note-button"
+          aria-label={matchHint}
+          title={matchHint}
+          disabled={busy || tabTags.size === 0}
+          onClick={matchTab}
+        >
+          <FontAwesomeIcon icon={faRectangleList} />
+        </button>
       </div>
 
       <div className={detailsEditable ? "lf-details" : "lf-details locked"}>
