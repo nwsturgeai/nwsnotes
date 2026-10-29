@@ -68,6 +68,19 @@ export class RequestError extends Error {
   }
 }
 
+/** `items` in the order of `raw.ids`, which must list every item's id exactly once. */
+function inOrder<T extends { id: number }>(raw: unknown, items: T[], kind: string): T[] {
+  const ids = (raw as { ids?: unknown } | undefined)?.ids;
+  if (!Array.isArray(ids) || !ids.every((id) => Number.isInteger(id))) {
+    throw new RequestError(400, `"ids" must be a list of ${kind} ids.`);
+  }
+  const ordered = (ids as number[]).map((id) => items.find((item) => item.id === id));
+  if (ordered.length !== items.length || new Set(ids).size !== ids.length || ordered.some((item) => !item)) {
+    throw new RequestError(400, `"ids" must list every ${kind} exactly once.`);
+  }
+  return ordered as T[];
+}
+
 const FILE_PATTERN = /^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -532,6 +545,27 @@ export class NoteStore {
     return this.enqueue(async () => {
       if (!this.tabs.some((t) => t.id === id)) throw new RequestError(404, `There is no tab with id ${id}.`);
       await this.save(this.nextSaveTime(), { tabs: this.tabs.filter((t) => t.id !== id) });
+    });
+  }
+
+  /**
+   * Puts the user categories in the order given (every user category's id, once each), then saves.
+   * The built-in Lifetime category isn't stored, and always comes last.
+   */
+  reorderCategories(raw: unknown): Promise<Category[]> {
+    return this.enqueue(async () => {
+      const categories = inOrder(raw, this.categories, "category");
+      await this.save(this.nextSaveTime(), { categories });
+      return this.allCategories();
+    });
+  }
+
+  /** Puts the tabs in the order given (every tab's id, once each), then saves. "All" always comes first. */
+  reorderTabs(raw: unknown): Promise<Tab[]> {
+    return this.enqueue(async () => {
+      const tabs = inOrder(raw, this.tabs, "tab");
+      await this.save(this.nextSaveTime(), { tabs });
+      return tabs;
     });
   }
 

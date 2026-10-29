@@ -286,6 +286,8 @@ export function App() {
               onColumnsChange={setColumns}
               onNavigate={navigate}
               onNotesChanged={() => void refreshNotes()}
+              onCategoriesReordered={(categories) => applySaved((data) => ({ ...data, categories }))}
+              onTabsReordered={(tabs) => applySaved((data) => ({ ...data, tabs }))}
               onSessionExpired={sessionExpired}
               onLogout={logout}
             />

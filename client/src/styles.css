@@ -1423,16 +1423,33 @@ body:has(.note-list li.dragging) {
   border-top: 1px solid var(--line);
 }
 
+/* Each row: the category or tab (a link to edit it), then its up and down buttons at the right. */
+.category-list > li {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
 .category-list a,
 .tab-entry {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.25rem 0.75rem;
+  min-width: 0;
   padding: 0.6rem 0.25rem;
-  border-bottom: 1px solid var(--line);
   color: var(--text);
   text-decoration: none;
+}
+
+/* Two 24px buttons; rows that can't move ("All", Lifetime) keep the same space, so the rows line up. */
+.order-buttons {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  width: 50px;
+  padding-right: 0.25rem;
 }
 
 .category-list a:hover {

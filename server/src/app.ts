@@ -180,6 +180,13 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.status(201).json(category);
   });
 
+  // The categories' order (the settings page's up and down buttons). Before "/:id", which would match it.
+  categoriesRouter.put("/order", async (req, res) => {
+    const categories = await store.reorderCategories(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(categories);
+  });
+
   categoriesRouter.put("/:id", async (req: Request<{ id: string }>, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
@@ -202,6 +209,13 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     const tab = await store.addTab(req.body);
     live.notifyChanged(req.get(CONNECTION_ID_HEADER));
     res.status(201).json(tab);
+  });
+
+  // The tabs' order (the settings page's up and down buttons). Before "/:id", which would match it.
+  tabsRouter.put("/order", async (req, res) => {
+    const tabs = await store.reorderTabs(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(tabs);
   });
 
   tabsRouter.put("/:id", async (req: Request<{ id: string }>, res) => {
