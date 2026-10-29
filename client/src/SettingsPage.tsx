@@ -1,4 +1,6 @@
-import { useState, type MouseEvent } from "react";
+import { useRef, useState, type MouseEvent } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faArrowDown, faArrowUp } from "@fortawesome/free-solid-svg-icons";
 import {
   ALL_TAB_NAME,
   lifetimeOf,
@@ -26,8 +28,65 @@ interface Props {
   onNavigate: (page: Page) => void;
   /** Called after a Lifetime button changed notes, to reload them. */
   onNotesChanged: () => void;
+  /** The categories or tabs were put in a new order (shown straight away, before it's saved). */
+  onCategoriesReordered: (categories: Category[]) => void;
+  onTabsReordered: (tabs: Tab[]) => void;
   onSessionExpired: () => void;
   onLogout: () => void;
+}
+
+/** Up and down buttons, in the space at the right of a category's or tab's row. */
+function OrderButtons({
+  name,
+  first,
+  last,
+  onMove,
+  focusRef,
+}: {
+  name: string;
+  first: boolean;
+  last: boolean;
+  onMove: (by: -1 | 1) => void;
+  focusRef: (direction: "up" | "down") => (button: HTMLButtonElement | null) => void;
+}) {
+  return (
+    <span className="order-buttons">
+      <button
+        type="button"
+        className="note-button"
+        ref={focusRef("up")}
+        aria-label={`Move up ${name}`}
+        title="Move up"
+        disabled={first}
+        onClick={() => onMove(-1)}
+      >
+        <FontAwesomeIcon icon={faArrowUp} />
+      </button>
+      <button
+        type="button"
+        className="note-button"
+        ref={focusRef("down")}
+        aria-label={`Move down ${name}`}
+        title="Move down"
+        disabled={last}
+        onClick={() => onMove(1)}
+      >
+        <FontAwesomeIcon icon={faArrowDown} />
+      </button>
+    </span>
+  );
+}
+
+/** `items` with the one with this id swapped with its neighbour above (-1) or below (+1). */
+function moved<T extends { id: number }>(items: T[], id: number, by: -1 | 1): T[] | undefined {
+  const from = items.findIndex((item) => item.id === id);
+  const moving = items[from];
+  const other = items[from + by];
+  if (!moving || !other) return undefined;
+  const next = [...items];
+  next[from] = other;
+  next[from + by] = moving;
+  return next;
 }
 
 type BulkAction = "reset-new" | "archived-to-bin" | "empty-bin";
@@ -44,10 +103,69 @@ export function SettingsPage({
   onColumnsChange,
   onNavigate,
   onNotesChanged,
+  onCategoriesReordered,
+  onTabsReordered,
   onSessionExpired,
   onLogout,
 }: Props) {
   const [confirming, setConfirming] = useState<{ action: BulkAction; message: string; label: string }>();
+  /** A failed reorder, shown under that section's list. */
+  const [orderError, setOrderError] = useState<{ section: "categories" | "tabs"; text: string }>();
+
+  /** The arrow to focus after a move, so pressing it again keeps moving the same row. */
+  const focusArrow = useRef<string>(undefined);
+  function focusRef(key: string) {
+    return (direction: "up" | "down") => (button: HTMLButtonElement | null) => {
+      if (button && focusArrow.current === `${key}-${direction}`) {
+        focusArrow.current = undefined;
+        button.focus();
+      }
+    };
+  }
+  /** After a move, the same arrow keeps the focus; at the top or bottom that one is greyed out, so the other does. */
+  function focusAfterMove(key: string, by: -1 | 1, index: number, count: number) {
+    const atEdge = by < 0 ? index === 0 : index === count - 1;
+    focusArrow.current = `${key}-${(by < 0) !== atEdge ? "up" : "down"}`;
+  }
+
+  /** Moves a user category up or down: shown at once, and saved straight away (reverted if that fails). */
+  async function moveCategory(id: number, by: -1 | 1) {
+    const userCategories = categories.filter((category) => !category.system);
+    const next = moved(userCategories, id, by);
+    if (!next) return;
+    focusAfterMove(`category-${id}`, by, next.findIndex((c) => c.id === id), next.length);
+    setOrderError(undefined);
+    onCategoriesReordered([...next, ...categories.filter((category) => category.system)]);
+    try {
+      await api.reorderCategories(next.map((category) => category.id));
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setOrderError({ section: "categories", text: `The new order wasn't saved: ${error instanceof Error ? error.message : String(error)}` });
+      onNotesChanged();
+    }
+  }
+
+  /** Moves a tab up or down: shown at once, and saved straight away (reverted if that fails). */
+  async function moveTab(id: number, by: -1 | 1) {
+    const next = moved(tabs, id, by);
+    if (!next) return;
+    focusAfterMove(`tab-${id}`, by, next.findIndex((t) => t.id === id), next.length);
+    setOrderError(undefined);
+    onTabsReordered(next);
+    try {
+      await api.reorderTabs(next.map((tab) => tab.id));
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setOrderError({ section: "tabs", text: `The new order wasn't saved: ${error instanceof Error ? error.message : String(error)}` });
+      onNotesChanged();
+    }
+  }
   const [busy, setBusy] = useState(false);
   /** Read by each canvas when it opens, so there's no need to pass it around. */
   const [penWidth, setPenWidth] = usePenWidth();
@@ -233,9 +351,11 @@ export function SettingsPage({
                 </>
               );
               const page: Page = { name: "category", id: category.id };
+              const userCategories = categories.filter((c) => !c.system);
+              const index = userCategories.findIndex((c) => c.id === category.id);
               return (
                 <li key={category.id}>
-                  {/* The built-in Lifetime category can't be edited, so it isn't a link. */}
+                  {/* The built-in Lifetime category can't be edited or moved (it's always last), so it isn't a link. */}
                   {category.system ? (
                     <span className="tab-entry">{details}</span>
                   ) : (
@@ -243,10 +363,26 @@ export function SettingsPage({
                       {details}
                     </a>
                   )}
+                  {category.system ? (
+                    <span className="order-buttons" aria-hidden />
+                  ) : (
+                    <OrderButtons
+                      name={category.name}
+                      first={index === 0}
+                      last={index === userCategories.length - 1}
+                      onMove={(by) => void moveCategory(category.id, by)}
+                      focusRef={focusRef(`category-${category.id}`)}
+                    />
+                  )}
                 </li>
               );
             })}
           </ul>
+        )}
+        {orderError?.section === "categories" && (
+          <p className="save-error" role="alert">
+            {orderError.text}
+          </p>
         )}
         <a
           className="button"
@@ -267,8 +403,10 @@ export function SettingsPage({
               <span className="category-name">{ALL_TAB_NAME}</span>
               <span className="category-tags">Always shows every note</span>
             </span>
+            {/* "All" is always the first tab, so it can't be moved. */}
+            <span className="order-buttons" aria-hidden />
           </li>
-          {tabs.map((tab) => {
+          {tabs.map((tab, index) => {
             const page: Page = { name: "tab", id: tab.id };
             return (
               <li key={tab.id}>
@@ -282,10 +420,22 @@ export function SettingsPage({
                     />
                   </div>
                 </a>
+                <OrderButtons
+                  name={tab.name}
+                  first={index === 0}
+                  last={index === tabs.length - 1}
+                  onMove={(by) => void moveTab(tab.id, by)}
+                  focusRef={focusRef(`tab-${tab.id}`)}
+                />
               </li>
             );
           })}
         </ul>
+        {orderError?.section === "tabs" && (
+          <p className="save-error" role="alert">
+            {orderError.text}
+          </p>
+        )}
         <a
           className="button"
           href={pathFor({ name: "tab", id: "new" })}

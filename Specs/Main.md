@@ -83,6 +83,7 @@ Categories must contain at least one tag to be able to be saved.
 It should not be allowed to have a tag with the same text as the category name.
 When editing a category, there should be bin icons alongside each Tag allowing Tags to be deleted.  If, when a category is saved, any Tags have been deleted, then that tag-id should be removed from any notes that currently have it.
 For now, it will not be possible to delete categories.
+Categories and tabs can both be reordered.  On the settings page, in both the Categories and Tabs sections, there are up and down buttons to the right of each row; clicking them moves that item up or down.  The updated order is sent to the server on each click.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
 ### Tag sort order
@@ -411,11 +412,18 @@ Notes created offline keep the date and time they were created offline.
 - A tag can't have the same name as its own category (ignoring upper/lower case), as the category name is what an unset dropdown shows. Tags in other categories may share it. Categories saved before this rule still load and work; saving one that breaks it is refused, with a message naming the clashing tag, until the tag or the category is renamed.
 - No user category can be called "Lifetime" (ignoring upper/lower case); that name belongs to the built-in category.
 - `multiSelect` can be changed from false to true, but not back. A note's `tagIds` must all exist, with at most one from each single-select category.
-- Categories and their dropdowns appear in the order they were created (id order). Tags within a category appear in the category's tag order (see "Tag sort order" below). A note's pills appear in category order, then tag order.
+- Categories and their dropdowns appear in the categories' order, which is set on the settings page (new categories go at the end; see "Ordering categories and tabs"). Tags within a category appear in the category's tag order (see "Tag sort order" below). A note's pills appear in category order, then tag order.
 - Renaming a tag changes it on every note that has it, because notes store only the tag id.
 
 ### Category editing
 - The settings page has a Categories section listing each category's name with its tags, and an "Add category" button. The built-in Lifetime category is listed too, marked "Built-in", and isn't clickable.
+- **Ordering categories and tabs:** each user category's row on the settings page, and each tab's row, has an up arrow (`fa-arrow-up`) and a down arrow (`fa-arrow-down`) at its right. They're the same 24px buttons as the note buttons.
+  - Clicking one swaps the row with its neighbour. The list shows the new order straight away, and it's sent to the server on each click: `PUT /api/categories/order` or `PUT /api/tabs/order`, with `{ "ids": [...] }` listing every user category's or tab's id once, in the new order.
+  - The server checks that every id is listed exactly once, saves, and tells other pages to reload. If a save fails, the error shows under that list and the saved order is reloaded.
+  - The first row's up arrow and the last row's down arrow are greyed out. After a move the focus stays on the same arrow, so pressing it again keeps moving that row.
+  - The built-in Lifetime category is always last, and "All" is always the first tab. Neither can move, and their rows have no arrows (the space is kept, so the rows line up).
+  - The order is used everywhere: the new-note dropdowns and pills, the filter row, the tab editor, the pills on notes, and the tab strip in the header.
+  - New categories and tabs are added at the end.
 - Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (locked once the category has been saved as multi-select; tapping its text toggles it), one text box per tag for renaming with a bin button (`fa-trash-can`) beside it, and an "Add tag" button that adds an empty tag row.
 - Empty new tag rows are ignored when saving. Emptying an existing tag's name is an error; its bin button deletes it instead.
 - **Deleting tags:** the bin removes the row; nothing changes until Save. A category must keep at least one tag (the last bin is disabled). If deleted tags are on any notes, Save first asks, in the app's own pop-up, "Delete the tag "X"? It will be removed from N notes.". On save the server takes deleted tags off every note and out of every tab's filter; a filter left with no tags is dropped, and a tab left with no filters shows every note (its editor will ask for a tag next time it's saved). Notes' modified times aren't changed by this.

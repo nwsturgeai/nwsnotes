@@ -115,6 +115,10 @@ export const api = {
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
+  /** The user categories' order (every id, once each); returns all categories, Lifetime last. */
+  reorderCategories: (ids: number[]) => request<Category[]>("PUT", "/api/categories/order", { ids }, changeHeaders()),
+  /** The tabs' order (every id, once each). */
+  reorderTabs: (ids: number[]) => request<Tab[]>("PUT", "/api/tabs/order", { ids }, changeHeaders()),
   addTab: (body: TabRequest) => request<Tab>("POST", "/api/tabs", body, changeHeaders()),
   updateTab: (id: number, body: TabRequest) => request<Tab>("PUT", `/api/tabs/${id}`, body, changeHeaders()),
   setTabOrder: (id: number, body: TabOrderRequest) => request<Tab>("PUT", `/api/tabs/${id}/order`, body, changeHeaders()),
