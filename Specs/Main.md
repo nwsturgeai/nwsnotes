@@ -208,6 +208,10 @@ Whilst the notes-list page is in editing-order mode, each note should have an ic
 Clicking and holding on one of the fa-grip-vertical icons causes that note to start dragging.  It can be dragged up or down.  When the note-being-dragged is hovered over the gap between two other notes, then a gap opens up between those notes ready to accept the note-being-dragged.  If the mouse/finger/stylus is then released, the note is dropped into this new location.  This updated ordering is then sent to the server and should be reflected in all other browsers that have this tab open.
 The note ordering should be saved as an integer-array attribute on each Tab.  Any notes shown in a Tab that are not listed in the ordering should appear below any notes that have an ordering specified.
 
+### Adding a note at the top
+When adding a new regular note, adding it with Ctrl+Enter puts it at the top of the list in the current tab, instead of at the bottom as usual.
+A long press on the Add button (instead of a normal short click) does the same. Once the press has lasted long enough, the button changes so it's clear that the long press has been detected.
+
 
 
 ## Editing Notes
@@ -582,6 +586,20 @@ The settings page should show which version is running, and have a button to che
 - **Columns:** with several columns, the order runs down the first column and then on down the next, and a note can be dropped into any column. The drop point is worked out from where the notes were when the drag started, so the columns re-balancing as the gap opens doesn't make it jump.
 - **Under extra filters:** the moved note goes straight after the visible note it was dropped below, or straight before the first visible note if dropped at the top. Notes that are filtered out keep their places. Each drop saves the order of every note in the tab (all notes matching the tab's own filter, Bin included), so after the first drag nothing in that tab is unordered.
 - **Live updates:** the list shows the new order as soon as the note is dropped, and the save is sent in the background. If it fails, the list returns to the saved order and a notice shows the error. If another page changes something mid-drag, the reload waits until the drag ends.
+
+### Adding a note at the top
+- **How:** the note is added as usual, then the tab's order is saved with the new note's id at the front of `noteOrder`. Notes not in `noteOrder` still follow in creation order, so nothing else moves. The server API doesn't change.
+- **Ctrl+Enter:** in the new-note title box (Cmd+Enter on a Mac). In stylus mode there's no text box, so only the long press applies.
+- **Long press:** holding the Add button for 1 second (mouse, finger or stylus).
+  - From then on, while it's still held, the button's icon changes from `fa-circle-plus` to `fa-circle-up`, and it gets a darker background and a ring. Letting go then adds the note at the top.
+  - Letting go sooner is a normal add. Sliding off the button before letting go adds nothing, as with any button.
+  - The browser's own long-press menu and text selection are suppressed on the button.
+- **Where it applies:** only when adding a new note on a tab other than "All", while online. Otherwise Ctrl+Enter and a long press do a normal add, and a long press shows no change on the button:
+  - "All" always lists notes in creation order, so the note goes at the bottom there.
+  - Offline, note ordering isn't available. The note is added at the bottom, with the notice "Added at the bottom: adding at the top isn't available offline."
+  - While a note is being edited, the button is "Update", and Ctrl+Enter or a long press just saves.
+  - While a long-form note is open, its new child notes can be added at the top too.
+- **Shown at once:** the note appears at the top straight away, and the list scrolls to the top so it can be seen. If saving the order fails, the note stays added, moves to the bottom, and a notice says "The note was added at the bottom: <error>".
 
 ### Editing notes
 - **Edit icon:** each note in the list has an `fa-pen` icon at the right-hand side, which responds to touch as normal (it's in the list, not the new-note controls). The icon is 16px inside a 24px-square tap area, a deliberate trade-off to leave more room for note content. The note being edited is highlighted in the list.
