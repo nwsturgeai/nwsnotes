@@ -341,6 +341,12 @@ Note ordering (edit-order mode) is not supported whilst offline.
 If the same note is changed both offline on one device and online elsewhere, the last change to reach the server wins.
 Notes created offline keep the date and time they were created offline.
 
+## App updates
+When a new version of the app has been deployed, the installed Android app should pick it up reliably.
+When a new version has been downloaded, show a notice "A new version is ready" with a "Reload" button. Tapping it switches to the new version. The app should never reload by itself, so nothing being written is lost.
+The app should check for a new version once every day.
+The settings page should show which version is running, and have a button to check for a new version straight away.
+
 
 ## Agreed technical decisions
 
@@ -671,7 +677,7 @@ Notes created offline keep the date and time they were created offline.
 - The header strip has a fixed height and the same background colour as the new-note area. Below it, the note list fills the page above the fixed 150px new-note area.
 - No app title is shown at the left of the header; on the notes page that space holds the tabs. The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes".
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
-- The settings page has, in order: Stylus mode and Columns (side by side), Pen, Lifetime, Categories, Tabs, Backup ("Download backup") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+- The settings page has, in order: Stylus mode and Columns (side by side), Pen, Lifetime, Categories, Tabs, Backup ("Download backup"), App version (see "App updates") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
 
 ### Live updates (WebSocket)
 - The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
@@ -685,8 +691,31 @@ Notes created offline keep the date and time they were created offline.
 ### Android app (PWA)
 - A web app manifest with the app name, theme and background colours, `display: standalone`, and PNG icons at 192×192 and 512×512, including a maskable icon.
 - A service worker (built with `vite-plugin-pwa`) caches only the website's own files, never `/api` calls. When offline, the app opens from its local copy of the data (see "Offline use"). Only if there's no local copy yet (it has never loaded on this device) does it show the normal startup error page.
-- The service worker updates itself automatically after each deployment.
+- The service worker updates as described in "App updates" below.
 - Check on the live site that the security headers (helmet's Content Security Policy) allow the manifest, service worker and WebSocket.
+
+### App updates
+- **Why updates were missed:** the app always opens from the copy of its files saved on the tablet. The new version is only downloaded in the background after that, so it showed up one full restart late at best. Force-quitting during the download, or Android keeping the app alive behind the scenes, could hold it back for longer.
+- **Waiting for a tap:** `vite-plugin-pwa` switches from `registerType: "autoUpdate"` to `"prompt"`, and the app registers the service worker itself with `registerSW` from `virtual:pwa-register`, instead of the injected script.
+  - A downloaded new version waits until "Reload" is tapped. The tap tells it to take over, then reloads the page once it has.
+  - If "Reload" is never tapped, the new version still takes over the next time the app is fully closed and opened again, as before.
+  - The first time this version reaches a device, the version running there has no "Reload" notice. So this one update only takes over once the app is fully closed and opened again. Later updates show the notice.
+- **The notice:** "A new version is ready" with a "Reload" button, in the same style as the app's other notices. It stays until it's tapped and doesn't fade.
+  - It shows on the notes page and the settings pages.
+  - It's hidden while a note is being edited, a long-form note is open, or a title is being typed in the new-note area, so tapping it can't lose unsaved work. It appears again once that's finished.
+  - Changes waiting in the offline outbox are kept in IndexedDB, so they survive the reload and are sent afterwards.
+- **Daily check:** the app keeps the time of its last check in local storage (`nwsnotes.lastUpdateCheck`). When the app starts, when it comes back on screen, and every hour while it's open, it checks for a new version if the last check was 24 hours or more ago.
+  - A check asks the server for the service worker file (`/sw.js`), which is small. If it has changed, the new version downloads in the background and the notice appears once it's ready.
+  - Android's browser also makes this check by itself each time the app starts. That can't be turned off, and it costs very little.
+  - While offline, no check is made, and the last-check time isn't updated, so it's tried again once the app is back online.
+- **Settings page:** a new "App version" section, placed just before Account.
+  - It shows "Version:" followed by the build's date and time in the tablet's local time, e.g. "30 Oct 2026, 14:05". The build time is set by Vite's `define` (`__BUILD_TIME__`) at build time.
+  - It has a "Check for updates" button. While checking, the button shows "Checking…". Afterwards a line under it says one of:
+    - "You have the latest version."
+    - "A new version is ready", with its own "Reload" button;
+    - "Couldn't check for updates: <error>".
+  - A manual check also counts as the day's check.
+  - In development there's no service worker, so the button is disabled with the text "Updates aren't available in development."
 
 ### Offline use
 - **Local copy of the data:** after every successful load or background reload, the app saves the whole data (notes, categories, tabs) into the browser's IndexedDB on that device.

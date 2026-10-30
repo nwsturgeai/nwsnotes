@@ -311,7 +311,8 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-.refresh-error {
+.refresh-error,
+.update-notice {
   display: flex;
   flex: none;
   align-items: center;
@@ -323,7 +324,14 @@ a:focus-visible {
   font-size: 0.9rem;
 }
 
-.refresh-error button {
+/* A new version is ready: the same strip as the reload error, in the app's green. */
+.update-notice {
+  background: var(--pill-bg);
+  color: var(--accent);
+}
+
+.refresh-error button,
+.update-notice button {
   flex: none;
   padding: 0;
   border: none;
@@ -1577,6 +1585,12 @@ body:has(.note-list li.dragging) {
 .lifetime-result {
   margin: 0.6rem 0 0;
   color: var(--text);
+}
+
+.update-ready {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .confirm-dialog {

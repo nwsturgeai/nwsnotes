@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "r
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCloud, faEllipsis, faGear, faSignature, faSlash } from "@fortawesome/free-solid-svg-icons";
 import { ALL_TAB_NAME, type Tab } from "@nwsnotes/shared";
+import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
 
 interface Props {
@@ -21,13 +22,15 @@ interface Props {
   offline: boolean;
   /** Changes waiting to be sent, for the offline icon's tooltip. */
   pendingCount: number;
+  /** A new version of the app is ready and nothing unsaved would be lost: offer "Reload". */
+  showUpdateNotice: boolean;
 }
 
 /** Why the tabs and the cog can't be used while a note is being edited. */
 const BLOCKED_HINT = "Finish or cancel the edit first";
 export const OFFLINE_HINT = "Not available offline";
 
-/** The strip across the top of the app, plus a notice when the notes couldn't be reloaded. */
+/** The strip across the top of the app, plus notices when the notes couldn't be reloaded or a new version is ready. */
 export function Header({
   page,
   stylusMode,
@@ -40,6 +43,7 @@ export function Header({
   onRetryRefresh,
   offline,
   pendingCount,
+  showUpdateNotice,
 }: Props) {
   const cogBlocked = editing || offline;
   const offlineTitle =
@@ -101,6 +105,14 @@ export function Header({
           <span>Couldn't load the latest notes: {refreshError}</span>
           <button type="button" onClick={onRetryRefresh}>
             Try again
+          </button>
+        </div>
+      )}
+      {showUpdateNotice && (
+        <div className="update-notice" role="status">
+          <span>A new version is ready.</span>
+          <button type="button" onClick={reloadToUpdate}>
+            Reload
           </button>
         </div>
       )}
