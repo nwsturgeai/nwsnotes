@@ -11,6 +11,7 @@ import {
   type Tab,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { buildTime, checkForUpdate, reloadToUpdate, updatesAvailable, useUpdateReady } from "./appUpdate";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { pathFor, type Page } from "./route";
 import { MAX_COLUMNS, PEN_WIDTHS, usePenWidth } from "./stylusMode";
@@ -454,6 +455,8 @@ export function SettingsPage({
         </a>
       </section>
 
+      <AppVersion />
+
       <section>
         <h2>Account</h2>
         <button type="button" className="button" onClick={onLogout}>
@@ -461,5 +464,60 @@ export function SettingsPage({
         </button>
       </section>
     </main>
+  );
+}
+
+// E.g. "30 Oct 2026, 14:05", in this device's time zone.
+const buildTimeText = buildTime.toLocaleString("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** Which version is running (when it was built), and a button to check for a new one straight away. */
+function AppVersion() {
+  const updateReady = useUpdateReady();
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<{ upToDate: true } | { error: string }>();
+
+  async function check() {
+    setChecking(true);
+    setResult(undefined);
+    try {
+      // A new version shows its own line below, via useUpdateReady.
+      if (!(await checkForUpdate())) setResult({ upToDate: true });
+    } catch (error) {
+      setResult({ error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2>App version</h2>
+      <p>Version: {buildTimeText}</p>
+      <button type="button" className="button" disabled={!updatesAvailable || checking} onClick={() => void check()}>
+        {checking ? "Checking…" : "Check for updates"}
+      </button>
+      {!updatesAvailable ? (
+        <p className="lifetime-result">Updates aren't available in development.</p>
+      ) : updateReady ? (
+        <p className="lifetime-result update-ready">
+          A new version is ready.
+          <button type="button" className="button" onClick={reloadToUpdate}>
+            Reload
+          </button>
+        </p>
+      ) : result && "error" in result ? (
+        <p className="save-error" role="alert">
+          Couldn't check for updates: {result.error}
+        </p>
+      ) : result ? (
+        <p className="lifetime-result">You have the latest version.</p>
+      ) : null}
+    </section>
   );
 }

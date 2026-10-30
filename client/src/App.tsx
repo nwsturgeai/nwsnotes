@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Category, Note, NotesData, Tab } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { useUpdateReady } from "./appUpdate";
 import { CategoryEditPage } from "./CategoryEditPage";
 import { ErrorPage } from "./ErrorPage";
 import { Header } from "./Header";
@@ -48,6 +49,9 @@ export function App() {
   const [editingNote, setEditingNote] = useState<Note>();
   /** Multi-select (bulk tag editing) is on: the tabs and the Settings cog are blocked, as during an edit. */
   const [bulkActive, setBulkActive] = useState(false);
+  /** The notes page has unsaved work, so the "new version" notice (whose Reload would lose it) is hidden. */
+  const [notesUnsaved, setNotesUnsaved] = useState(false);
+  const updateReady = useUpdateReady();
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
   const refreshInProgress = useRef(false);
@@ -258,6 +262,7 @@ export function App() {
             onRetryRefresh={() => void refreshNotes()}
             offline={offlineState.offline}
             pendingCount={offlineState.pendingCount}
+            showUpdateNotice={updateReady && !notesUnsaved}
           />
           {offlineState.offline && page.name !== "notes" ? (
             // Settings (and category and tab editing) need the server.
@@ -331,6 +336,7 @@ export function App() {
               onNotesChanged={() => void refreshNotes()}
               onTabUpdated={saveTab}
               onBulkChange={setBulkActive}
+              onUnsavedChange={setNotesUnsaved}
               offline={offlineState.offline}
               pendingIds={offlineState.pendingIds}
               syncNotice={syncNotice}

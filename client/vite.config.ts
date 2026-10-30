@@ -3,12 +3,15 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  // Shown on the settings page as the app's version.
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   plugins: [
     react(),
     // Makes the site installable as an Android app (PWA): a web app manifest and a service worker.
     VitePWA({
-      registerType: "autoUpdate",
-      injectRegister: "script",
+      // A downloaded new version waits until "Reload" is tapped (appUpdate.ts registers the worker).
+      registerType: "prompt",
+      injectRegister: false,
       manifest: {
         name: "nwsnotes",
         short_name: "nwsnotes",

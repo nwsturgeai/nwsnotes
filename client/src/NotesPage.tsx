@@ -99,6 +99,8 @@ interface Props {
   onTabUpdated: (tab: Tab) => void;
   /** Multi-select mode started or ended; the app blocks the tabs and Settings while it's on, as during an edit. */
   onBulkChange: (active: boolean) => void;
+  /** Whether there's unsaved work on the page (an edit, a long-form note, a title being written), which hides "Reload". */
+  onUnsavedChange: (unsaved: boolean) => void;
   /** The server can't be reached: bulk tag updates, note ordering and resetting New aren't available. */
   offline: boolean;
   /** Notes with changes still waiting to be sent; they show a clock by their date. */
@@ -138,6 +140,7 @@ export function NotesPage({
   onNotesChanged,
   onTabUpdated,
   onBulkChange,
+  onUnsavedChange,
   offline,
   pendingIds,
   syncNotice,
@@ -179,6 +182,12 @@ export function NotesPage({
   useEffect(() => onBulkChangeRef.current(bulkActive), [bulkActive]);
   // Leaving the page ends it, so the tabs aren't left blocked.
   useEffect(() => () => onBulkChangeRef.current(false), []);
+
+  const unsaved = editingNote !== undefined || longForm !== undefined || bulkActive || title.trim() !== "" || padInked;
+  const onUnsavedChangeRef = useRef(onUnsavedChange);
+  onUnsavedChangeRef.current = onUnsavedChange;
+  useEffect(() => onUnsavedChangeRef.current(unsaved), [unsaved]);
+  useEffect(() => () => onUnsavedChangeRef.current(false), []);
 
   /** Opens the long-form editor; `converted` when the note has just become long-form (its details get the focus). */
   function openLongForm(note: Note | undefined, converted = false) {
