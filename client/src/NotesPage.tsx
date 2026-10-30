@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircle } from "@fortawesome/free-regular-svg-icons";
@@ -19,6 +20,7 @@ import {
   faClock,
   faCircleCheck,
   faCirclePlus,
+  faCircleUp,
   faClipboardCheck,
   faDeleteLeft,
   faGripVertical,
@@ -123,6 +125,8 @@ function selectionFor(note: Note, categories: Category[]): TagSelection {
 }
 
 const NOTICE_MS = 4000;
+/** Holding Add this long adds the note at the top of the tab. */
+const LONG_PRESS_MS = 1000;
 
 export function NotesPage({
   notes,
@@ -319,12 +323,83 @@ export function NotesPage({
     [constraints],
   );
 
+  /** The next note added goes at the top of the tab: set by Ctrl+Enter or a long press on Add. */
+  const addAtTop = useRef(false);
+  /** A note was just added at the top, so the list scrolls to the top instead of the bottom. */
+  const scrollToTop = useRef(false);
+
   // Newest notes are at the bottom, so keep the list scrolled to the bottom
   // when the page opens, whenever a note is added, and when the tab changes.
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (list) list.scrollTop = list.scrollHeight;
+    if (list) list.scrollTop = scrollToTop.current ? 0 : list.scrollHeight;
+    scrollToTop.current = false;
   }, [visibleNotes.length, selectedTab?.id]);
+
+  /**
+   * Puts a just-added note at the top of the tab: shown at once, then the tab's order is saved in the
+   * background. Notes not in the order follow in creation order, so nothing else moves.
+   */
+  function addToTopOfTab(tab: Tab, note: Note) {
+    const noteOrder = [note.id, ...tab.noteOrder.filter((id) => id !== note.id)];
+    scrollToTop.current = true;
+    onTabUpdated({ ...tab, noteOrder });
+    api.setTabOrder(tab.id, { noteOrder }).catch((error: unknown) => {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setNotice({ text: `The note was added at the bottom: ${error instanceof Error ? error.message : String(error)}`, error: true });
+      onNotesChanged();
+    });
+  }
+
+  /** A long press on Add puts the note at the top: only for new notes, on a tab, online. */
+  const canAddAtTop = !editingNote && !onAll && !offline;
+  /** The Add button has been held long enough: letting go adds the note at the top. */
+  const [heldLong, setHeldLong] = useState(false);
+  const heldLongRef = useRef(false);
+  const pressing = useRef(false);
+  const holdTimer = useRef<number>(undefined);
+
+  function endHold() {
+    window.clearTimeout(holdTimer.current);
+    pressing.current = false;
+  }
+
+  function setHeld(held: boolean) {
+    heldLongRef.current = held;
+    setHeldLong(held);
+  }
+
+  /** The Add button's long-press handlers. Refs, not state, decide the click: the pointer events come first. */
+  const longPress = {
+    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      endHold();
+      setHeld(false);
+      if (event.button !== 0 || !canAddAtTop) return;
+      pressing.current = true;
+      holdTimer.current = window.setTimeout(() => setHeld(true), LONG_PRESS_MS);
+    },
+    onPointerUp: endHold,
+    // Sliding off the button before letting go adds nothing, so the long press is forgotten.
+    onPointerLeave: () => {
+      if (pressing.current) setHeld(false);
+      endHold();
+    },
+    onPointerCancel: () => {
+      setHeld(false);
+      endHold();
+    },
+    // Android's long-press menu would otherwise open over the button.
+    onContextMenu: (event: ReactMouseEvent) => event.preventDefault(),
+    // Enter in the title box also "clicks" Add (with no pointer: detail 0), which is never a long press.
+    onClick: (event: ReactMouseEvent) => {
+      addAtTop.current = heldLongRef.current && event.detail > 0;
+      setHeld(false);
+    },
+  };
+  useEffect(() => () => window.clearTimeout(holdTimer.current), []);
 
   // Notices disappear by themselves.
   useEffect(() => {
@@ -472,6 +547,8 @@ export function NotesPage({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const atTop = addAtTop.current;
+    addAtTop.current = false;
     if (saving) return;
 
     const noteTitle = newTitle();
@@ -497,6 +574,8 @@ export function NotesPage({
         const tagIds = selectedTagIds(userCategories, tagSelection, constraints);
         // While a long-form note is open, new notes are its children.
         const note = await offlineApi.addNote({ ...noteTitle, tagIds, ...(longFormId !== undefined && { parentId: longFormId }) });
+        // "All" is always in creation order. A note added offline (a temporary id) can't be ordered yet.
+        if (atTop && selectedTab && note.id > 0) addToTopOfTab(selectedTab, note);
         onNoteAdded(note);
         if (showCanvas) {
           padRef.current?.clear();
@@ -505,6 +584,8 @@ export function NotesPage({
         // New notes are always New; say so if this tab's filters don't show New notes.
         if (!noteMatchesFilters(note, allFilters)) {
           setNotice({ text: "Note added, but this tab doesn't show New notes." });
+        } else if (atTop && selectedTab && note.id < 0) {
+          setNotice({ text: "Added at the bottom: adding at the top isn't available offline." });
         }
       }
     } catch (error) {
@@ -952,6 +1033,14 @@ export function NotesPage({
                 readOnly={saving}
                 disabled={addBlocked}
                 onChange={(event) => setTitle(event.target.value)}
+                onKeyDown={(event) => {
+                  // Ctrl+Enter (Cmd+Enter on a Mac) adds the note at the top of the tab.
+                  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                    event.preventDefault();
+                    addAtTop.current = !editingNote;
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
               />
             )}
             {belowTitle}
@@ -975,12 +1064,21 @@ export function NotesPage({
               {!bulk && (
                 <button
                   type="submit"
-                  className="icon-button primary"
+                  className={heldLong ? "icon-button primary add-button held" : "icon-button primary add-button"}
                   aria-label={editingNote ? "Update" : "Add"}
-                  title={editingNote ? "Update" : addBlocked ? LONG_FORM_TITLE_FIRST : "Add"}
+                  title={
+                    editingNote
+                      ? "Update"
+                      : addBlocked
+                        ? LONG_FORM_TITLE_FIRST
+                        : canAddAtTop
+                          ? "Add (hold to add at the top)"
+                          : "Add"
+                  }
                   disabled={saving || addBlocked}
+                  {...longPress}
                 >
-                  <FontAwesomeIcon icon={editingNote ? faCircleCheck : faCirclePlus} />
+                  <FontAwesomeIcon icon={editingNote ? faCircleCheck : heldLong ? faCircleUp : faCirclePlus} />
                 </button>
               )}
               {editingNote && (
