@@ -1043,6 +1043,20 @@ body:has(.note-list li.dragging) {
   background: var(--accent-hover);
 }
 
+/* Add: held down, so no text selection or Android long-press menu. */
+.add-button {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Held long enough to add the note at the top: darker, with a ring. */
+.add-button.held,
+.add-button.held:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
 /* ---- Stylus mode: writing canvas and handwritten notes ------------------ */
 
 /* Handwriting is black ink, so it always sits on light "paper", in dark mode too. */
