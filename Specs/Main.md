@@ -699,6 +699,7 @@ The settings page should show which version is running, and have a button to che
 - **Waiting for a tap:** `vite-plugin-pwa` switches from `registerType: "autoUpdate"` to `"prompt"`, and the app registers the service worker itself with `registerSW` from `virtual:pwa-register`, instead of the injected script.
   - A downloaded new version waits until "Reload" is tapped. The tap tells it to take over, then reloads the page once it has.
   - If "Reload" is never tapped, the new version still takes over the next time the app is fully closed and opened again, as before.
+  - The first time this version reaches a device, the version running there has no "Reload" notice. So this one update only takes over once the app is fully closed and opened again. Later updates show the notice.
 - **The notice:** "A new version is ready" with a "Reload" button, in the same style as the app's other notices. It stays until it's tapped and doesn't fade.
   - It shows on the notes page and the settings pages.
   - It's hidden while a note is being edited, a long-form note is open, or a title is being typed in the new-note area, so tapping it can't lose unsaved work. It appears again once that's finished.
