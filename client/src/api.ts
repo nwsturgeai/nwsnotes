@@ -5,6 +5,7 @@ import {
   type Category,
   type CategoryRequest,
   type LifetimeChange,
+  type LifetimeRequest,
   type LoginRequest,
   type NewNoteRequest,
   type Note,
@@ -107,8 +108,14 @@ export const api = {
   deleteNote: (id: number) => request<{ ok: true }>("DELETE", `/api/notes/${id}`, undefined, changeHeaders()),
   /** Multi-select: add and remove tags on several notes in one save; returns the updated notes. */
   bulkTags: (body: BulkTagsRequest) => request<Note[]>("PUT", "/api/notes/bulk-tags", body, changeHeaders()),
-  setLifetime: (id: number, lifetime: LifetimeChange) =>
-    request<Note>("PUT", `/api/notes/${id}/lifetime`, { lifetime }, changeHeaders()),
+  /** `tagsChangedDateTime`: only for a change made offline, the time it was made. */
+  setLifetime: (id: number, lifetime: LifetimeChange, tagsChangedDateTime?: string) =>
+    request<Note>(
+      "PUT",
+      `/api/notes/${id}/lifetime`,
+      { lifetime, ...(tagsChangedDateTime && { tagsChangedDateTime }) } satisfies LifetimeRequest,
+      changeHeaders(),
+    ),
   /** The Settings Lifetime buttons; each returns how many notes changed (or were deleted). */
   bulkLifetime: (action: "reset-new" | "archived-to-bin" | "empty-bin") =>
     request<{ count: number }>("POST", `/api/notes/${action}`, undefined, changeHeaders()),

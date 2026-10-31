@@ -4,6 +4,7 @@ import {
   lifetimeOf,
   LIFETIME_CHANGES,
   LIFETIME_NEW,
+  sameTags,
   type LifetimeChange,
   type NewNoteRequest,
   type Note,
@@ -21,12 +22,15 @@ import { idbGet, idbSet } from "./offlineStore";
  *
  * Notes created offline get a temporary negative id (-1001, -1002, ...) until their add is sent;
  * the real id then replaces it everywhere, and later changes made with the temporary id still work.
+ *
+ * A change that alters a note's tags carries the time it was made (tagsChangedDateTime), so the
+ * server records when the tags changed rather than when the change reached it.
  */
 
 type OutboxEntry = { seq: number; sending?: boolean } & (
   | { kind: "add"; tempId: number; body: NewNoteRequest }
   | { kind: "update"; noteId: number; body: NewNoteRequest }
-  | { kind: "lifetime"; noteId: number; lifetime: LifetimeChange }
+  | { kind: "lifetime"; noteId: number; lifetime: LifetimeChange; tagsChangedDateTime?: string }
   | { kind: "delete"; noteId: number }
 );
 
@@ -238,6 +242,7 @@ export async function addNote(body: NewNoteRequest): Promise<Note> {
       ...(body.parentId !== undefined && { parentId: body.parentId }),
       createdDateTime: now,
       lastModifiedDateTime: now,
+      tagsChangedDateTime: now,
       tagIds: [...userTags(body.tagIds), LIFETIME_NEW],
       clientId,
     };
@@ -257,25 +262,32 @@ export async function updateNote(id: number, body: NewNoteRequest): Promise<Note
   const noteId = resolve(id);
   const { titleText, titleImage, detailsText, detailsImage, ...rest } = base;
   void [titleText, titleImage, detailsText, detailsImage];
+  const now = new Date().toISOString();
+  // Editing keeps the note's Lifetime.
+  const tagIds = [...userTags(body.tagIds), lifetimeOf(base)];
+  const tagsChanged = !sameTags(base.tagIds, tagIds);
   const note: Note = {
     ...rest,
     ...titleAndDetails(body),
-    // Editing keeps the note's Lifetime.
-    tagIds: [...userTags(body.tagIds), lifetimeOf(base)],
-    lastModifiedDateTime: new Date().toISOString(),
+    tagIds,
+    lastModifiedDateTime: now,
+    tagsChangedDateTime: tagsChanged ? now : base.tagsChangedDateTime,
   };
+  /** The time to send: this edit's if it changed the tags, otherwise that of the change it's merged into. */
+  const tagsTime = (earlier: NewNoteRequest | undefined) =>
+    tagsChanged ? { tagsChangedDateTime: now } : earlier?.tagsChangedDateTime ? { tagsChangedDateTime: earlier.tagsChangedDateTime } : {};
   await changePending((p) => {
     const add = p.outbox.find((e) => e.kind === "add" && e.tempId === noteId && mergeable(e));
     const update = p.outbox.find((e) => e.kind === "update" && e.noteId === noteId && mergeable(e));
     if (add?.kind === "add") {
       // Not sent yet: send the note as it is now, keeping what only an add has.
       const { clientId, createdDateTime, parentId } = add.body;
-      add.body = { ...body, clientId, createdDateTime, ...(parentId !== undefined && { parentId }) };
+      add.body = { ...body, ...tagsTime(add.body), clientId, createdDateTime, ...(parentId !== undefined && { parentId }) };
     } else if (update?.kind === "update") {
       // Only the latest version needs sending (e.g. long-form autosaves).
-      update.body = body;
+      update.body = { ...body, ...tagsTime(update.body) };
     } else {
-      p.outbox.push({ seq: p.nextSeq++, kind: "update", noteId, body });
+      p.outbox.push({ seq: p.nextSeq++, kind: "update", noteId, body: { ...body, ...tagsTime(undefined) } });
     }
     p.latest[noteId] = note;
   });
@@ -289,15 +301,22 @@ export async function setLifetime(id: number, lifetime: LifetimeChange): Promise
   const base = localNote(id);
   if (!base) throw notAvailable("PUT", `/api/notes/${id}/lifetime`);
   const noteId = resolve(id);
+  const now = new Date().toISOString();
+  const tagsChanged = lifetimeOf(base) !== LIFETIME_CHANGES[lifetime];
   const note: Note = {
     ...base,
     tagIds: [...userTags(base.tagIds), LIFETIME_CHANGES[lifetime]],
-    lastModifiedDateTime: new Date().toISOString(),
+    lastModifiedDateTime: now,
+    tagsChangedDateTime: tagsChanged ? now : base.tagsChangedDateTime,
   };
   await changePending((p) => {
     const earlier = p.outbox.find((e) => e.kind === "lifetime" && e.noteId === noteId && mergeable(e));
-    if (earlier?.kind === "lifetime") earlier.lifetime = lifetime;
-    else p.outbox.push({ seq: p.nextSeq++, kind: "lifetime", noteId, lifetime });
+    if (earlier?.kind === "lifetime") {
+      earlier.lifetime = lifetime;
+      if (tagsChanged) earlier.tagsChangedDateTime = now;
+    } else {
+      p.outbox.push({ seq: p.nextSeq++, kind: "lifetime", noteId, lifetime, ...(tagsChanged && { tagsChangedDateTime: now }) });
+    }
     p.latest[noteId] = note;
   });
   return note;
@@ -405,7 +424,7 @@ async function send(entry: OutboxEntry): Promise<Note | undefined> {
       await api.updateNote(resolve(entry.noteId), entry.body);
       return undefined;
     case "lifetime":
-      await api.setLifetime(resolve(entry.noteId), entry.lifetime);
+      await api.setLifetime(resolve(entry.noteId), entry.lifetime, entry.tagsChangedDateTime);
       return undefined;
     case "delete":
       try {
