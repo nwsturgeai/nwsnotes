@@ -6,6 +6,7 @@ import {
   lifetimeOf,
   LIFETIME_ARCHIVED,
   LIFETIME_BIN,
+  LIFETIME_NEW,
   type Category,
   type Note,
   type Tab,
@@ -178,6 +179,8 @@ export function SettingsPage({
     onNavigate(target);
   }
 
+  // Each Lifetime button shows how many notes it would change, e.g. "Empty Bin (4)".
+  const newCount = notes.filter((note) => lifetimeOf(note) === LIFETIME_NEW).length;
   const archivedCount = notes.filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED).length;
   const binCount = notes.filter((note) => lifetimeOf(note) === LIFETIME_BIN).length;
 
@@ -287,7 +290,7 @@ export function SettingsPage({
             disabled={busy}
             onClick={() => void run("reset-new", doneMessages["reset-new"])}
           >
-            Reset New
+            Reset New ({newCount})
           </button>
           <button
             type="button"
@@ -303,7 +306,7 @@ export function SettingsPage({
               )
             }
           >
-            Archived to Bin
+            Archived to Bin ({archivedCount})
           </button>
           <button
             type="button"
@@ -319,7 +322,7 @@ export function SettingsPage({
               )
             }
           >
-            Empty Bin
+            Empty Bin ({binCount})
           </button>
         </div>
         {result && (

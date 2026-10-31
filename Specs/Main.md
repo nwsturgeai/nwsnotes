@@ -685,6 +685,7 @@ The settings page should show which version is running, and have a button to che
   - "Reset New" changes every New note to Active straight away, then reports how many ("3 notes changed to Active").
   - "Archived to Bin" first asks "Move 5 archived notes to the bin?".
   - "Empty Bin" first asks "Permanently delete 4 notes in the bin?".
+  - Each button ends with the number of notes it would change, in brackets: "Reset New (3)", "Archived to Bin (5)", "Empty Bin (4)". The counts come from the notes the page has loaded, so they update after each change, made here or on another page. A count of 0 shows as "(0)".
   - The confirmations are the app's own pop-up windows (not the browser's), with the count. If there's nothing to change, the button says so (e.g. "There are no archived notes.") instead of asking.
   - Emptied notes are gone from the app but remain in the past week's save-files, so they can be recovered from a backup.
 - **Note ids are never reused:** the save-file stores `lastNoteId`, the highest id ever given, and new notes get `lastNoteId + 1`. Files without it start from the highest id present.
