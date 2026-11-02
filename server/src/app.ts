@@ -77,7 +77,11 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
   notesRouter.post(
     "/",
     async (
-      req: Request<object, object, { tagIds?: unknown; parentId?: unknown; clientId?: unknown; createdDateTime?: unknown } | undefined>,
+      req: Request<
+        object,
+        object,
+        { tagIds?: unknown; parentId?: unknown; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown } | undefined
+      >,
       res,
     ) => {
       const check = validateNoteTitle(req.body);
@@ -89,6 +93,7 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
       const { note, created } = await store.add(check.title, req.body?.tagIds, details.details, req.body?.parentId, {
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
+        tagsChangedDateTime: req.body?.tagsChangedDateTime,
       });
       // An add sent again (its reply was lost) changes nothing, so there's nothing to tell other pages.
       if (created) live.notifyChanged(req.get(CONNECTION_ID_HEADER));
@@ -103,7 +108,7 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     res.json(notes);
   });
 
-  notesRouter.put("/:id", async (req: Request<{ id: string }, object, { tagIds?: unknown } | undefined>, res) => {
+  notesRouter.put("/:id", async (req: Request<{ id: string }, object, { tagIds?: unknown; tagsChangedDateTime?: unknown } | undefined>, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
@@ -115,7 +120,7 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
       res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : "" });
       return;
     }
-    const note = await store.updateNote(id, check.title, req.body?.tagIds, details.details);
+    const note = await store.updateNote(id, check.title, req.body?.tagIds, details.details, req.body?.tagsChangedDateTime);
     live.notifyChanged(req.get(CONNECTION_ID_HEADER));
     res.json(note);
   });
@@ -133,16 +138,19 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
   });
 
   // Archive, reinstate or bin a note.
-  notesRouter.put("/:id/lifetime", async (req: Request<{ id: string }, object, { lifetime?: unknown } | undefined>, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
-      return;
-    }
-    const note = await store.setLifetime(id, req.body?.lifetime);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
-    res.json(note);
-  });
+  notesRouter.put(
+    "/:id/lifetime",
+    async (req: Request<{ id: string }, object, { lifetime?: unknown; tagsChangedDateTime?: unknown } | undefined>, res) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) {
+        res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
+        return;
+      }
+      const note = await store.setLifetime(id, req.body?.lifetime, req.body?.tagsChangedDateTime);
+      live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+      res.json(note);
+    },
+  );
 
   // The Settings page's Lifetime buttons. Each returns how many notes it changed or deleted.
   const bulkLifetime = { "reset-new": () => store.resetNew(), "archived-to-bin": () => store.archivedToBin(), "empty-bin": () => store.emptyBin() };

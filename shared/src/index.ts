@@ -10,6 +10,11 @@ export interface Note {
   createdDateTime: string;
   /** ISO 8601, UTC, set by the server. */
   lastModifiedDateTime: string;
+  /**
+   * ISO 8601, UTC: when the note's tags (Lifetime included) were last set or really changed. Set by
+   * the server, or the time of a change made offline.
+   */
+  tagsChangedDateTime: string;
   /** Ids of the note's tags. Tag ids are unique across all categories. */
   tagIds: number[];
   /**
@@ -162,11 +167,26 @@ export type NoteDetails = { detailsText: string; detailsImage?: never } | { deta
  * Body of POST /api/notes and PUT /api/notes/:id. Details make it a long-form note;
  * parentId (POST only) makes it a child of an open long-form note. Also POST only: clientId (see
  * Note), and createdDateTime for a note created offline (used if it's valid and not in the future).
+ * Both: tagsChangedDateTime, when the tags were changed offline (used the same way).
  */
-export type NewNoteRequest = NoteTitle & { tagIds: number[]; parentId?: number; clientId?: string; createdDateTime?: string } & (
-    | NoteDetails
-    | { detailsText?: never; detailsImage?: never }
-  );
+export type NewNoteRequest = NoteTitle & {
+  tagIds: number[];
+  parentId?: number;
+  clientId?: string;
+  createdDateTime?: string;
+  tagsChangedDateTime?: string;
+} & (NoteDetails | { detailsText?: never; detailsImage?: never });
+
+/** Body of PUT /api/notes/:id/lifetime. tagsChangedDateTime: when it was changed offline (used if valid and not in the future). */
+export interface LifetimeRequest {
+  lifetime: LifetimeChange;
+  tagsChangedDateTime?: string;
+}
+
+/** Whether two notes' tag lists hold the same tags, in any order. */
+export function sameTags(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
 
 /** Body of POST /api/categories and PUT /api/categories/:id. Tags without an id are new. */
 export interface CategoryRequest {

@@ -86,6 +86,9 @@ For now, it will not be possible to delete categories.
 Categories and tabs can both be reordered.  On the settings page, in both the Categories and Tabs sections, there are up and down buttons to the right of each row; clicking them moves that item up or down.  The updated order is sent to the server on each click.
 After a category has been saved as multi-select, it is not possible to revert it to single-select later.
 
+### When a note's tags last changed
+For each note, store the date and time when its tags were last set or changed. It isn't shown in the app for now.
+
 ### Tag sort order
 The tags within each category have a sort order.
 When editing a category, there should be up and down arrows alongside each tag, which can be clicked to move that tag up or down the list and so change the order.
@@ -440,6 +443,21 @@ The settings page should show which version is running, and have a button to che
 - "Save" sends the whole category in one call and returns to the settings page. If saving fails, the error is shown on the page and the edits are kept so you can retry.
 - "Cancel" discards the edits and returns to the settings page; for a new category nothing is created.
 - If another page saves the same category while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
+
+### When a note's tags last changed
+- **Stored on the note:** `tagsChangedDateTime` (ISO 8601, UTC), next to `createdDateTime` and `lastModifiedDateTime`. It's in the API's notes and in the save-files. Nothing in the app shows it yet.
+- **When it's set:** when a note is created (its tags are first set then), and whenever its tags really change:
+  - saving an edited note, including converting it to long-form;
+  - a bulk tag update in multi-select, for each note it changes;
+  - Lifetime changes, since Lifetime is stored as a tag: Waiting, Archive, Reinstate and Bin on a note, and the "Reset New" and "Archived to Bin" buttons.
+- **Only a real change counts:** the server compares the note's tags before and after, ignoring their order. A save that leaves them the same, such as a title-only edit or a long-form autosave, keeps the old time. So does a bulk update that doesn't alter a note.
+- **Not counted:** deleting a tag on the category page also takes it off notes, but that's tidying up, so their times stay.
+- **Existing notes:** a note loaded from a save-file without it gets its `createdDateTime`, stored with the next save. The save-file format stays version 2.
+- **Offline changes keep their own time:** a tag change made offline is sent with the time it was made, as `tagsChangedDateTime` in the body of `POST /api/notes`, `PUT /api/notes/:id` or `PUT /api/notes/:id/lifetime`. The server uses it if it's a valid time that isn't in the future; otherwise it uses its own time.
+  - Online changes don't send it, so the server's time is used.
+  - If several offline edits are merged into one change, the time is that of the latest edit that changed the tags.
+  - A note created offline gets its offline creation time, or the time of a later offline tag change made before it was sent.
+  - The server still only counts a real change, so tags changed offline and then changed back keep the old time.
 
 ### Tag sort order
 - **Stored as the list order:** a category's tag order is simply the order of its `tags` list in the save-file. No new field is needed, and the save-file stays version 2. Existing categories are already in creation (id) order, so they keep their current order until someone changes it. Tag ids no longer say anything about order.

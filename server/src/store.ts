@@ -11,6 +11,7 @@ import {
   LIFETIME_CATEGORY,
   LIFETIME_CHANGES,
   LIFETIME_NEW,
+  sameTags,
   validateCategory,
   validateTab,
   validateTagIds,
@@ -81,7 +82,14 @@ function inOrder<T extends { id: number }>(raw: unknown, items: T[], kind: strin
   return ordered as T[];
 }
 
-const FILE_PATTERN = /^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
+/** A time the page sent for something done offline, if it's valid and not after `now`; otherwise undefined. */
+function offlineTime(raw: unknown, now: Date): string | undefined {
+  const ms = typeof raw === "string" ? Date.parse(raw) : NaN;
+  // NaN (none sent, or invalid) fails the comparison.
+  return ms <= now.getTime() ? new Date(ms).toISOString() : undefined;
+}
+
+const FILE_PATTERN =/^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** "2026-10-24T09:40:12.345Z" -> "notes-2026-10-24T09-40-12-345Z.json" */
@@ -161,10 +169,13 @@ export class NoteStore {
     const latest = files.at(-1);
     if (latest) {
       const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
-      // Notes saved before Lifetime existed become Active (stored with the next save).
-      this.notes = content.notes.map((note) =>
-        note.tagIds.some(isLifetimeTag) ? note : { ...note, tagIds: [...note.tagIds, LIFETIME_ACTIVE] },
-      );
+      // Notes saved before Lifetime existed become Active, and notes saved before tag-change times
+      // existed get their created time (both stored with the next save).
+      this.notes = content.notes.map((note) => ({
+        ...note,
+        tagIds: note.tagIds.some(isLifetimeTag) ? note.tagIds : [...note.tagIds, LIFETIME_ACTIVE],
+        tagsChangedDateTime: note.tagsChangedDateTime ?? note.createdDateTime,
+      }));
       this.categories = content.categories;
       this.tabs = content.tabs;
       this.lastNoteId = content.lastNoteId;
@@ -199,14 +210,15 @@ export class NoteStore {
    * With details it's a long-form note; with a parent id it's a child of an open long-form note.
    * `created` says whether it was new: an add with a `clientId` the store already has returns that
    * note unchanged (a retried add whose reply was lost). A valid `createdDateTime` that isn't in the
-   * future (a note written offline) is kept as its created time.
+   * future (a note written offline) is kept as its created time, and likewise `tagsChangedDateTime`
+   * (its tags changed offline before it was sent); without one, its tags were set when it was created.
    */
   add(
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { clientId?: unknown; createdDateTime?: unknown } = {},
+    options: { clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
       let clientId: string | undefined;
@@ -235,15 +247,15 @@ export class NoteStore {
 
       const now = this.nextSaveTime();
       const timestamp = now.toISOString();
-      const offlineCreated = typeof options.createdDateTime === "string" ? Date.parse(options.createdDateTime) : NaN;
+      const createdDateTime = offlineTime(options.createdDateTime, now) ?? timestamp;
       const note: Note = {
         id: this.lastNoteId + 1,
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        // NaN (none sent, or invalid) fails the comparison, so the server's own time is used.
-        createdDateTime: offlineCreated <= now.getTime() ? new Date(offlineCreated).toISOString() : timestamp,
+        createdDateTime,
         lastModifiedDateTime: timestamp,
+        tagsChangedDateTime: offlineTime(options.tagsChangedDateTime, now) ?? createdDateTime,
         // New notes are always New.
         tagIds: [...tagIds.value, LIFETIME_NEW],
         ...(clientId !== undefined && { clientId }),
@@ -257,8 +269,15 @@ export class NoteStore {
    * Replaces a note's title (already validated) and tags, then saves. The note keeps its id, its
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
+   * If the tags really change, `rawTagsChanged` (an offline change's time) or now becomes their changed time.
    */
-  updateNote(id: number, title: NoteTitle, rawTagIds: unknown, details: NoteDetails | undefined): Promise<Note> {
+  updateNote(
+    id: number,
+    title: NoteTitle,
+    rawTagIds: unknown,
+    details: NoteDetails | undefined,
+    rawTagsChanged?: unknown,
+  ): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
@@ -295,6 +314,8 @@ export class NoteStore {
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
 
       const now = this.nextSaveTime();
+      // Editing keeps the note's Lifetime.
+      const newTagIds = [...tagIds.value, lifetimeOf(existing)];
       const note: Note = {
         id,
         ...title,
@@ -303,8 +324,8 @@ export class NoteStore {
         ...(existing.parentId !== undefined && { parentId: existing.parentId }),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
-        // Editing keeps the note's Lifetime.
-        tagIds: [...tagIds.value, lifetimeOf(existing)],
+        tagsChangedDateTime: this.tagsChangedTime(existing, newTagIds, now, rawTagsChanged),
+        tagIds: newTagIds,
       };
       // Repeated saves of a long-form note being edited replace each other (see save()).
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, longForm ? id : undefined);
@@ -356,10 +377,12 @@ export class NoteStore {
         }
         // The Lifetime tag stays last, as everywhere else.
         const lifetime = lifetimeOf(note);
+        const newTagIds = [...tagIds.filter((id) => id !== lifetime), lifetime];
         const next: Note = {
           ...note,
           lastModifiedDateTime: now.toISOString(),
-          tagIds: [...tagIds.filter((id) => id !== lifetime), lifetime],
+          tagsChangedDateTime: this.tagsChangedTime(note, newTagIds, now),
+          tagIds: newTagIds,
         };
         updated.push(next);
         return next;
@@ -369,8 +392,8 @@ export class NoteStore {
     });
   }
 
-  /** Archives, reinstates (Active) or bins a note, then saves. */
-  setLifetime(id: number, raw: unknown): Promise<Note> {
+  /** Archives, reinstates (Active) or bins a note, then saves. `rawTagsChanged`: when it was done offline. */
+  setLifetime(id: number, raw: unknown, rawTagsChanged?: unknown): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
@@ -378,10 +401,12 @@ export class NoteStore {
         throw new RequestError(400, `"lifetime" must be one of ${Object.keys(LIFETIME_CHANGES).join(", ")}.`);
       }
       const now = this.nextSaveTime();
+      const tagIds = withLifetime(existing, LIFETIME_CHANGES[raw as LifetimeChange]);
       const note: Note = {
         ...existing,
         lastModifiedDateTime: now.toISOString(),
-        tagIds: withLifetime(existing, LIFETIME_CHANGES[raw as LifetimeChange]),
+        tagsChangedDateTime: this.tagsChangedTime(existing, tagIds, now, rawTagsChanged),
+        tagIds,
       };
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) });
       return note;
@@ -417,6 +442,15 @@ export class NoteStore {
     });
   }
 
+  /**
+   * A note's tags-changed time after a change to `tagIds`: kept if the tags are the same (in any
+   * order), otherwise the offline change's time if one was sent and is valid, or now.
+   */
+  private tagsChangedTime(existing: Note, tagIds: number[], now: Date, rawTagsChanged?: unknown): string {
+    if (sameTags(existing.tagIds, tagIds)) return existing.tagsChangedDateTime;
+    return offlineTime(rawTagsChanged, now) ?? now.toISOString();
+  }
+
   /** The tabs with deleted notes' ids taken out of their `noteOrder`. */
   private tabsKeepingNotes(notes: Note[]): Tab[] {
     const ids = new Set(notes.map((n) => n.id));
@@ -431,8 +465,11 @@ export class NoteStore {
       const count = this.notes.filter((n) => lifetimeOf(n) === from).length;
       if (count === 0) return 0;
       const now = this.nextSaveTime();
+      const timestamp = now.toISOString();
       const notes = this.notes.map((n) =>
-        lifetimeOf(n) === from ? { ...n, lastModifiedDateTime: now.toISOString(), tagIds: withLifetime(n, to) } : n,
+        lifetimeOf(n) === from
+          ? { ...n, lastModifiedDateTime: timestamp, tagsChangedDateTime: timestamp, tagIds: withLifetime(n, to) }
+          : n,
       );
       await this.save(now, { notes });
       return count;
