@@ -357,6 +357,16 @@ In this case, the label prefix should be "Due " (instead of "Cr. ").
 If the due-date-time is less than a week away from the current local time, then show the date and time and label in bold text.
 If the due-date-time is in the past, then show the date and time and label in bold red text.
 
+### Reminders
+
+The web-app should support browser notifications.
+Permission to send notifications should be requested as soon as the user has logged in.
+When a note has a dueDateTime, and that time has just passed, then the server should send a notification to all browsers that have had browser notifications enabled.
+The notification text should be:
+Due: <note title>
+or for notes drawn with the stylus:
+A note is due
+
 
 ## Offline use
 It should be possible to do some note creation and editing whilst offline.
