@@ -26,6 +26,7 @@ Tags - can have multiple.  More details below.  The note should reference/store 
 detailsText (string, max length 10000 character)
 detailsImage - a string containing base64 image data.  Exactly One of detailsText or detailsImage will be populated for long-form notes
 parentId - an integer, nullable.  When this note is a child of a long-form note, then parentId gives the id of that associated long-form note.
+dueDateTime - an optional date-time value for when this note is due to be resolved.  May only be populated for regular notes, not long-form notes.
 
 The main app screen will show:
 A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
@@ -286,7 +287,7 @@ On the far right of this bar there is an icon button (the same size as the singl
 
 ### Regular notes whilst creating / editing a long-form note
 Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
-New regular notes created whilst creating/editing a long-form note will be given the Tags matching the currently-active Tab (i.e. the same as when creating regular notes just from the notes list).
+New regular notes created whilst creating/editing a long-form note can have any Tags.  By default, when a long-form note is being created/edited, the new-regular-note tags should be preselected to match the currently-active Tab, but they can subsequently be clicked to be changed to any different set of Tags.
 
 Any regular note created whilst creating/editing a long-form note:
 These new regular notes should have their "parentId" field populated with the id of the long-form-note.
@@ -337,6 +338,23 @@ The Settings page should have three new Lifetime buttons in a section at the top
 Reset New:  Clicking this button will update all notes tagged as "New" to switch to being tagged "Active".
 Archived to Bin: Clicking this button will update all notes tagged as "Archived" to instead be tagged "Bin".  There should be a confirmation modal asking if the user is sure, saying how many notes will be put in the bin.
 Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
+Underneath these buttons, the creation date-time should be displayed in small grey text, preceded by the text-label "Cr. ".
+
+
+## Due date
+
+When editing a regular note with the create/edit note section expanded:
+There should be an additional "due date" icon button underneath the other buttons to the right, icon fa-alarm-clock .
+Clicking this button should bring up a modal dialog where a date and time can be picked.
+If this note doesn't already have a dueDateTime set, then default to time 8pm and date today (if local time is before 8pm) otherwise tomorrow's date.
+If this note does already have a dueDateTime set, then the date and time pickers should show the selected value.
+The dialog should have buttons "Cancel" and "Set Due Date".  If this note already has a dueDateTime set, then there should be a third button "Clear Due Date".
+Any Due Date populated on a note should be saved to the server whenever the note is saved (i.e. on creation or save-after-edit).
+
+In the notes-list view, if a note has a due-date, then that date and time should be displayed under the three right-hand buttons (instead of the creation date).
+In this case, the label prefix should be "Due " (instead of "Cr. ").
+If the due-date-time is less than a week away from the current local time, then show the date and time and label in bold text.
+If the due-date-time is in the past, then show the date and time and label in bold red text.
 
 
 ## Offline use
