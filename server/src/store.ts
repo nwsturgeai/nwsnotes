@@ -11,6 +11,7 @@ import {
   LIFETIME_CATEGORY,
   LIFETIME_CHANGES,
   LIFETIME_NEW,
+  LIFETIME_WAITING,
   sameTags,
   validateCategory,
   validateTab,
@@ -83,6 +84,27 @@ function inOrder<T extends { id: number }>(raw: unknown, items: T[], kind: strin
 }
 
 const LONG_FORM_NO_DUE_DATE = "Long-form notes can't have a due date.";
+
+/** A reminder is sent this late at most (e.g. when the server was down as the note fell due). */
+const REMINDER_LATEST_MS = 24 * 60 * 60 * 1000;
+
+/** Lifetimes that get reminders: not Archived or Bin. */
+const REMINDED_LIFETIMES = [LIFETIME_NEW, LIFETIME_ACTIVE, LIFETIME_WAITING];
+
+/**
+ * A note's due date and reminder record after an add or edit. An unchanged due date keeps its record;
+ * a due date that's already past counts as reminded, since it didn't just pass.
+ */
+function dueDateFields(dueDateTime: string | undefined, existing: Note | undefined, now: Date): Partial<Note> {
+  if (dueDateTime === undefined) return {};
+  const reminderSentFor =
+    existing?.dueDateTime === dueDateTime
+      ? existing.reminderSentFor
+      : Date.parse(dueDateTime) <= now.getTime()
+        ? dueDateTime
+        : undefined;
+  return { dueDateTime, ...(reminderSentFor !== undefined && { reminderSentFor }) };
+}
 
 /** A time the page sent for something done offline, if it's valid and not after `now`; otherwise undefined. */
 function offlineTime(raw: unknown, now: Date): string | undefined {
@@ -257,7 +279,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...(options.dueDateTime !== undefined && { dueDateTime: options.dueDateTime }),
+        ...dueDateFields(options.dueDateTime, undefined, now),
         createdDateTime,
         lastModifiedDateTime: timestamp,
         tagsChangedDateTime: offlineTime(options.tagsChangedDateTime, now) ?? createdDateTime,
@@ -330,7 +352,7 @@ export class NoteStore {
         ...details,
         // A child keeps its parent.
         ...(existing.parentId !== undefined && { parentId: existing.parentId }),
-        ...(options.dueDateTime !== undefined && { dueDateTime: options.dueDateTime }),
+        ...dueDateFields(options.dueDateTime, existing, now),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
         tagsChangedDateTime: this.tagsChangedTime(existing, newTagIds, now, options.tagsChangedDateTime),
@@ -458,6 +480,33 @@ export class NoteStore {
   private tagsChangedTime(existing: Note, tagIds: number[], now: Date, rawTagsChanged?: unknown): string {
     if (sameTags(existing.tagIds, tagIds)) return existing.tagsChangedDateTime;
     return offlineTime(rawTagsChanged, now) ?? now.toISOString();
+  }
+
+  /**
+   * Notes needing a reminder now: New, Active or Waiting, due at or before `now` (but less than a day
+   * ago), and not yet reminded for this due date.
+   */
+  dueForReminder(now: Date): Note[] {
+    return this.notes.filter((note) => {
+      if (note.dueDateTime === undefined || note.reminderSentFor === note.dueDateTime) return false;
+      if (!REMINDED_LIFETIMES.includes(lifetimeOf(note))) return false;
+      const late = now.getTime() - Date.parse(note.dueDateTime);
+      return late >= 0 && late < REMINDER_LATEST_MS;
+    });
+  }
+
+  /** Records that these notes' reminders were sent, unless their due date has changed meanwhile. Saves. */
+  markReminded(sent: Note[]): Promise<void> {
+    return this.enqueue(async () => {
+      const dueById = new Map(sent.map((note) => [note.id, note.dueDateTime]));
+      let changed = false;
+      const notes = this.notes.map((note) => {
+        if (note.dueDateTime === undefined || dueById.get(note.id) !== note.dueDateTime) return note;
+        changed = true;
+        return { ...note, reminderSentFor: note.dueDateTime };
+      });
+      if (changed) await this.save(this.nextSaveTime(), { notes });
+    });
   }
 
   /** The tabs with deleted notes' ids taken out of their `noteOrder`. */

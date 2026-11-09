@@ -33,6 +33,8 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,svg,png}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/ws/],
+        // Due-date reminders: showing pushed notifications and opening the app when one is tapped.
+        importScripts: ["push-sw.js"],
       },
     }),
   ],

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
+import { remindAfterLogin } from "./reminders";
 
 interface Props {
   onLoggedIn: () => void;
@@ -17,6 +18,8 @@ export function LoginPage({ onLoggedIn }: Props) {
     setError(undefined);
     try {
       await api.login({ password });
+      // Asked now, while the tap on "Log in" still lets the page ask for permission.
+      remindAfterLogin();
       onLoggedIn();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

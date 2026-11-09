@@ -27,6 +27,8 @@ export interface Note {
   parentId?: number;
   /** ISO 8601, UTC: when the note is due. Regular notes only. */
   dueDateTime?: string;
+  /** The due date a reminder has been sent for (or that was already past when set), so it's sent once. Set by the server. */
+  reminderSentFor?: string;
   /**
    * The random id the page sent when adding the note. An add sent again with the same one (e.g. an
    * offline add retried after its reply was lost) returns this note instead of making a second.

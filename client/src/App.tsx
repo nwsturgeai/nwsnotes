@@ -20,6 +20,7 @@ import {
   useOfflineState,
   withPending,
 } from "./offline";
+import { registerReminders, turnOffReminders } from "./reminders";
 import { usePage } from "./route";
 import { SettingsPage } from "./SettingsPage";
 import { useColumns, useStylusMode } from "./stylusMode";
@@ -73,6 +74,7 @@ export function App() {
       const data = await api.getNotes();
       setState({ screen: "notes", data: withPending(data) });
       markOnline();
+      registerReminders();
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         setState({ screen: "login" });
@@ -231,6 +233,8 @@ export function App() {
 
   const logout = useCallback(async () => {
     try {
+      // This device stops getting reminders (while the session still lets it tell the server).
+      await turnOffReminders().catch((error: unknown) => console.warn("Couldn't turn off reminders:", error));
       await api.logout();
     } finally {
       navigate({ name: "notes" }, { replace: true });

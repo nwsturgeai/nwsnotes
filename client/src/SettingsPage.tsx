@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { buildTime, checkForUpdate, reloadToUpdate, updatesAvailable, useUpdateReady } from "./appUpdate";
+import { reminderState, turnOffReminders, turnOnReminders, type ReminderState } from "./reminders";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { pathFor, type Page } from "./route";
 import { MAX_COLUMNS, PEN_WIDTHS, usePenWidth } from "./stylusMode";
@@ -449,6 +450,8 @@ export function SettingsPage({
         </a>
       </section>
 
+      <Reminders />
+
       <section>
         <h2>Backup</h2>
         <p>Download the latest save-file from the server. It contains all your notes, categories, tags and tabs.</p>
@@ -467,6 +470,85 @@ export function SettingsPage({
         </button>
       </section>
     </main>
+  );
+}
+
+const REMINDER_TEXT: Record<ReminderState, string> = {
+  unavailable: "Reminders aren't available in development.",
+  blocked: "This browser blocks notifications from this site. Allow them in the browser's site settings to get reminders.",
+  on: "This device gets a notification when a note falls due.",
+  off: "This device doesn't get reminders when notes fall due.",
+};
+
+/** Whether this device gets due-date reminders, with buttons to turn them on or off and to send a test. */
+function Reminders() {
+  const [state, setState] = useState<ReminderState>();
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ text: string; error?: boolean }>();
+
+  useEffect(() => {
+    let current = true;
+    reminderState()
+      .then((next) => current && setState(next))
+      .catch(() => current && setState("off"));
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  async function run(action: () => Promise<string | void>) {
+    setBusy(true);
+    setResult(undefined);
+    try {
+      const text = await action();
+      if (text) setResult({ text });
+    } catch (error) {
+      setResult({ text: error instanceof Error ? error.message : String(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // "unavailable" in development: the browser in other cases may still lack push support.
+  const text = state === "unavailable" && !import.meta.env.DEV ? "This browser can't show reminders." : state && REMINDER_TEXT[state];
+
+  return (
+    <section>
+      <h2>Reminders</h2>
+      <p>{text ?? "Checking…"}</p>
+      <div className="lifetime-buttons">
+        {(state === "on" || state === "off") && (
+          <button
+            type="button"
+            className="button"
+            disabled={busy}
+            onClick={() => void run(async () => setState(await (state === "on" ? turnOffReminders() : turnOnReminders())))}
+          >
+            {state === "on" ? "Turn off" : "Turn on"}
+          </button>
+        )}
+        {state === "on" && (
+          <button
+            type="button"
+            className="button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const { count } = await api.pushTest();
+                return `Test reminder sent to ${plural(count, "device")}.`;
+              })
+            }
+          >
+            Send test
+          </button>
+        )}
+      </div>
+      {result && (
+        <p className={result.error ? "save-error" : "lifetime-result"} role="status">
+          {result.text}
+        </p>
+      )}
+    </section>
   );
 }
 

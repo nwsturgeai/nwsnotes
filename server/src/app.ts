@@ -13,10 +13,11 @@ import {
 } from "./auth.js";
 import type { Config } from "./config.js";
 import type { LiveUpdates } from "./live.js";
+import type { PushReminders } from "./push.js";
 import type { NoteStore } from "./store.js";
 
 /** The main website + API app. */
-export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
+export function createApp(config: Config, store: NoteStore, live: LiveUpdates, push: PushReminders) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -267,6 +268,33 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
   });
 
   app.use("/api/tabs", tabsRouter);
+
+  // --- Reminders (Web Push) ---------------------------------------------------
+
+  const pushRouter = express.Router();
+  pushRouter.use(requireSession(config.sessionSecret));
+
+  // The server's public key, which the browser needs to subscribe.
+  pushRouter.get("/key", (_req, res) => {
+    res.json({ publicKey: push.publicKey() });
+  });
+
+  pushRouter.post("/subscribe", async (req, res) => {
+    await push.subscribe(req.body);
+    res.json({ ok: true });
+  });
+
+  pushRouter.post("/unsubscribe", async (req, res) => {
+    await push.unsubscribe(req.body);
+    res.json({ ok: true });
+  });
+
+  // The settings page's "Send test": replies with how many devices it reached.
+  pushRouter.post("/test", async (_req, res) => {
+    res.json({ count: await push.sendTest() });
+  });
+
+  app.use("/api/push", pushRouter);
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Unknown API address." });
