@@ -5,14 +5,17 @@ import path from "node:path";
 import { createApp, createHttpApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { LiveUpdates } from "./live.js";
+import { PushReminders } from "./push.js";
 import { NoteStore } from "./store.js";
 
 async function main() {
   const config = loadConfig();
   const store = new NoteStore(config.dataDir);
   await store.init();
+  const push = new PushReminders(config.dataDir, config.pushContact, store);
+  await push.init();
   const live = new LiveUpdates(config.sessionSecret);
-  const app = createApp(config, store, live);
+  const app = createApp(config, store, live, push);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {

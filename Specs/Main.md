@@ -357,6 +357,16 @@ In this case, the label prefix should be "Due " (instead of "Cr. ").
 If the due-date-time is less than a week away from the current local time, then show the date and time and label in bold text.
 If the due-date-time is in the past, then show the date and time and label in bold red text.
 
+### Reminders
+
+The web-app should support browser notifications.
+Permission to send notifications should be requested as soon as the user has logged in.
+When a note has a dueDateTime, and that time has just passed, then the server should send a notification to all browsers that have had browser notifications enabled.
+The notification text should be:
+Due: <note title>
+or for notes drawn with the stylus:
+A note is due
+
 
 ## Offline use
 It should be possible to do some note creation and editing whilst offline.
@@ -723,6 +733,32 @@ The settings page should show which version is running, and have a button to che
   - The year is added when it isn't this year, e.g. "Due 12/01/27 20:00".
   - Due within the next 7 days: the label and date are bold. Already past: bold and red.
   - The list re-checks once a minute, so dates turn bold, then red, without a reload.
+
+### Reminders (push notifications)
+- **Web Push:** reminders reach a device even when the app is closed, using the browser's push service (Google's on Android Chrome). The notification is encrypted, so the push service can't read it. The server uses the `web-push` package.
+- **Server keys (VAPID):** generated on the server's first start and kept in `push-keys.json` in the data folder, so there's nothing to set up. The contact address push services ask for is `pushContact` in `config.json`, defaulting to `mailto:nwsnotes@localhost`.
+- **Devices:** each device that turns reminders on sends its push subscription to the server. They're kept in `push-subscriptions.json` in the data folder, not in the save-files or backups, as they're specific to each device.
+  - A device the push service reports as gone (HTTP 404 or 410) is removed.
+  - Logging out turns reminders off for that device first.
+- **API**, all behind the login:
+  - `GET /api/push/key` returns `{ publicKey }`.
+  - `POST /api/push/subscribe` takes the browser's subscription. Sending the same one again just updates it.
+  - `POST /api/push/unsubscribe` takes `{ endpoint }`.
+  - `POST /api/push/test` sends "Test reminder" to every device, and replies with how many it reached.
+- **Asking for permission:**
+  - Straight after logging in, if the browser hasn't been asked yet.
+  - Once permission is granted, each time the app starts it makes sure this device's subscription is registered with the server.
+- **Settings page:** a "Reminders" section, just before Backup. It says whether this device gets reminders, with a "Turn on" or "Turn off" button and a "Send test" button.
+  - If the browser has blocked notifications for the site, it says so, and that they must be allowed in the browser's site settings.
+  - In development there's no service worker, so it says "Reminders aren't available in development." The server side still works there.
+- **Sending:** the server checks every minute.
+  - A reminder goes out for each New, Active or Waiting note whose due date has passed. Archived and Bin notes get none.
+  - Each note gets one reminder per due date. The note stores `reminderSentFor`, the due date its reminder was sent for, in the save-files.
+  - Changing the due date allows a new reminder at the new time. Saving a due date that's already past counts as already reminded, since it didn't just pass.
+  - If the server was down when a note fell due, the reminder is sent once it's back, but only if it's less than 24 hours late.
+- **The notification:** "Due: <title>", or "A note is due" for handwritten notes, with the app's icon. A second one for the same note replaces the first. Tapping it brings the app to the front, or opens it.
+- **Service worker:** the generated service worker imports a small `push-sw.js` (via Workbox's `importScripts`), which shows the notifications and handles taps.
+- **Offline:** a due date set offline gets its reminder once the change reaches the server.
 
 ### Note lifetime
 - **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4, Waiting -5 (added later, so it can't be renumbered; it's still listed in the order New, Active, Waiting, Archived, Bin). It can't be edited or renamed, and user categories can't use its name.

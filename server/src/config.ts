@@ -19,7 +19,11 @@ export interface Config {
   publicDir: string;
   httpPort: number;
   httpsPort: number;
+  /** The contact (a mailto: or https: address) that push services ask senders of reminders for. */
+  pushContact: string;
 }
+
+const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
 
 const DEV_PASSWORD = "dev";
 
@@ -48,6 +52,7 @@ export function loadConfig(): Config {
       publicDir,
       httpPort: Number(process.env.PORT ?? 3000),
       httpsPort: 0,
+      pushContact: DEFAULT_PUSH_CONTACT,
     };
   }
 
@@ -66,5 +71,6 @@ export function loadConfig(): Config {
     publicDir,
     httpPort: raw.httpPort ?? 80,
     httpsPort: raw.httpsPort ?? 443,
+    pushContact: raw.pushContact ?? DEFAULT_PUSH_CONTACT,
   };
 }

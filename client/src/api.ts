@@ -130,6 +130,12 @@ export const api = {
   updateTab: (id: number, body: TabRequest) => request<Tab>("PUT", `/api/tabs/${id}`, body, changeHeaders()),
   setTabOrder: (id: number, body: TabOrderRequest) => request<Tab>("PUT", `/api/tabs/${id}/order`, body, changeHeaders()),
   deleteTab: (id: number) => request<{ ok: true }>("DELETE", `/api/tabs/${id}`, undefined, changeHeaders()),
+  /** Reminders: the server's public push key, and registering or forgetting this device. */
+  pushKey: () => request<{ publicKey: string }>("GET", "/api/push/key"),
+  pushSubscribe: (subscription: PushSubscriptionJSON) => request<{ ok: true }>("POST", "/api/push/subscribe", subscription),
+  pushUnsubscribe: (endpoint: string) => request<{ ok: true }>("POST", "/api/push/unsubscribe", { endpoint }),
+  /** Sends "Test reminder" to every device; returns how many it reached. */
+  pushTest: () => request<{ count: number }>("POST", "/api/push/test"),
   login: (body: LoginRequest) => request<{ ok: true }>("POST", "/api/login", body),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
 };
