@@ -82,6 +82,8 @@ function inOrder<T extends { id: number }>(raw: unknown, items: T[], kind: strin
   return ordered as T[];
 }
 
+const LONG_FORM_NO_DUE_DATE = "Long-form notes can't have a due date.";
+
 /** A time the page sent for something done offline, if it's valid and not after `now`; otherwise undefined. */
 function offlineTime(raw: unknown, now: Date): string | undefined {
   const ms = typeof raw === "string" ? Date.parse(raw) : NaN;
@@ -212,13 +214,14 @@ export class NoteStore {
    * note unchanged (a retried add whose reply was lost). A valid `createdDateTime` that isn't in the
    * future (a note written offline) is kept as its created time, and likewise `tagsChangedDateTime`
    * (its tags changed offline before it was sent); without one, its tags were set when it was created.
+   * `dueDateTime` (already validated) is for regular notes only.
    */
   add(
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown } = {},
+    options: { dueDateTime?: string; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
       let clientId: string | undefined;
@@ -235,6 +238,7 @@ export class NoteStore {
       if (details && title.titleText === undefined) {
         throw new RequestError(400, "A long-form note's title must be typed text.");
       }
+      if (details && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       let parentId: number | undefined;
       if (rawParentId !== undefined && rawParentId !== null) {
         const parent = this.notes.find((n) => n.id === rawParentId);
@@ -253,6 +257,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
+        ...(options.dueDateTime !== undefined && { dueDateTime: options.dueDateTime }),
         createdDateTime,
         lastModifiedDateTime: timestamp,
         tagsChangedDateTime: offlineTime(options.tagsChangedDateTime, now) ?? createdDateTime,
@@ -269,14 +274,16 @@ export class NoteStore {
    * Replaces a note's title (already validated) and tags, then saves. The note keeps its id, its
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
-   * If the tags really change, `rawTagsChanged` (an offline change's time) or now becomes their changed time.
+   * If the tags really change, `tagsChangedDateTime` (an offline change's time) or now becomes their
+   * changed time. `dueDateTime` (already validated; regular notes only) replaces the note's, so
+   * leaving it out clears it.
    */
   updateNote(
     id: number,
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    rawTagsChanged?: unknown,
+    options: { dueDateTime?: string; tagsChangedDateTime?: unknown } = {},
   ): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
@@ -310,6 +317,7 @@ export class NoteStore {
             : "This note's details are typed, so they must be updated with new text, not an image.",
         );
       }
+      if (details !== undefined && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
 
@@ -322,9 +330,10 @@ export class NoteStore {
         ...details,
         // A child keeps its parent.
         ...(existing.parentId !== undefined && { parentId: existing.parentId }),
+        ...(options.dueDateTime !== undefined && { dueDateTime: options.dueDateTime }),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
-        tagsChangedDateTime: this.tagsChangedTime(existing, newTagIds, now, rawTagsChanged),
+        tagsChangedDateTime: this.tagsChangedTime(existing, newTagIds, now, options.tagsChangedDateTime),
         tagIds: newTagIds,
       };
       // Repeated saves of a long-form note being edited replace each other (see save()).

@@ -530,6 +530,37 @@ body:has(.note-list li.dragging) {
   white-space: nowrap;
 }
 
+/* A due date within the next week is bold; one that has passed is bold and red. */
+.note-date.due-soon {
+  font-weight: 700;
+}
+
+.note-date.overdue {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.due-date-title {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+}
+
+.due-date-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.due-date-fields input {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
 /* 16px icons in 24px tap areas: small, to leave room for note content. */
 .note-button {
   display: grid;

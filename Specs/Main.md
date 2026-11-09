@@ -26,6 +26,7 @@ Tags - can have multiple.  More details below.  The note should reference/store 
 detailsText (string, max length 10000 character)
 detailsImage - a string containing base64 image data.  Exactly One of detailsText or detailsImage will be populated for long-form notes
 parentId - an integer, nullable.  When this note is a child of a long-form note, then parentId gives the id of that associated long-form note.
+dueDateTime - an optional date-time value for when this note is due to be resolved.  May only be populated for regular notes, not long-form notes.
 
 The main app screen will show:
 A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
@@ -286,7 +287,7 @@ On the far right of this bar there is an icon button (the same size as the singl
 
 ### Regular notes whilst creating / editing a long-form note
 Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
-New regular notes created whilst creating/editing a long-form note will be given the Tags matching the currently-active Tab (i.e. the same as when creating regular notes just from the notes list).
+New regular notes created whilst creating/editing a long-form note can have any Tags.  By default, when a long-form note is being created/edited, the new-regular-note tags should be preselected to match the currently-active Tab, but they can subsequently be clicked to be changed to any different set of Tags.
 
 Any regular note created whilst creating/editing a long-form note:
 These new regular notes should have their "parentId" field populated with the id of the long-form-note.
@@ -337,6 +338,24 @@ The Settings page should have three new Lifetime buttons in a section at the top
 Reset New:  Clicking this button will update all notes tagged as "New" to switch to being tagged "Active".
 Archived to Bin: Clicking this button will update all notes tagged as "Archived" to instead be tagged "Bin".  There should be a confirmation modal asking if the user is sure, saying how many notes will be put in the bin.
 Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
+
+
+## Due date
+
+In the notes list, underneath each note's three right-hand buttons, the creation date-time should be displayed in small grey text, preceded by the text-label "Cr. ".
+
+When editing a regular note with the create/edit note section expanded:
+There should be an additional "due date" icon button underneath the other buttons to the right, icon fa-alarm-clock .
+Clicking this button should bring up a modal dialog where a date and time can be picked.
+If this note doesn't already have a dueDateTime set, then default to time 8pm and date today (if local time is before 8pm) otherwise tomorrow's date.
+If this note does already have a dueDateTime set, then the date and time pickers should show the selected value.
+The dialog should have buttons "Cancel" and "Set Due Date".  If this note already has a dueDateTime set, then there should be a third button "Clear Due Date".
+Any Due Date populated on a note should be saved to the server whenever the note is saved (i.e. on creation or save-after-edit).
+
+In the notes-list view, if a note has a due-date, then that date and time should be displayed under the three right-hand buttons (instead of the creation date).
+In this case, the label prefix should be "Due " (instead of "Cr. ").
+If the due-date-time is less than a week away from the current local time, then show the date and time and label in bold text.
+If the due-date-time is in the past, then show the date and time and label in bold red text.
 
 
 ## Offline use
@@ -655,7 +674,11 @@ The settings page should show which version is running, and have a button to che
   - Other categories, and filters that allow several tags, are left alone.
   - It's saved like any other tag change.
   - It's greyed out when there's nothing to match: under "All", or a tab whose filters all allow several tags. The hint says why.
-- **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note and follow the selected tab's rules as usual.
+- **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note. Their tags are free (see "Tags on child notes" below).
+- **Tags on child notes:**
+  - When the long-form editor opens, the new-note tag dropdowns start on the tab's tags, as before. From then on they aren't locked, any tags can be chosen, and the tab's required categories aren't enforced.
+  - A child note that doesn't match the tab and the filters is saved but isn't shown in the list, with the notice "Note added, but it doesn't match this tab, so it isn't shown here."
+  - When the editor closes, the dropdowns go back to the selections they had before it opened, and the tab's rules apply again.
 - **Saving:**
   - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it. After accepting, typed details get the focus.
   - While the title is locked, clicking the title box does the same as "edit title".
@@ -683,6 +706,24 @@ The settings page should show which version is running, and have a button to che
   - **Saving:** erasing counts as a change and is autosaved like drawing. When each erase stroke ends, the remaining ink is re-measured, so the saved image is cropped tightly again. A fully erased canvas counts as empty, so Cancel closes without asking.
 - **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters, in the same amber. Long-form notes get the usual buttons (edit, waiting, archive and so on).
 
+### Due dates
+- **Stored on the note:** optional `dueDateTime` (ISO 8601, UTC). It's sent in the body of `POST /api/notes` and `PUT /api/notes/:id`. Since a PUT replaces the note, leaving it out clears it.
+  - The server checks it's a valid date-time and refuses it on a long-form note.
+  - Converting a note to long-form removes its due date. The convert button's tooltip says so when the note has one.
+  - Lifetime changes and bulk tag updates keep it. It doesn't count as a tag change.
+  - It works offline like the rest of the note.
+- **The due-date button:** `fa-alarm-clock`, in the expanded new-note area, below the other buttons. It's there when adding a new regular note and when editing one, child notes included. It isn't shown in multi-select, or for long-form notes, which are edited in their own editor.
+  - While the note being added or edited has a due date, the button is filled in green, like an active button. Its tooltip then says e.g. "Due 12/11 20:00"; otherwise "Set due date".
+- **The dialog:** the app's own pop-up, titled "Due date", with a date box and a time box (the device's own pickers).
+  - With no due date yet, it starts at 20:00 today, or tomorrow if it's already 20:00 or later.
+  - Buttons: "Cancel", "Clear Due Date" (only if the note has a due date) and "Set Due Date" (the green main button). Escape counts as Cancel.
+- **Saved with the note:** the chosen date is only saved when Add or Update is tapped. Cancelling an edit drops it.
+  - Unlike the tags, it doesn't carry over: after a note is added, the next new note starts with no due date.
+- **In the list:** a note with a due date shows "Due 12/11 20:00" under its buttons, in place of "Cr. …". Hovering shows "Due" or "Created" with the full date.
+  - The year is added when it isn't this year, e.g. "Due 12/01/27 20:00".
+  - Due within the next 7 days: the label and date are bold. Already past: bold and red.
+  - The list re-checks once a minute, so dates turn bold, then red, without a reload.
+
 ### Note lifetime
 - **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4, Waiting -5 (added later, so it can't be renumbered; it's still listed in the order New, Active, Waiting, Archived, Bin). It can't be edited or renamed, and user categories can't use its name.
 - **Every note has exactly one Lifetime tag.** The server always gives new notes New, ignoring any Lifetime tag sent, and keeps the existing one when a note is edited. Only the lifetime endpoints change it.
@@ -691,7 +732,7 @@ The settings page should show which version is running, and have a button to che
 - **Resetting New from the list:** the New pill on a note is a button (hover text "Reset the New tags"). It opens the app's own pop-up, "Do you want to reset the New tags?", with Yes (accent colour, focused) and No (Escape also counts as No). Yes does the same as the settings page's "Reset New" (every New note becomes Active, in one save) and reloads the list, with no other message. If it fails, the error shows as a notice over the list.
 - **Tabs:** tab definitions and the additional tab filters can include Lifetime, as a check-list like any category.
 - **Bin is hidden by default:** Bin notes are hidden in every tab, "All" included, unless the tab's filter or the additional filters tick Bin.
-- **Creation date:** under each note's buttons, right-aligned, its creation date and time in the device's local time as "dd/MM HH:mm" (24-hour, e.g. "26/10 14:05"), in small grey text, the same grey on every row (it's deliberately hard to read on the dark Archived and Bin rows). Hovering shows the full date.
+- **Creation date:** under each note's buttons, right-aligned, its creation date and time in the device's local time as "dd/MM HH:mm" (24-hour, e.g. "26/10 14:05"), in small grey text, the same grey on every row (it's deliberately hard to read on the dark Archived and Bin rows). Hovering shows the full date. It's labelled "Cr. ", and a note with a due date shows that instead (see "Due dates").
 - **Note buttons:** right-aligned at the right of each note, all 16px icons in 24px tap areas; they don't need to line up between notes. Left to right:
   - New and Active: edit, waiting (`fa-hourglass`), archive (`fa-box-archive`).
   - Waiting: edit, reinstate (`fa-rotate-left`), archive.

@@ -3,7 +3,7 @@ import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { CONNECTION_ID_HEADER, validateNoteDetails, validateNoteTitle, type LoginRequest } from "@nwsnotes/shared";
+import { CONNECTION_ID_HEADER, validateDueDate, validateNoteDetails, validateNoteTitle, type LoginRequest } from "@nwsnotes/shared";
 import {
   SESSION_COOKIE,
   SESSION_LENGTH_MS,
@@ -86,11 +86,13 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     ) => {
       const check = validateNoteTitle(req.body);
       const details = validateNoteDetails(req.body);
-      if (!check.ok || !details.ok) {
-        res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : "" });
+      const due = validateDueDate(req.body);
+      if (!check.ok || !details.ok || !due.ok) {
+        res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : !due.ok ? due.error : "" });
         return;
       }
       const { note, created } = await store.add(check.title, req.body?.tagIds, details.details, req.body?.parentId, {
+        dueDateTime: due.dueDateTime,
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
@@ -116,11 +118,15 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates) {
     }
     const check = validateNoteTitle(req.body);
     const details = validateNoteDetails(req.body);
-    if (!check.ok || !details.ok) {
-      res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : "" });
+    const due = validateDueDate(req.body);
+    if (!check.ok || !details.ok || !due.ok) {
+      res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : !due.ok ? due.error : "" });
       return;
     }
-    const note = await store.updateNote(id, check.title, req.body?.tagIds, details.details, req.body?.tagsChangedDateTime);
+    const note = await store.updateNote(id, check.title, req.body?.tagIds, details.details, {
+      dueDateTime: due.dueDateTime,
+      tagsChangedDateTime: req.body?.tagsChangedDateTime,
+    });
     live.notifyChanged(req.get(CONNECTION_ID_HEADER));
     res.json(note);
   });

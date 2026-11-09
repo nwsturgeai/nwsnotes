@@ -25,6 +25,8 @@ export interface Note {
   detailsImage?: string;
   /** For a note added while a long-form note was open: that long-form note's id. */
   parentId?: number;
+  /** ISO 8601, UTC: when the note is due. Regular notes only. */
+  dueDateTime?: string;
   /**
    * The random id the page sent when adding the note. An add sent again with the same one (e.g. an
    * offline add retried after its reply was lost) returns this note instead of making a second.
@@ -167,11 +169,13 @@ export type NoteDetails = { detailsText: string; detailsImage?: never } | { deta
  * Body of POST /api/notes and PUT /api/notes/:id. Details make it a long-form note;
  * parentId (POST only) makes it a child of an open long-form note. Also POST only: clientId (see
  * Note), and createdDateTime for a note created offline (used if it's valid and not in the future).
- * Both: tagsChangedDateTime, when the tags were changed offline (used the same way).
+ * Both: tagsChangedDateTime, when the tags were changed offline (used the same way), and
+ * dueDateTime (regular notes only; leaving it out of a PUT clears it).
  */
 export type NewNoteRequest = NoteTitle & {
   tagIds: number[];
   parentId?: number;
+  dueDateTime?: string;
   clientId?: string;
   createdDateTime?: string;
   tagsChangedDateTime?: string;
@@ -293,6 +297,15 @@ export function validateNoteDetails(body: unknown): { ok: true; details?: NoteDe
     return image.ok ? { ok: true, details: { detailsImage: image.value } } : image;
   }
   return { ok: true };
+}
+
+/** Checks a note's due date, if any: a valid date-time, returned as ISO 8601 UTC. */
+export function validateDueDate(body: unknown): { ok: true; dueDateTime?: string } | { ok: false; error: string } {
+  const { dueDateTime } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  if (dueDateTime === undefined || dueDateTime === null) return { ok: true };
+  const ms = typeof dueDateTime === "string" ? Date.parse(dueDateTime) : NaN;
+  if (Number.isNaN(ms)) return { ok: false, error: "The due date must be a valid date and time." };
+  return { ok: true, dueDateTime: new Date(ms).toISOString() };
 }
 
 /** Checks a new note's title: exactly one of typed text or a handwritten image. */

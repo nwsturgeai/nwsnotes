@@ -178,6 +178,7 @@ function resolve(id: number): number {
   return pending.idMap[id] ?? id;
 }
 
+/** The parts of a note an add or edit sets: title, details and due date (left out: none). */
 function titleAndDetails(body: NewNoteRequest): Partial<Note> {
   return {
     ...(body.titleText !== undefined ? { titleText: body.titleText } : { titleImage: body.titleImage }),
@@ -186,6 +187,7 @@ function titleAndDetails(body: NewNoteRequest): Partial<Note> {
       : body.detailsImage !== undefined
         ? { detailsImage: body.detailsImage }
         : {}),
+    ...(body.dueDateTime !== undefined && { dueDateTime: body.dueDateTime }),
   };
 }
 
@@ -260,8 +262,8 @@ export async function updateNote(id: number, body: NewNoteRequest): Promise<Note
   const base = localNote(id);
   if (!base) throw notAvailable("PUT", `/api/notes/${id}`);
   const noteId = resolve(id);
-  const { titleText, titleImage, detailsText, detailsImage, ...rest } = base;
-  void [titleText, titleImage, detailsText, detailsImage];
+  const { titleText, titleImage, detailsText, detailsImage, dueDateTime, ...rest } = base;
+  void [titleText, titleImage, detailsText, detailsImage, dueDateTime];
   const now = new Date().toISOString();
   // Editing keeps the note's Lifetime.
   const tagIds = [...userTags(body.tagIds), lifetimeOf(base)];
