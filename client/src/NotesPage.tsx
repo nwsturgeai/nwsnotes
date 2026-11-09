@@ -11,6 +11,7 @@ import {
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircle } from "@fortawesome/free-regular-svg-icons";
 import {
+  faAlarmClock,
   faArrowDownWideShort,
   faBoxArchive,
   faChartDiagram,
@@ -55,6 +56,7 @@ import {
 import { ApiError, api } from "./api";
 import { offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { DueDateDialog } from "./DueDateDialog";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
 import { useNoteDrag } from "./noteDrag";
@@ -193,11 +195,28 @@ export function NotesPage({
   useEffect(() => onUnsavedChangeRef.current(unsaved), [unsaved]);
   useEffect(() => () => onUnsavedChangeRef.current(false), []);
 
+  /** The new-note dropdowns as they were when the long-form editor opened (and on which tab), to put back when it closes. */
+  const selectionBeforeLongForm = useRef<{ tabId: number | undefined; selection: TagSelection }>(undefined);
+
   /** Opens the long-form editor; `converted` when the note has just become long-form (its details get the focus). */
   function openLongForm(note: Note | undefined, converted = false) {
     setOrdering(false);
     setLongForm({ note, key: Date.now(), converted });
     setLongFormId(note?.id);
+    // Child notes can have any tags: the dropdowns start on the tab's tags, then are no longer locked.
+    selectionBeforeLongForm.current = { tabId: selectedTab?.id, selection: tagSelection };
+    const chosen = selectedTagIds(userCategories, tagSelection, constraints);
+    onTagSelectionChange(
+      Object.fromEntries(userCategories.map((category) => [category.id, category.tags.filter((tag) => chosen.includes(tag.id)).map((tag) => tag.id)])),
+    );
+  }
+
+  function closeLongForm() {
+    setLongForm(undefined);
+    setLongFormId(undefined);
+    const before = selectionBeforeLongForm.current;
+    selectionBeforeLongForm.current = undefined;
+    onTagSelectionChange(before && before.tabId === selectedTab?.id ? before.selection : {});
   }
 
   /** The extra pills after a note's tags: "Long Form" on long-form notes, the parent's title on children. */
@@ -314,6 +333,8 @@ export function NotesPage({
   }
   /** What the filters require of new notes, so they always match and stay visible. */
   const constraints = useMemo(() => constraintsFor(allFilters), [allFilters]);
+  /** While a long-form note is open, its child notes can have any tags, so nothing is locked. */
+  const newNoteConstraints = useMemo(() => (longForm ? new Map<number, number[]>() : constraints), [longForm, constraints]);
   /** The tags the filters fix to one value (category id -> tag id), for the long-form editor's "match the tab". */
   const tabTags = useMemo(
     () =>
@@ -408,10 +429,22 @@ export function NotesPage({
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  /** The time due dates are compared with, updated each minute so they turn bold, then red, by themselves. */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /** The due date of the note being added or edited (ISO), saved with it when Add or Update is tapped. */
+  const [dueDate, setDueDate] = useState<string>();
+  const [choosingDueDate, setChoosingDueDate] = useState(false);
+
   function startEdit(note: Note) {
     setOrdering(false);
     // Any new note that was being typed or written is discarded.
     setTitle(note.titleText ?? "");
+    setDueDate(note.dueDateTime);
     setEditSelection(selectionFor(note, userCategories));
     setSaveError(undefined);
     onEditStart(note);
@@ -427,16 +460,17 @@ export function NotesPage({
   /** Back to adding notes, with an empty title box or canvas. */
   function finishEdit() {
     setTitle("");
+    setDueDate(undefined);
     setEditSelection({});
     setSaveError(undefined);
     onEditEnd();
   }
 
-  // Escape cancels an edit (unless it's closing an open tag list).
+  // Escape cancels an edit (unless it's closing an open tag list or the due-date pop-up).
   useEffect(() => {
     if (!editingNote) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving && !document.querySelector(".tag-dropdown-list")) finishEdit();
+      if (event.key === "Escape" && !saving && !document.querySelector(".tag-dropdown-list, dialog[open]")) finishEdit();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -512,6 +546,8 @@ export function NotesPage({
       : editingNote?.parentId !== undefined
         ? "This note belongs to a long-form note, so it can't become one"
         : undefined;
+  /** Long-form notes can't have a due date, so converting one removes it. */
+  const convertTitle = convertHint ?? (dueDate ? "Convert to long-form note (removes its due date)" : "Convert to long-form note");
 
   /**
    * Turns the note being edited into a long-form note: saved with its title and tags as they are now,
@@ -555,7 +591,7 @@ export function NotesPage({
     if (!noteTitle) return;
     // The filters' rules only apply to new notes; an edited note can be given any tags.
     if (!editingNote) {
-      const missing = missingRequiredCategory(userCategories, tagSelection, constraints);
+      const missing = missingRequiredCategory(userCategories, tagSelection, newNoteConstraints);
       if (missing) {
         setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
         return;
@@ -567,13 +603,20 @@ export function NotesPage({
     try {
       if (editingNote) {
         const tagIds = selectedTagIds(userCategories, editSelection);
-        onNoteUpdated(await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds }));
+        onNoteUpdated(await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }));
         finishEdit();
       } else {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
-        const tagIds = selectedTagIds(userCategories, tagSelection, constraints);
+        const tagIds = selectedTagIds(userCategories, tagSelection, newNoteConstraints);
         // While a long-form note is open, new notes are its children.
-        const note = await offlineApi.addNote({ ...noteTitle, tagIds, ...(longFormId !== undefined && { parentId: longFormId }) });
+        const note = await offlineApi.addNote({
+          ...noteTitle,
+          tagIds,
+          ...(longFormId !== undefined && { parentId: longFormId }),
+          ...(dueDate && { dueDateTime: dueDate }),
+        });
+        // The due date doesn't carry over to the next note (unlike the tags).
+        setDueDate(undefined);
         // "All" is always in creation order. A note added offline (a temporary id) can't be ordered yet.
         if (atTop && selectedTab && note.id > 0) addToTopOfTab(selectedTab, note);
         onNoteAdded(note);
@@ -581,9 +624,13 @@ export function NotesPage({
           padRef.current?.clear();
           setPadInked(false);
         } else setTitle("");
-        // New notes are always New; say so if this tab's filters don't show New notes.
+        // A child note can have any tags; other new notes match the tab, but are always New.
         if (!noteMatchesFilters(note, allFilters)) {
-          setNotice({ text: "Note added, but this tab doesn't show New notes." });
+          setNotice({
+            text: longForm
+              ? "Note added, but it doesn't match this tab, so it isn't shown here."
+              : "Note added, but this tab doesn't show New notes.",
+          });
         } else if (atTop && selectedTab && note.id < 0) {
           setNotice({ text: "Added at the bottom: adding at the top isn't available offline." });
         }
@@ -716,7 +763,7 @@ export function NotesPage({
           selection={tagSelection}
           onChange={onTagSelectionChange}
           disabled={saving}
-          constraints={constraints}
+          constraints={newNoteConstraints}
           tabName={selectedTab?.name}
         />
       )}
@@ -917,11 +964,17 @@ export function NotesPage({
                       )
                     )}
                   </div>
-                  <time className="note-date" dateTime={note.createdDateTime} title={`Created ${new Date(note.createdDateTime).toLocaleString()}`}>
+                  {/* The due date if the note has one, otherwise when it was created. */}
+                  <time
+                    className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
+                    dateTime={note.dueDateTime ?? note.createdDateTime}
+                    title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}`}
+                  >
                     {pendingIds.has(note.id) && (
                       <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
                     )}
-                    {formatCreated(note.createdDateTime)}
+                    {note.dueDateTime ? "Due " : "Cr. "}
+                    {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
                   </time>
                   </div>
                 </li>
@@ -948,6 +1001,17 @@ export function NotesPage({
         </div>
       )}
 
+      {choosingDueDate && (
+        <DueDateDialog
+          dueDate={dueDate}
+          onSet={(value) => {
+            setDueDate(value);
+            setChoosingDueDate(false);
+          }}
+          onCancel={() => setChoosingDueDate(false)}
+        />
+      )}
+
       {longForm && (
         <LongFormEditor
           // A fresh editor for each note opened.
@@ -968,8 +1032,7 @@ export function NotesPage({
             setLongFormId(note.id);
           }}
           onFinish={(deleted) => {
-            setLongForm(undefined);
-            setLongFormId(undefined);
+            closeLongForm();
             if (deleted) onNotesChanged();
           }}
           offline={offline}
@@ -1128,7 +1191,7 @@ export function NotesPage({
                   type="button"
                   className="icon-button"
                   aria-label="Convert to long-form note"
-                  title={convertHint ?? "Convert to long-form note"}
+                  title={convertTitle}
                   disabled={saving || convertHint !== undefined}
                   onClick={() => void convertToLongForm()}
                 >
@@ -1147,6 +1210,19 @@ export function NotesPage({
                   onClick={toggleBulk}
                 >
                   <FontAwesomeIcon icon={faListCheck} />
+                </button>
+              )}
+              {/* In the expanded area: the due date of the note being added or edited. Filled in while it has one. */}
+              {fullTagList && !bulk && (
+                <button
+                  type="button"
+                  className={dueDate ? "icon-button primary" : "icon-button"}
+                  aria-label={dueDate ? "Change due date" : "Set due date"}
+                  title={dueDate ? `Due ${formatNoteDate(dueDate)}` : "Set due date"}
+                  disabled={saving}
+                  onClick={() => setChoosingDueDate(true)}
+                >
+                  <FontAwesomeIcon icon={faAlarmClock} />
                 </button>
               )}
             </div>
@@ -1204,9 +1280,21 @@ function pngSize(dataUrl: string): { width: number; height: number } | undefined
   }
 }
 
-/** A note's creation time in the device's local time, as "dd/MM HH:mm" (e.g. "26/10 14:05"). */
-function formatCreated(iso: string): string {
+/**
+ * A note's creation or due time in the device's local time, as "dd/MM HH:mm" (e.g. "26/10 14:05"),
+ * with the year as "dd/MM/yy" when it isn't this year (e.g. "12/01/27 20:00").
+ */
+function formatNoteDate(iso: string): string {
   const date = new Date(iso);
   const two = (n: number) => String(n).padStart(2, "0");
-  return `${two(date.getDate())}/${two(date.getMonth() + 1)} ${two(date.getHours())}:${two(date.getMinutes())}`;
+  const year = date.getFullYear() === new Date().getFullYear() ? "" : `/${two(date.getFullYear() % 100)}`;
+  return `${two(date.getDate())}/${two(date.getMonth() + 1)}${year} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** How a due date stands out: red and bold once past, bold within the next week. */
+function dueClass(iso: string, now: number): string | undefined {
+  const due = Date.parse(iso);
+  return due < now ? "overdue" : due - now < WEEK_MS ? "due-soon" : undefined;
 }
