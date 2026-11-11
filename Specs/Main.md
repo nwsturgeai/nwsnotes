@@ -204,6 +204,13 @@ When a selection is made in any of these dropdowns, the notes shown in the list 
 The selections within the dropdowns should be saved into Browser Local Storage.  The selections should be linked to the Tab in which they were made. The next time this tab is opened on this device, the same selections that were there the last time should be preselected.
 Just to the right of these dropdowns (i.e. not all the way to the right of the screen), there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.
 
+### Search
+
+To the right of the "reset filters" button (in the second header area showing the additional tab filters) there should be another icon button for search.
+Clicking the search button causes it to become selected / active, clicking again causes it to become deselected / inactive.
+Whilst the search button is active, the second header area is extended vertically downwards to make space for a new single-line textbox - the search box.
+If any text is typed into the search box, the list of notes shown in the main area is additionally filtered just to show notes where the title contains the text typed (case insensitive).  This also causes all notes with a title image (i.e. no title text) to become hidden.
+
 
 ## Setting the order of notes
 In the second header (with the additional filter dropdowns): to the far right of the screen, have a new button with icon fa-arrow-down-wide-short.  This is the "edit order" button.
@@ -611,6 +618,19 @@ The settings page should show which version is running, and have a button to che
 - **New notes:** the row's choices set the new-note dropdowns exactly like a tab's own filter (one ticked tag is locked in; several mean one is required), so new notes stay visible.
 - **Lifetime and new notes:** new notes are always New, and there's no Lifetime dropdown to change that. If the tab or the row hides New notes, the note is still added, and a short notice says "Note added, but this tab doesn't show New notes." for a few seconds.
 - **While editing,** the row is blocked like the tabs, so the note being edited can't be filtered out mid-edit.
+
+### Search
+- **Button:** `fa-magnifying-glass`, the same 24px size, just right of the "reset filters" button. While search is on it's filled in green, like the list-check button. It's on every tab, "All" included.
+- **Search box:** a single-line text box on its own line at the bottom of the filter row, shown while search is on. It gets the focus when search is turned on. While a note is being edited it's blocked, like the rest of the row.
+- **Matching:**
+  - The text is split into words, and a note matches if every word appears in it, in any order, ignoring case. So "tulip bulbs" finds "Buy bulbs for the tulips".
+  - The title is searched, and for long-form notes, the typed details too.
+  - Handwritten titles and drawn details can't be searched, so while there's text in the box, notes with a handwritten title are hidden.
+  - Empty or blank text doesn't filter at all.
+- **On top of the other filters:** search only narrows what the tab and the filter row already show, so Bin notes stay hidden unless the filters show them. When nothing matches, the list says "No notes match the search." A new note that doesn't match is still added, with the notice "Note added, but it doesn't match the search."
+- **Turning it off:** clicking the button again, or Escape while in the search box, clears the text and closes the box.
+- **Not remembered:** while it's on, the search and its text stay as they are when switching tabs. It isn't saved on the device, so it's off when the app opens.
+- **Offline:** it works offline, since all the notes are already on the device.
 
 ### Note ordering
 - **Stored on the tab:** each tab has `noteOrder`, an array of note ids (empty or missing for tabs saved before this). The save-file format stays version 2, since a missing `noteOrder` simply means empty. The tab editor doesn't change it. It's set with `PUT /api/tabs/:id/order` and `{ noteOrder: number[] }`. The server keeps only ids of existing notes, drops duplicates, saves, and tells other pages to reload. If two browsers reorder at the same time, the last save wins.

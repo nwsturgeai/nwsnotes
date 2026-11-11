@@ -365,6 +365,7 @@ a:focus-visible {
 .filter-row {
   display: flex;
   flex: none;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   padding: 0.35rem 0.5rem;
@@ -590,6 +591,26 @@ body:has(.note-list li.dragging) {
 .note-button:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* A toggle that's on (search): filled in green, like the list-check button. */
+.note-button.pressed,
+.note-button.pressed:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* The search box: its own line at the bottom of the filter row. */
+.filter-search {
+  flex: 1 0 100%;
+  order: 10;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
 }
 
 /* Light icons, so they stay visible on the dark Archived and Bin rows. */
