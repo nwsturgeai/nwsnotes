@@ -204,6 +204,13 @@ When a selection is made in any of these dropdowns, the notes shown in the list 
 The selections within the dropdowns should be saved into Browser Local Storage.  The selections should be linked to the Tab in which they were made. The next time this tab is opened on this device, the same selections that were there the last time should be preselected.
 Just to the right of these dropdowns (i.e. not all the way to the right of the screen), there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.
 
+### Search
+
+To the right of the "reset filters" button (in the second header area showing the additional tab filters) there should be another icon button for search.
+Clicking the search button causes it to become selected / active, clicking again causes it to become deselected / inactive.
+Whilst the search button is active, the second header area is extended vertically downwards to make space for a new single-line textbox - the search box.
+If any text is typed into the search box, the list of notes shown in the main area is additionally filtered just to show notes where the title contains the text typed (case insensitive).  This also causes all notes with a title image (i.e. no title text) to become hidden.
+
 
 ## Setting the order of notes
 In the second header (with the additional filter dropdowns): to the far right of the screen, have a new button with icon fa-arrow-down-wide-short.  This is the "edit order" button.
