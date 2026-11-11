@@ -27,6 +27,7 @@ import {
   faGripVertical,
   faHourglass,
   faListCheck,
+  faMagnifyingGlass,
   faMaximize,
   faPen,
   faReplyAll,
@@ -284,10 +285,20 @@ export function NotesPage({
 
   // Hidden notes aren't changed, just not listed. Bin notes are hidden unless a filter ticks Bin.
   // A tab lists its ordered notes first, then the rest in creation order; "All" is in creation order.
+  /** Search: on while the box is shown; its text narrows the list further. Kept across tabs, not remembered. */
+  const [searchOn, setSearchOn] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const searchWords = useMemo(() => searchText.toLowerCase().split(/\s+/).filter(Boolean), [searchText]);
+
   const visibleNotes = useMemo(() => {
-    const matching = notes.filter((note) => noteMatchesFilters(note, allFilters));
+    const matching = notes.filter((note) => noteMatchesFilters(note, allFilters) && matchesSearch(note, searchWords));
     return selectedTab ? orderNotes(matching, selectedTab.noteOrder) : matching;
-  }, [notes, allFilters, selectedTab]);
+  }, [notes, allFilters, searchWords, selectedTab]);
+
+  function toggleSearch() {
+    setSearchOn(!searchOn);
+    setSearchText("");
+  }
 
   const onAll = selectedTab === undefined;
   useEffect(() => {
@@ -631,6 +642,8 @@ export function NotesPage({
               ? "Note added, but it doesn't match this tab, so it isn't shown here."
               : "Note added, but this tab doesn't show New notes.",
           });
+        } else if (!matchesSearch(note, searchWords)) {
+          setNotice({ text: "Note added, but it doesn't match the search." });
         } else if (atTop && selectedTab && note.id < 0) {
           setNotice({ text: "Added at the bottom: adding at the top isn't available offline." });
         }
@@ -792,67 +805,95 @@ export function NotesPage({
 
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
-      {/* A tab that filters on every category has no dropdowns, but still needs the edit-order button. */}
-      {(extraCategories.length > 0 || selectedTab || bulk) && (
-        <div className="filter-row" aria-label="More filters for this tab">
-          {bulk ? (
-            // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
-            <div className="bulk-select-all" role="group" aria-label="Select notes">
-              <button
-                type="button"
-                className="small-button"
-                title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Select every note in the list"}
-                disabled={bulk.changes.size > 0}
-                onClick={() => selectBulkNotes(visibleNotes.map((note) => note.id))}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                className="small-button"
-                title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Unselect every note"}
-                disabled={bulk.changes.size > 0}
-                onClick={() => selectBulkNotes([])}
-              >
-                None
-              </button>
-            </div>
-          ) : (
-            <>
-              {extraCategories.length > 0 && (
-                <TagPickers
-                  categories={extraCategories}
-                  selection={extraSelection}
-                  onChange={setExtraSelection}
-                  disabled={rowBlocked}
-                  checkLists
-                />
-              )}
-              <IconButton
-                icon={faReplyAll}
-                label={rowBlocked ? rowHint : "Reset filters"}
+      {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
+      <div className="filter-row" aria-label="More filters for this tab">
+        {bulk ? (
+          // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
+          <div className="bulk-select-all" role="group" aria-label="Select notes">
+            <button
+              type="button"
+              className="small-button"
+              title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Select every note in the list"}
+              disabled={bulk.changes.size > 0}
+              onClick={() => selectBulkNotes(visibleNotes.map((note) => note.id))}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className="small-button"
+              title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Unselect every note"}
+              disabled={bulk.changes.size > 0}
+              onClick={() => selectBulkNotes([])}
+            >
+              None
+            </button>
+          </div>
+        ) : (
+          <>
+            {extraCategories.length > 0 && (
+              <TagPickers
+                categories={extraCategories}
+                selection={extraSelection}
+                onChange={setExtraSelection}
                 disabled={rowBlocked}
-                onClick={() => setExtraSelection({})}
+                checkLists
               />
-            </>
-          )}
-          {selectedTab && (
-            <div className="filter-row-end">
-              <IconButton
-                icon={ordering ? faClipboardCheck : faArrowDownWideShort}
-                label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
-                disabled={!ordering && (editBlocked || offline)}
-                onClick={() => setOrdering(!ordering)}
+            )}
+            <IconButton
+              icon={faReplyAll}
+              label={rowBlocked ? rowHint : "Reset filters"}
+              disabled={rowBlocked}
+              onClick={() => setExtraSelection({})}
+            />
+            <IconButton
+              icon={faMagnifyingGlass}
+              label={rowBlocked ? rowHint : searchOn ? "Close search" : "Search"}
+              disabled={rowBlocked}
+              pressed={searchOn}
+              onClick={toggleSearch}
+            />
+            {searchOn && (
+              <input
+                className="filter-search"
+                type="search"
+                aria-label="Search notes"
+                placeholder="Search titles and long-form text"
+                autoComplete="off"
+                autoFocus
+                value={searchText}
+                disabled={rowBlocked}
+                onChange={(event) => setSearchText(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    toggleSearch();
+                  }
+                }}
               />
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </>
+        )}
+        {selectedTab && (
+          <div className="filter-row-end">
+            <IconButton
+              icon={ordering ? faClipboardCheck : faArrowDownWideShort}
+              label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
+              disabled={!ordering && (editBlocked || offline)}
+              onClick={() => setOrdering(!ordering)}
+            />
+          </div>
+        )}
+      </div>
 
       <div className="note-list" ref={listRef}>
         {visibleNotes.length === 0 ? (
           <p className="empty">
-            {allFilters.length > 0 ? "No notes in this tab yet." : "No notes yet. Add your first one below."}
+            {searchWords.length > 0
+              ? "No notes match the search."
+              : allFilters.length > 0
+                ? "No notes in this tab yet."
+                : "No notes yet. Add your first one below."}
           </p>
         ) : (
           // Notes run top to bottom down each column, then on to the next column to the right.
@@ -1239,14 +1280,25 @@ function IconButton({
   label,
   disabled,
   onClick,
+  pressed,
 }: {
   icon: IconDefinition;
   label: string;
   disabled: boolean;
   onClick: () => void;
+  /** For a toggle: filled in while it's on. */
+  pressed?: boolean;
 }) {
   return (
-    <button type="button" className="note-button" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
+    <button
+      type="button"
+      className={pressed ? "note-button pressed" : "note-button"}
+      aria-label={label}
+      aria-pressed={pressed}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
       <FontAwesomeIcon icon={icon} />
     </button>
   );
@@ -1278,6 +1330,17 @@ function pngSize(dataUrl: string): { width: number; height: number } | undefined
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Search: whether every word appears (ignoring case) in the note's typed title or typed long-form
+ * details. With words to find, a handwritten title never matches. No words: every note matches.
+ */
+function matchesSearch(note: Note, words: string[]): boolean {
+  if (words.length === 0) return true;
+  if (note.titleText === undefined) return false;
+  const text = `${note.titleText}\n${note.detailsText ?? ""}`.toLowerCase();
+  return words.every((word) => text.includes(word));
 }
 
 /**
