@@ -358,8 +358,8 @@ In the main notes list, when a note is displayed with a tag that has a Hue assig
 If the note has multiple tags-with-hue, then take the hue from the first such tag.
 The hue-specific background colour should override the default colour for notes that are New, Active, Waiting, Archived.  Notes with tag "Bin" should always have the Bin colouring.
 New/Active tags should have background using the selected hue and: Value 100%, Saturation: 18%.
-Waiting tags should have background using the selected hue and: Value 80%, Saturation: 25%.
-Archived tags should have background using the selected hue and: Value 65%, Saturation: 30%.
+Waiting tags should have background using the selected hue and: Value 85%, Saturation: 25%.
+Archived tags should have background using the selected hue and: Value 55%, Saturation: 30%.
 
 
 ## Due date
@@ -501,8 +501,8 @@ The settings page should show which version is running, and have a button to che
 - **Colours from a hue:** worked out as HSV (hue, saturation, value) and drawn with the matching CSS `hsl()`:
   - the settings and category page boxes: saturation 100%, value 100%;
   - New and Active notes: saturation 18%, value 100%;
-  - Waiting notes: saturation 25%, value 80%;
-  - Archived notes: saturation 30%, value 65%.
+  - Waiting notes: saturation 25%, value 85%;
+  - Archived notes: saturation 30%, value 55%.
 - **Settings page:** in the Categories section, each tag with a hue has a small box (0.75rem square) of its colour just before its name.
 - **Category page:** each tag row has a larger box (about 2rem square) before its name box. It's empty, with a thin border, when the tag has no hue. Tapping it opens the hue picker.
 - **Hue picker:** the app's own pop-up, titled with the tag's name.

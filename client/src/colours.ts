@@ -11,8 +11,8 @@ const SHADES = {
   swatch: { s: 1, v: 1 },
   /** Notes that are New or Active. */
   active: { s: 0.18, v: 1 },
-  waiting: { s: 0.25, v: 0.8 },
-  archived: { s: 0.3, v: 0.65 },
+  waiting: { s: 0.25, v: 0.85 },
+  archived: { s: 0.3, v: 0.55 },
 } as const;
 
 export type Shade = keyof typeof SHADES;
