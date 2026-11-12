@@ -202,7 +202,8 @@ Underneath the main "Tabs" header, a second header area is shown within the tab 
 The second header area should show a set of dropdowns, one for each Category that is not specified in the Tab definition. These dropdowns behave the same way as when defining a Tab.
 When a selection is made in any of these dropdowns, the notes shown in the list should be filtered using these selections in addition to any filtering from the Tab definition, using the same filtering logic as in the Tab definition.
 The selections within the dropdowns should be saved into Browser Local Storage.  The selections should be linked to the Tab in which they were made. The next time this tab is opened on this device, the same selections that were there the last time should be preselected.
-Just to the right of these dropdowns (i.e. not all the way to the right of the screen), there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.
+In each of these dropdowns, the list of options should contain each Tag name in this category.  After each tag name, in brackets, there should be a number showing how many notes would be visible after updating the filters if this tag were to be selected.  At the bottom of the list of options should be one unselectable option, with text "TOTAL: n", where n gives the number of notes currently shown.
+Just to the right of these dropdowns (i.e. not all the way to the right of the screen), there should be a "reset filters" button (same size as edit/archive/reinstate) (using icon fa-reply-all).  Clicking this button should clear the selections from all the dropdowns so that the Tab then shows notes filtered just by the Tab definition.  This reset filters button should only appear / be visible when any of the dropdowns have had any tags selected.
 
 ### Search
 
@@ -618,6 +619,14 @@ The settings page should show which version is running, and have a button to che
 - **New notes:** the row's choices set the new-note dropdowns exactly like a tab's own filter (one ticked tag is locked in; several mean one is required), so new notes stay visible.
 - **Lifetime and new notes:** new notes are always New, and there's no Lifetime dropdown to change that. If the tab or the row hides New notes, the note is still added, and a short notice says "Note added, but this tab doesn't show New notes." for a few seconds.
 - **While editing,** the row is blocked like the tabs, so the note being edited can't be filtered out mid-edit.
+- **Note counts in the dropdowns:** in the filter row's dropdowns only (not the new-note area or the tab editor), each tag is followed by a count in brackets, e.g. "High (4)".
+  - **What it counts:** the notes that have that tag and pass every other filter: the tab's own filter, the other dropdowns in the row, and the search. The tag's own dropdown is left out, so a ticked tag is counted the same way.
+  - So with nothing ticked in a category, a tag's count is exactly how many notes ticking it would show. The counts in a dropdown don't change as tags in that same dropdown are ticked.
+  - Bin notes count only under a Lifetime "Bin" tag, or when the filters show Bin, as in the list.
+  - A tag with no notes shows "(0)" in grey text, and can still be ticked.
+  - The counts update with the list, e.g. after notes are added or changed, or the search changes.
+- **TOTAL line:** the last line of each of these dropdowns, under a thin divider, is "TOTAL: n", the number of notes the list shows now (search included), in grey. It can't be clicked or chosen.
+- **Reset filters only when needed:** the "reset filters" button is shown only while at least one tag is ticked in the row. When it's hidden, it takes no space, so the search button moves left into its place.
 
 ### Search
 - **Button:** `fa-magnifying-glass`, the same 24px size, just right of the "reset filters" button. While search is on it's filled in green, like the list-check button. It's on every tab, "All" included.
