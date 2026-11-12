@@ -1441,6 +1441,27 @@ body:has(.note-list li.dragging) {
   font-size: 0.85rem;
 }
 
+/* The filter row's note counts: "(4)" after each tag, and the TOTAL line at the bottom (not an option). */
+.tag-count {
+  margin-left: -0.15rem;
+  color: var(--text);
+  font-size: 0.85em;
+}
+
+.tag-count.none {
+  color: var(--muted);
+}
+
+.tag-dropdown-total {
+  margin-top: 0.25rem;
+  padding: 0.45rem 0.6rem 0.2rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: default;
+  user-select: none;
+}
+
 /* ---- Settings page ------------------------------------------------------ */
 
 .settings-page {

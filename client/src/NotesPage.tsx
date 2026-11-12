@@ -295,6 +295,26 @@ export function NotesPage({
     return selectedTab ? orderNotes(matching, selectedTab.noteOrder) : matching;
   }, [notes, allFilters, searchWords, selectedTab]);
 
+  /** The filter row's ticked tags, as filters (the reset button only shows while there are some). */
+  const extraFilters = useMemo(() => selectionToFilters(extraCategories, extraSelection), [extraCategories, extraSelection]);
+
+  /**
+   * The filter row's note counts: for each tag, the notes listed if it were the only tag ticked in its
+   * dropdown, with every other filter (the tab, the other dropdowns, the search) as it is.
+   */
+  const filterCounts = useMemo(() => {
+    const searched = notes.filter((note) => matchesSearch(note, searchWords));
+    const byTag = new Map<number, number>();
+    for (const category of extraCategories) {
+      const others = [...tabFilters, ...extraFilters.filter((filter) => filter.categoryId !== category.id)];
+      for (const tag of category.tags) {
+        const filters = [...others, { categoryId: category.id, tagIds: [tag.id] }];
+        byTag.set(tag.id, searched.filter((note) => noteMatchesFilters(note, filters)).length);
+      }
+    }
+    return { byTag, total: visibleNotes.length };
+  }, [notes, searchWords, extraCategories, tabFilters, extraFilters, visibleNotes.length]);
+
   function toggleSearch() {
     setSearchOn(!searchOn);
     setSearchText("");
@@ -838,14 +858,18 @@ export function NotesPage({
                 onChange={setExtraSelection}
                 disabled={rowBlocked}
                 checkLists
+                counts={filterCounts}
               />
             )}
-            <IconButton
-              icon={faReplyAll}
-              label={rowBlocked ? rowHint : "Reset filters"}
-              disabled={rowBlocked}
-              onClick={() => setExtraSelection({})}
-            />
+            {/* Only while a tag is ticked; otherwise it takes no space. */}
+            {extraFilters.length > 0 && (
+              <IconButton
+                icon={faReplyAll}
+                label={rowBlocked ? rowHint : "Reset filters"}
+                disabled={rowBlocked}
+                onClick={() => setExtraSelection({})}
+              />
+            )}
             <IconButton
               icon={faMagnifyingGlass}
               label={rowBlocked ? rowHint : searchOn ? "Close search" : "Search"}
