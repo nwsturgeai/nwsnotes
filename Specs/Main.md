@@ -348,6 +348,20 @@ Archived to Bin: Clicking this button will update all notes tagged as "Archived"
 Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
 
 
+## Colours
+It should be possible for tags to be assigned a Hue value.
+I want to use Hue values (in degrees) so that I can show different shades of the same colour by varying the Saturation and Value.
+The main settings page should display any assigned Hue values (using Saturation 100% and Value 100%) in a small box alongside each tag name.
+The edit category page should show the Hue value in a larger box next to the tag name.  Clicking the box should bring up a modal dialog graphically displaying possible hues.  The user should be able to click to select a Hue.  Updates to selected Hues should be saved when the Category is saved.
+
+In the main notes list, when a note is displayed with a tag that has a Hue assigned, then that hue should be used to set the background colour of the note.
+If the note has multiple tags-with-hue, then take the hue from the first such tag.
+The hue-specific background colour should override the default colour for notes that are New, Active, Waiting, Archived.  Notes with tag "Bin" should always have the Bin colouring.
+New/Active tags should have background using the selected hue and: Value 100%, Saturation: 18%.
+Waiting tags should have background using the selected hue and: Value 80%, Saturation: 25%.
+Archived tags should have background using the selected hue and: Value 65%, Saturation: 30%.
+
+
 ## Due date
 
 In the notes list, underneath each note's three right-hand buttons, the creation date-time should be displayed in small grey text, preceded by the text-label "Cr. ".
