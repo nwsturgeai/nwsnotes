@@ -48,6 +48,8 @@ export interface Tag {
   /** Unique across all categories, assigned by the server, starting at 1. */
   id: number;
   name: string;
+  /** The tag's colour, as a hue in whole degrees (0-359); notes with the tag are tinted with it. */
+  hue?: number;
 }
 
 /** A group of tags. Tags can be added and renamed, but not deleted. */
@@ -198,7 +200,7 @@ export function sameTags(a: number[], b: number[]): boolean {
 export interface CategoryRequest {
   name: string;
   multiSelect: boolean;
-  tags: { id?: number; name: string }[];
+  tags: { id?: number; name: string; hue?: number }[];
 }
 
 /** Body of POST /api/login. */
@@ -385,13 +387,17 @@ export function validateCategory(
   }
   const tags: CategoryRequest["tags"] = [];
   for (const rawTag of input.tags as unknown[]) {
-    const tag = (typeof rawTag === "object" && rawTag !== null ? rawTag : {}) as { id?: unknown; name?: unknown };
+    const tag = (typeof rawTag === "object" && rawTag !== null ? rawTag : {}) as { id?: unknown; name?: unknown; hue?: unknown };
+    if (tag.hue !== undefined && tag.hue !== null && !(Number.isInteger(tag.hue) && (tag.hue as number) >= 0 && (tag.hue as number) < 360)) {
+      return { ok: false, error: "A tag's colour must be a hue from 0 to 359." };
+    }
+    const hue = typeof tag.hue === "number" ? { hue: tag.hue } : {};
     if (tag.id === undefined) {
       // A new tag row left empty is ignored.
       if (typeof tag.name === "string" && tag.name.trim() === "") continue;
       const tagName = validateName(tag.name, "A tag name");
       if (!tagName.ok) return tagName;
-      tags.push({ name: tagName.value });
+      tags.push({ name: tagName.value, ...hue });
     } else {
       const current = existing?.tags.find((t) => t.id === tag.id);
       if (!current) {
@@ -406,7 +412,7 @@ export function validateCategory(
           ? { ok: false, error: `The tag "${current.name}" can't be given an empty name; use its bin button to delete it.` }
           : tagName;
       }
-      tags.push({ id: current.id, name: tagName.value });
+      tags.push({ id: current.id, name: tagName.value, ...hue });
     }
   }
   // Existing tags left out are deleted (the server removes them from notes and tabs).

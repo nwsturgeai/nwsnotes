@@ -14,6 +14,7 @@ import {
 import { ApiError, api } from "./api";
 import { buildTime, checkForUpdate, reloadToUpdate, updatesAvailable, useUpdateReady } from "./appUpdate";
 import { reminderState, turnOffReminders, turnOnReminders, type ReminderState } from "./reminders";
+import { hueColour } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { pathFor, type Page } from "./route";
 import { MAX_COLUMNS, PEN_WIDTHS, usePenWidth } from "./stylusMode";
@@ -352,7 +353,18 @@ export function SettingsPage({
                   <span className="category-name">{category.name}</span>
                   {category.system && <span className="category-kind">built-in</span>}
                   {category.multiSelect && <span className="category-kind">multi-select</span>}
-                  <span className="category-tags">{category.tags.map((tag) => tag.name).join(", ")}</span>
+                  <span className="category-tags">
+                    {category.tags.map((tag, index) => (
+                      <span key={tag.id}>
+                        {index > 0 && ", "}
+                        {/* A tag with a colour has a small box of it before its name. */}
+                        {tag.hue !== undefined && (
+                          <span className="hue-dot" style={{ background: hueColour(tag.hue, "swatch") }} aria-hidden />
+                        )}
+                        {tag.name}
+                      </span>
+                    ))}
+                  </span>
                 </>
               );
               const page: Page = { name: "category", id: category.id };

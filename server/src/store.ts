@@ -667,7 +667,7 @@ export class NoteStore {
   /** Gives new tags the next ids; tag ids are unique across all categories. */
   private withTagIds(tags: CategoryRequest["tags"]): Category["tags"] {
     let nextId = this.categories.flatMap((c) => c.tags).reduce((max, t) => Math.max(max, t.id), 0) + 1;
-    return tags.map((tag) => ({ id: tag.id ?? nextId++, name: tag.name }));
+    return tags.map((tag) => ({ id: tag.id ?? nextId++, name: tag.name, ...(tag.hue !== undefined && { hue: tag.hue }) }));
   }
 
   private enqueue<T>(change: () => Promise<T>): Promise<T> {

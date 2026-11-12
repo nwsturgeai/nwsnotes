@@ -3,7 +3,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import { NAME_MAX_LENGTH, validateCategory, type Category, type CategoryRequest, type Note } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { hueColour } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { HuePicker } from "./HuePicker";
 
 interface Props {
   /** "new" to add a category. */
@@ -22,6 +24,8 @@ interface TagRow {
   key: number;
   id?: number;
   name: string;
+  /** The tag's colour (degrees), if it has one. */
+  hue?: number;
 }
 
 /** Adding and editing a category share this page. */
@@ -54,7 +58,7 @@ function CategoryForm({
 }: Props & { existing: Category | undefined }) {
   // The form starts from the saved category and isn't changed by live updates while open.
   const nextKey = useRef(0);
-  const newRow = (tag?: { id: number; name: string }): TagRow => ({ key: nextKey.current++, ...tag, name: tag?.name ?? "" });
+  const newRow = (tag?: { id: number; name: string; hue?: number }): TagRow => ({ key: nextKey.current++, ...tag, name: tag?.name ?? "" });
   const [name, setName] = useState(existing?.name ?? "");
   const [multiSelect, setMultiSelect] = useState(existing?.multiSelect ?? false);
   const [rows, setRows] = useState<TagRow[]>(() => (existing ? existing.tags.map((tag) => newRow(tag)) : [newRow()]));
@@ -63,6 +67,12 @@ function CategoryForm({
   /** Asking before saving, when deleted tags are on notes. */
   const [confirming, setConfirming] = useState<{ message: string; request: CategoryRequest }>();
   const focusKey = useRef<number>(undefined);
+  /** The tag row whose colour is being chosen. */
+  const [pickingHueFor, setPickingHueFor] = useState<TagRow>();
+
+  function setRowHue(key: number, hue: number | undefined) {
+    setRows((current) => current.map((row) => (row.key === key ? { ...row, hue } : row)));
+  }
 
   function setRowName(key: number, value: string) {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, name: value } : row)));
@@ -126,7 +136,11 @@ function CategoryForm({
     const request: CategoryRequest = {
       name,
       multiSelect,
-      tags: rows.map((row) => (row.id === undefined ? { name: row.name } : { id: row.id, name: row.name })),
+      tags: rows.map((row) => ({
+        ...(row.id !== undefined && { id: row.id }),
+        name: row.name,
+        ...(row.hue !== undefined && { hue: row.hue }),
+      })),
     };
     const check = validateCategory(request, categories, existing);
     if (!check.ok) {
@@ -201,6 +215,16 @@ function CategoryForm({
           <legend>Tags</legend>
           {rows.map((row, index) => (
             <div key={row.key} className="tag-row">
+              {/* The tag's colour: tapping opens the hue picker. Saved with the category. */}
+              <button
+                type="button"
+                className={row.hue === undefined ? "hue-box none" : "hue-box"}
+                style={row.hue === undefined ? undefined : { background: hueColour(row.hue, "swatch") }}
+                aria-label={`Colour of ${row.name || `tag ${index + 1}`}: ${row.hue === undefined ? "none" : `hue ${row.hue}°`}`}
+                title={row.hue === undefined ? "Choose a colour" : `Colour: hue ${row.hue}°`}
+                disabled={saving}
+                onClick={() => setPickingHueFor(row)}
+              />
               <input
                 type="text"
                 aria-label={`Tag ${index + 1}`}
@@ -274,6 +298,17 @@ function CategoryForm({
           </button>
         </div>
       </form>
+      {pickingHueFor && (
+        <HuePicker
+          tagName={pickingHueFor.name || "New tag"}
+          hue={pickingHueFor.hue}
+          onSet={(hue) => {
+            setRowHue(pickingHueFor.key, hue);
+            setPickingHueFor(undefined);
+          }}
+          onCancel={() => setPickingHueFor(undefined)}
+        />
+      )}
       {confirming && (
         <ConfirmDialog
           message={confirming.message}

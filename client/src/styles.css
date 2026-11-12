@@ -493,11 +493,83 @@ body:has(.note-list li.dragging) {
   background: #b00000;
 }
 
-/* Handwriting on these rows sits on the row's colour rather than paper. */
+/* Handwriting on these rows, and on rows tinted with a tag's colour, sits on the row's colour rather than paper. */
 .note-list li.waiting .note-image,
 .note-list li.archived .note-image,
-.note-list li.binned .note-image {
+.note-list li.binned .note-image,
+.note-list li.tinted .note-image {
   background: transparent;
+}
+
+/* ---- Tag colours (hues) --------------------------------------------------- */
+
+/* The settings page: a small box of the colour before a tag's name. */
+.hue-dot {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.25rem;
+  border-radius: 2px;
+  vertical-align: -0.05rem;
+}
+
+/* The category page: a larger box before each tag's name box; tapping it opens the picker. */
+.hue-box {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hue-box.none {
+  background: var(--surface);
+}
+
+.hue-ring {
+  position: relative;
+  margin: 0 auto 1rem;
+}
+
+.hue-swatch {
+  position: absolute;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.hue-swatch.chosen {
+  box-shadow: 0 0 0 3px var(--text);
+}
+
+/* In the ring's middle: the chosen colour as it looks on New/Active, Waiting and Archived notes. */
+.hue-previews {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  /* It covers the ring, so taps must pass through to the swatches. */
+  pointer-events: none;
+}
+
+.hue-preview {
+  width: 7.5rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: #000;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.hue-preview.none {
+  color: var(--muted);
 }
 
 /* The title and pills sit in the middle of the row's height (the buttons and date stay at the top). */

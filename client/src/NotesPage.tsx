@@ -56,6 +56,7 @@ import {
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { offlineApi } from "./offline";
+import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
 import { useExtraFilters } from "./extraFilters";
@@ -928,11 +929,17 @@ export function NotesPage({
               const dragging = note.id === drag?.noteId;
               const selected = bulk?.noteIds.includes(note.id) ?? false;
               const lifetime = lifetimeOf(note);
+              // A tag's colour tints the row, shaded by its Lifetime (never Bin notes). While a coloured note is
+              // being edited it shows the edit highlight instead, whatever its Lifetime.
+              const editing = note.id === editingNote?.id;
+              const coloured = lifetime !== LIFETIME_BIN && noteHue(note, categories) !== undefined;
+              const hue = coloured && !editing ? noteHue(note, categories) : undefined;
               const classes = [
                 dragging && "dragging",
-                note.id === editingNote?.id && "editing",
-                lifetime === LIFETIME_WAITING && "waiting",
-                lifetime === LIFETIME_ARCHIVED && "archived",
+                editing && "editing",
+                hue !== undefined && "tinted",
+                !coloured && lifetime === LIFETIME_WAITING && "waiting",
+                !coloured && lifetime === LIFETIME_ARCHIVED && "archived",
                 lifetime === LIFETIME_BIN && "binned",
                 selected && "selected",
                 bulk && (bulk.changes.size > 0 ? "selection-locked" : "selectable"),
@@ -948,7 +955,10 @@ export function NotesPage({
                   key={note.id}
                   data-note-id={note.id}
                   className={classes.join(" ") || undefined}
-                  style={dragging ? { top: drag.top, left: drag.left, width: drag.width, height: drag.height } : undefined}
+                  style={{
+                    ...(hue !== undefined && { background: noteBackground(note, hue) }),
+                    ...(dragging && { top: drag.top, left: drag.left, width: drag.width, height: drag.height }),
+                  }}
                   // Multi-select: tapping anywhere on the row toggles it (the greyed buttons do nothing).
                   onClick={bulk ? () => toggleBulkNote(note.id) : undefined}
                   aria-selected={bulk ? selected : undefined}
