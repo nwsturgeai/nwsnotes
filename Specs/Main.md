@@ -348,6 +348,20 @@ Archived to Bin: Clicking this button will update all notes tagged as "Archived"
 Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There should be a confirmation modal asking if the user is sure, saying how many notes will be deleted.
 
 
+## Colours
+It should be possible for tags to be assigned a Hue value.
+I want to use Hue values (in degrees) so that I can show different shades of the same colour by varying the Saturation and Value.
+The main settings page should display any assigned Hue values (using Saturation 100% and Value 100%) in a small box alongside each tag name.
+The edit category page should show the Hue value in a larger box next to the tag name.  Clicking the box should bring up a modal dialog graphically displaying possible hues.  The user should be able to click to select a Hue.  Updates to selected Hues should be saved when the Category is saved.
+
+In the main notes list, when a note is displayed with a tag that has a Hue assigned, then that hue should be used to set the background colour of the note.
+If the note has multiple tags-with-hue, then take the hue from the first such tag.
+The hue-specific background colour should override the default colour for notes that are New, Active, Waiting, Archived.  Notes with tag "Bin" should always have the Bin colouring.
+New/Active tags should have background using the selected hue and: Value 100%, Saturation: 18%.
+Waiting tags should have background using the selected hue and: Value 85%, Saturation: 25%.
+Archived tags should have background using the selected hue and: Value 55%, Saturation: 30%.
+
+
 ## Due date
 
 In the notes list, underneath each note's three right-hand buttons, the creation date-time should be displayed in small grey text, preceded by the text-label "Cr. ".
@@ -480,6 +494,28 @@ The settings page should show which version is running, and have a button to che
 - "Save" sends the whole category in one call and returns to the settings page. If saving fails, the error is shown on the page and the edits are kept so you can retry.
 - "Cancel" discards the edits and returns to the settings page; for a new category nothing is created.
 - If another page saves the same category while it is being edited, the last Save wins. An open edit form isn't changed by live updates.
+
+### Tag colours (hues)
+- **Stored on the tag:** an optional `hue`, a whole number of degrees from 0 to 359. It's saved with the category: `POST` and `PUT /api/categories` send it for each tag, and the server checks it. A tag without one has no colour. The save-file stays version 2.
+- **Only your own categories:** the built-in Lifetime category can't be edited, so its tags never have a hue.
+- **Colours from a hue:** worked out as HSV (hue, saturation, value) and drawn with the matching CSS `hsl()`:
+  - the settings and category page boxes: saturation 100%, value 100%;
+  - New and Active notes: saturation 18%, value 100%;
+  - Waiting notes: saturation 25%, value 85%;
+  - Archived notes: saturation 30%, value 55%.
+- **Settings page:** in the Categories section, each tag with a hue has a small box (0.75rem square) of its colour just before its name.
+- **Category page:** each tag row has a larger box (about 2rem square) before its name box. It's empty, with a thin border, when the tag has no hue. Tapping it opens the hue picker.
+- **Hue picker:** the app's own pop-up, titled with the tag's name.
+  - It shows 36 colour swatches, one every 10°, in a ring.
+  - Tapping a swatch selects it, with a ring around it, and shows a preview of the three note shades: New/Active, Waiting and Archived.
+  - Buttons: "Set colour" (the green main button), "No colour" (only when the tag has a hue) and "Cancel". Escape counts as Cancel.
+  - The chosen hue is only saved when the category is saved, like the other edits on the page.
+- **Note rows:** a note takes its colour from the first of its tags that has a hue, going by category order, then tag order within the category.
+  - It's shaded by its Lifetime: New/Active, Waiting or Archived, as above. Bin notes always keep the Bin colour.
+  - On a coloured row the buttons stay dark, Archived rows included, as the background is light enough.
+  - Handwritten notes on coloured rows have transparent "paper", so the colour shows behind the ink.
+  - A note being edited still shows the pale green edit highlight instead of its colour. A note selected in multi-select keeps its colour, and its selection circle shows it's selected.
+- **Not coloured:** tag pills, the tag dropdowns and the tab editor are unchanged.
 
 ### When a note's tags last changed
 - **Stored on the note:** `tagsChangedDateTime` (ISO 8601, UTC), next to `createdDateTime` and `lastModifiedDateTime`. It's in the API's notes and in the save-files. Nothing in the app shows it yet.
