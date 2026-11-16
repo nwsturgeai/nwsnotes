@@ -459,6 +459,7 @@ The settings page should show which version is running, and have a button to che
 - **Icon buttons:** Add (`fa-circle-plus`), Update (`fa-circle-check`), Cancel (`fa-x`) and Clear (`fa-delete-left`) show only an icon, with a tooltip and screen-reader label giving the action. All four are the same size as the Settings cog (40px square). Add and Update are filled in the accent colour; Cancel and Clear are outlined.
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible. (The box is made read-only, not disabled, while saving, since disabling it would take the focus away.)
 - When the page loads, the list starts scrolled to the bottom.
+- **Keeping the scroll position:** the list only jumps to the bottom when the page opens, when a note is added (here or on another device), or when the tab, the filter row or the search changes. When a note leaves the list (archived, waiting or moved to the bin where the tab hides it, or changed on another device), the list stays where it was. The browser's scroll anchoring keeps the notes in view from moving.
 - In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
 
 ### Stylus mode
