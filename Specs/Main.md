@@ -302,6 +302,17 @@ These new regular notes should have their "parentId" field populated with the id
 When these regular notes are shown in the notes-list: after any pills for their tags, the regular note should have an additional final pill with the title of the long-form note, truncated to at most 20 characters.  This final pill should have the same colour as the "Long Form" pill described above.
 
 
+## Text formatting
+Typed note titles and typed long-form note contents support a simple kind of markdown:
+*text* renders as bold, with the asterisks disappearing.
+_text_ renders as underline, with the underscores disappearing.
+/text/ renders as italic, with the slashes disappearing.
+Formatting resets at the start of a new line.
+In the long-form editor's text box, the formatting should show while typing (the markers can stay visible there).
+
+The whole app should use the font Atkinson Hyperlegible.
+
+
 ## Note Lifetime
 
 ### "Lifetime" system Category
@@ -437,6 +448,8 @@ The settings page should show which version is running, and have a button to che
 
 ### Appearance
 - Always light: dark text on light backgrounds, whatever the device's dark-mode setting (`color-scheme: light`, no dark-mode colours).
+- **Font:** Atkinson Hyperlegible Next everywhere, shipped with the app from `@fontsource-variable/atkinson-hyperlegible-next` (every weight in one file, upright only, Latin and Latin Extended). It's cached by the service worker like the app's other files, so it works offline. The device's own font is the fallback while it loads.
+  - The italic version isn't included, so wherever italic is used the browser slants the upright letters. Their widths stay the same, which the long-form formatting relies on (see "Text formatting").
 - **Width:** the app is at most 1280px wide. On a wider window it's centred, with the extra space split equally either side; the side areas are a slightly darker shade, with a thin line at the app's edges. The long-form editor stays within the same 1280px column.
 
 ### New-note area
@@ -824,6 +837,27 @@ The settings page should show which version is running, and have a button to che
 - **The notification:** "Due: <title>", or "A note is due" for handwritten notes, with the app's icon. A second one for the same note replaces the first. Tapping it brings the app to the front, or opens it.
 - **Service worker:** the generated service worker imports a small `push-sw.js` (via Workbox's `importScripts`), which shows the notifications and handles taps.
 - **Offline:** a due date set offline gets its reminder once the change reaches the server.
+
+### Text formatting
+- **Stored as typed:** the markers are kept in the text as typed. The server and the save-files don't change. Formatting is only how the app shows the text.
+- **No library:** a small parser in the app turns each line into React elements, with no HTML strings, so nothing typed can inject code into the page.
+- **When a marker counts** (the rule Org-mode uses), so everyday text like "and/or", "12/11/2026", web addresses, `file_name` and "2*3*4" stays as typed:
+  - An opening marker is at the start of a line, or after a space or one of `( [ { " '`, and is followed by a character that isn't a space.
+  - The closing marker is the next same marker on that line that comes straight after a character that isn't a space, and is followed by the end of the line, a space, or punctuation (`. , ; : ! ? ) ] } " '` or another marker).
+  - The text between the two markers needs at least one character.
+  - A marker without a partner on the same line just shows as typed. Formatting never carries onto the next line.
+- **Combining:** markers can be nested, e.g. `*_bold and underlined_*`.
+- **Where it shows formatted** (with the markers hidden):
+  - typed note titles in the notes list, long-form notes included.
+  - Everywhere else a title is shown as plain text, the markers are removed: the child notes' parent pill, reminder notifications, and notices that name a note.
+- **Where the markers show as typed:** the new-note and edit title boxes, and the long-form editor's title box.
+- **The long-form editor's text box (typed details):** the formatting shows while typing, with the markers dimmed in grey.
+  - It uses two exactly overlapping layers: a display layer underneath with the formatted text, and the real text box on top with invisible text, so typing, the cursor, selection, autocorrect, copy and paste and undo all work as before.
+  - Every letter must stay the same width in both layers, so nothing can drift. In the display layer, bold is drawn as the upright letters with a thin outline (`-webkit-text-stroke`) instead of a bolder weight, and italic is the slanted upright letters (the font has no italic version). Underline doesn't change widths.
+  - Both layers use the same font, size, line height, padding and wrapping, and scroll together.
+- **In the list:** bold uses the font's real bold weight, as nothing needs to line up there.
+- **Search** matches the text as typed, so searching "bold" finds `*bold*`.
+- **Handwritten titles and drawn details** aren't affected.
 
 ### Note lifetime
 - **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4, Waiting -5 (added later, so it can't be renumbered; it's still listed in the order New, Active, Waiting, Archived, Bin). It can't be edited or renamed, and user categories can't use its name.
