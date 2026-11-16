@@ -538,3 +538,92 @@ export function validateTab(
 
   return { ok: true, tab: { name: name.value, categories: filters } };
 }
+
+// ---- Text formatting -------------------------------------------------------
+
+/** A style the markers turn on: *bold*, _underline_ and /italic/. */
+export type TextStyle = "bold" | "underline" | "italic";
+
+const STYLE_MARKERS: Record<string, TextStyle> = { "*": "bold", _: "underline", "/": "italic" };
+/** What may come just before an opening marker, besides the start of the line or a space. */
+const BEFORE_OPENING = "([{\"'";
+/** What may come just after a closing marker, besides the end of the line or a space. */
+const AFTER_CLOSING = ".,;:!?)]}\"'";
+
+/** A run of a line's text: its styles, and whether it's one of the markers themselves. */
+export interface FormattedRun {
+  text: string;
+  styles: TextStyle[];
+  marker: boolean;
+}
+
+const isSpace = (char: string | undefined) => char !== undefined && /\s/.test(char);
+
+/** `insideFrom`: where the enclosing span's text starts, so its own opening marker can come just before. */
+function canOpen(line: string, at: number, insideFrom: number): boolean {
+  const before = line[at - 1];
+  const after = line[at + 1];
+  const startsWord = before === undefined || isSpace(before) || BEFORE_OPENING.includes(before) || (at === insideFrom && at > 0);
+  return startsWord && after !== undefined && !isSpace(after);
+}
+
+/** `insideTo`: where the enclosing span's closing marker is, so it can come just after. */
+function canClose(line: string, at: number, insideTo: number): boolean {
+  const before = line[at - 1];
+  const after = line[at + 1];
+  const endsWord = after === undefined || isSpace(after) || AFTER_CLOSING.includes(after) || at + 1 === insideTo;
+  return before !== undefined && !isSpace(before) && endsWord;
+}
+
+/**
+ * One line's runs (formatting never carries over a line break). A marker counts where it starts or
+ * ends a word, as in Org-mode, so "and/or" or "12/11/2026" stay as typed; one without a partner on
+ * the line is just text. Markers can be nested, e.g. "*_both_*". The runs' text adds up to the line.
+ */
+export function formatLine(line: string): FormattedRun[] {
+  const runs: FormattedRun[] = [];
+  const add = (text: string, styles: TextStyle[], marker = false) => {
+    if (text === "") return;
+    const last = runs.at(-1);
+    if (last && !marker && !last.marker && last.styles.join() === styles.join()) last.text += text;
+    else runs.push({ text, styles, marker });
+  };
+  const parse = (from: number, to: number, styles: TextStyle[]) => {
+    let plainFrom = from;
+    for (let at = from; at < to; at++) {
+      const style = STYLE_MARKERS[line[at]!];
+      if (!style || styles.includes(style) || !canOpen(line, at, from)) continue;
+      let close = -1;
+      for (let end = at + 2; end < to; end++) {
+        if (line[end] === line[at] && canClose(line, end, styles.length > 0 ? to : -1)) {
+          close = end;
+          break;
+        }
+      }
+      if (close < 0) continue;
+      add(line.slice(plainFrom, at), styles);
+      const inner = [...styles, style];
+      add(line[at]!, inner, true);
+      parse(at + 1, close, inner);
+      add(line[close]!, inner, true);
+      at = close;
+      plainFrom = close + 1;
+    }
+    add(line.slice(plainFrom, to), styles);
+  };
+  parse(0, line.length, []);
+  return runs;
+}
+
+/** Text with the formatting markers taken out, for places that show it plain (notifications, pills). */
+export function withoutMarkers(text: string): string {
+  return text
+    .split("\n")
+    .map((line) =>
+      formatLine(line)
+        .filter((run) => !run.marker)
+        .map((run) => run.text)
+        .join(""),
+    )
+    .join("\n");
+}

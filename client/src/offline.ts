@@ -5,6 +5,7 @@ import {
   LIFETIME_CHANGES,
   LIFETIME_NEW,
   sameTags,
+  withoutMarkers,
   type LifetimeChange,
   type NewNoteRequest,
   type Note,
@@ -413,7 +414,7 @@ let flushing = false;
 /** A short description of the note a change was for, for "changes lost" notices. */
 function describe(entry: OutboxEntry): string {
   const note = localNote(entry.kind === "add" ? entry.tempId : entry.noteId);
-  return note?.titleText ? `"${note.titleText}"` : "a handwritten note";
+  return note?.titleText ? `"${withoutMarkers(note.titleText)}"` : "a handwritten note";
 }
 
 async function send(entry: OutboxEntry): Promise<Note | undefined> {

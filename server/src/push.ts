@@ -1,6 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import webpush, { WebPushError, type PushSubscription } from "web-push";
+import { withoutMarkers } from "@nwsnotes/shared";
 import { RequestError, type NoteStore } from "./store.js";
 
 /** How often the server looks for notes that have fallen due. */
@@ -117,7 +118,7 @@ export class PushReminders {
       if (due.length === 0) return;
       for (const note of due) {
         await this.sendToAll({
-          title: note.titleText !== undefined ? `Due: ${note.titleText}` : "A note is due",
+          title: note.titleText !== undefined ? `Due: ${withoutMarkers(note.titleText)}` : "A note is due",
           tag: `note-${note.id}`,
         });
       }
