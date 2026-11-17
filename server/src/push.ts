@@ -74,6 +74,12 @@ export class PushReminders {
     await this.remove([endpoint]);
   }
 
+  /** End-to-end tests only: forgets every device, so each test starts with none. */
+  async forgetAllDevices(): Promise<void> {
+    this.subscriptions = [];
+    await writeJson(this.subscriptionsFile, this.subscriptions);
+  }
+
   /** "Send test": returns how many devices it reached. */
   sendTest(): Promise<number> {
     return this.sendToAll({ title: "Test reminder", tag: "test" });

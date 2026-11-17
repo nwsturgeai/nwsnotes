@@ -152,4 +152,9 @@ vite.config.ts.timestamp-*
 node_modules/
 dist/
 dev-data/
+# End-to-end tests: their data, saved login and reports.
+e2e/.test-data/
+e2e/.auth/
+e2e/test-results/
+e2e/playwright-report/
 *.tsbuildinfo

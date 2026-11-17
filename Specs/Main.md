@@ -1018,7 +1018,8 @@ When a test fails, it should be easy to see what went wrong.
   - **tablet:** 768×1024, touch, the Android Chrome user agent;
   - **desktop:** 1280×800, mouse.
 - **Browser features:**
-  - **Service workers** are blocked by default, so a cached old build can't confuse a test. They're allowed in the offline and app-update tests.
+  - **Service workers** are blocked by default, so a cached old build can't confuse a test. They're allowed in the offline and app-update tests, and in the logout test (logging out turns off the device's reminders, which needs the service worker).
+  - **Time zone and language:** the browser is set to Europe/London and en-GB, so dates show the same wherever the tests run.
   - **Notifications:** permission is granted where reminders are tested.
   - **Time:** tests that depend on time (due dates turning bold or red, the daily update check) use Playwright's clock control instead of waiting.
 - **First set of tests,** one file per area:

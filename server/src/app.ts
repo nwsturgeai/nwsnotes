@@ -35,7 +35,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
 
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 10,
+    // The end-to-end tests log in many times; the limit still applies everywhere else.
+    limit: config.testMode ? 1000 : 10,
     standardHeaders: "draft-7",
     legacyHeaders: false,
     message: { error: "Too many login attempts. Please wait 15 minutes and try again." },
@@ -295,6 +296,18 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   });
 
   app.use("/api/push", pushRouter);
+
+  // --- End-to-end tests only -------------------------------------------------
+
+  // Puts the data back to the seed the tests send. Only exists when the tests start the server
+  // (NWSNOTES_TEST=1, never in production), so it can't be called on the live site.
+  if (config.testMode && !config.production) {
+    app.post("/api/test/reset", async (req, res) => {
+      await store.resetTo(JSON.stringify(req.body));
+      await push.forgetAllDevices();
+      res.json({ ok: true });
+    });
+  }
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Unknown API address." });

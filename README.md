@@ -11,8 +11,10 @@ The full specification is in [Specs/Main.md](Specs/Main.md).
 | `client/` | The website (React + Vite) |
 | `server/` | The API and web server (Express) |
 | `shared/` | TypeScript types and title validation used by both |
+| `e2e/` | End-to-end tests (Playwright) and their test data |
 | `deploy/` | VM setup scripts and pm2 settings |
-| `.github/workflows/deploy.yml` | Automatic deployment on push to `main` |
+| `.github/workflows/deploy.yml` | Automatic deployment on push to `main`, after the tests pass |
+| `.github/workflows/test.yml` | The tests, on every pull request |
 
 ## Running it on your own computer
 
@@ -26,6 +28,22 @@ npm run dev
 Then open http://localhost:5173 and log in with the password `dev`. Notes are saved in `server/dev-data/` (ignored by Git).
 
 `npm run build` produces the deployable app in `dist/`, and `npm run typecheck` checks the TypeScript.
+
+## Automated tests
+
+The end-to-end tests use the app in a real browser (Chromium), at tablet and desktop sizes. They start their own server on port 3100 with its own test data (in `e2e/.test-data/`, reset before every test from `e2e/fixtures/seed.json`), so they never touch real or dev notes and can run while `npm run dev` is running.
+
+Once, to download the test browser:
+
+```bash
+npx playwright install chromium
+```
+
+Then:
+
+- `npm run test:e2e` builds the app and runs every test. Add a file name to run just those tests, e.g. `npm run test:e2e -- notes`.
+- `npm run test:e2e:ui` opens Playwright's UI mode, to run and watch tests one by one.
+- After a failure, `npx playwright show-report e2e/playwright-report` shows what went wrong, with a screenshot, a video and a step-by-step trace.
 
 ## Setting up the VM (once)
 

@@ -1,0 +1,107 @@
+{
+  "version": 2,
+  "savedDateTime": "2026-11-01T12:00:00.000Z",
+  "categories": [
+    {
+      "id": 1,
+      "name": "Area",
+      "multiSelect": false,
+      "tags": [
+        { "id": 1, "name": "Work", "hue": 210 },
+        { "id": 2, "name": "Home", "hue": 120 }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Topic",
+      "multiSelect": true,
+      "tags": [
+        { "id": 3, "name": "Ideas" },
+        { "id": 4, "name": "Shopping", "hue": 30 },
+        { "id": 5, "name": "Reading" }
+      ]
+    }
+  ],
+  "tabs": [
+    { "id": 1, "name": "Work", "categories": [{ "categoryId": 1, "tagIds": [1] }], "noteOrder": [] },
+    { "id": 2, "name": "Home", "categories": [{ "categoryId": 1, "tagIds": [2] }], "noteOrder": [] },
+    { "id": 3, "name": "On hold", "categories": [{ "categoryId": -1, "tagIds": [-5] }], "noteOrder": [] }
+  ],
+  "notes": [
+    {
+      "id": 1,
+      "titleText": "Plan the team meeting",
+      "createdDateTime": "2026-11-01T09:00:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:00:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:00:00.000Z",
+      "tagIds": [1, -2]
+    },
+    {
+      "id": 2,
+      "titleText": "Buy milk",
+      "createdDateTime": "2026-11-01T09:05:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:05:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:05:00.000Z",
+      "tagIds": [2, 4, -1]
+    },
+    {
+      "id": 3,
+      "titleText": "Read the *quarterly* report",
+      "createdDateTime": "2026-11-01T09:10:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:10:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:10:00.000Z",
+      "tagIds": [1, 5, -5]
+    },
+    {
+      "id": 4,
+      "titleText": "Old invoice",
+      "createdDateTime": "2026-11-01T09:15:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:15:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:15:00.000Z",
+      "tagIds": [1, -3]
+    },
+    {
+      "id": 5,
+      "titleText": "Broken lamp",
+      "createdDateTime": "2026-11-01T09:20:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:20:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:20:00.000Z",
+      "tagIds": [2, -4]
+    },
+    {
+      "id": 6,
+      "titleImage": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+      "createdDateTime": "2026-11-01T09:25:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:25:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:25:00.000Z",
+      "tagIds": [2, -2]
+    },
+    {
+      "id": 7,
+      "titleText": "Holiday plans",
+      "detailsText": "Flights\nHotel",
+      "createdDateTime": "2026-11-01T09:30:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:30:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:30:00.000Z",
+      "tagIds": [2, -2]
+    },
+    {
+      "id": 8,
+      "titleText": "Book flights",
+      "parentId": 7,
+      "createdDateTime": "2026-11-01T09:35:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:35:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:35:00.000Z",
+      "tagIds": [2, -2]
+    },
+    {
+      "id": 9,
+      "titleText": "Garden ideas",
+      "createdDateTime": "2026-11-01T09:40:00.000Z",
+      "lastModifiedDateTime": "2026-11-01T09:40:00.000Z",
+      "tagsChangedDateTime": "2026-11-01T09:40:00.000Z",
+      "tagIds": [2, 3, -2]
+    }
+  ],
+  "lastNoteId": 9
+}
