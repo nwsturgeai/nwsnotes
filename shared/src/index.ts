@@ -378,9 +378,6 @@ export function validateCategory(
   if (typeof input.multiSelect !== "boolean") {
     return { ok: false, error: "Multi-select must be true or false." };
   }
-  if (existing?.multiSelect && !input.multiSelect) {
-    return { ok: false, error: "A multi-select category can't be changed back to single-select." };
-  }
 
   if (!Array.isArray(input.tags)) {
     return { ok: false, error: "The category's tags are missing." };

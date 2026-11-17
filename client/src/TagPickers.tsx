@@ -45,10 +45,25 @@ function effectiveChosen(category: Category, chosen: number[], tabTagIds: number
   return existing.filter((id) => tabTagIds.includes(id)).slice(0, 1);
 }
 
+/**
+ * A single-select category's choice: at most one tag, the first in the category's order. (A selection
+ * can hold more if the category was multi-select when it was made.)
+ */
+function singleChoice(category: Category, chosen: number[]): number[] {
+  const first = category.tags.find((tag) => chosen.includes(tag.id));
+  return first ? [first.id] : [];
+}
+
+/** What a dropdown or pill row shows as chosen: one tag for a single-select category, unless it's a check-list. */
+function shownChoice(category: Category, chosen: number[], checkLists = false): number[] {
+  return checkLists || category.multiSelect ? chosen : singleChoice(category, chosen);
+}
+
 /** The chosen tag ids that still exist, with the tab's rules applied, in category order then tag order. */
 export function selectedTagIds(categories: Category[], selection: TagSelection, constraints?: TabConstraints): number[] {
   return categories.flatMap((category) => {
-    const chosen = effectiveChosen(category, selection[category.id] ?? [], constraints?.get(category.id));
+    const effective = effectiveChosen(category, selection[category.id] ?? [], constraints?.get(category.id));
+    const chosen = category.multiSelect ? effective : singleChoice(category, effective);
     return category.tags.filter((tag) => chosen.includes(tag.id)).map((tag) => tag.id);
   });
 }
@@ -92,7 +107,7 @@ export function TagPickers({ categories, selection, onChange, disabled, constrai
         <TagDropdown
           key={category.id}
           category={category}
-          chosen={effectiveChosen(category, selection[category.id] ?? [], constraints?.get(category.id))}
+          chosen={shownChoice(category, effectiveChosen(category, selection[category.id] ?? [], constraints?.get(category.id)), checkLists)}
           tabTagIds={constraints?.get(category.id)}
           tabName={tabName}
           checkList={checkLists || category.multiSelect}
@@ -299,7 +314,7 @@ export function TagPillPicker({ categories, selection, onChange, disabled, const
     <div className="tag-pill-picker">
       {categories.map((category) => {
         const tabTagIds = constraints?.get(category.id);
-        const chosen = effectiveChosen(category, selection[category.id] ?? [], tabTagIds);
+        const chosen = shownChoice(category, effectiveChosen(category, selection[category.id] ?? [], tabTagIds));
         const lockedTagId = tabTagIds?.length === 1 ? tabTagIds[0] : undefined;
 
         function toggle(tagId: number) {

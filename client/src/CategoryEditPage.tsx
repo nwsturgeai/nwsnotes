@@ -64,8 +64,8 @@ function CategoryForm({
   const [rows, setRows] = useState<TagRow[]>(() => (existing ? existing.tags.map((tag) => newRow(tag)) : [newRow()]));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
-  /** Asking before saving, when deleted tags are on notes. */
-  const [confirming, setConfirming] = useState<{ message: string; request: CategoryRequest }>();
+  /** Asking before saving, when deleted tags are on notes or a change to single-select trims notes' tags. */
+  const [confirming, setConfirming] = useState<{ message: string; confirmLabel: string; request: CategoryRequest }>();
   const focusKey = useRef<number>(undefined);
   /** The tag row whose colour is being chosen. */
   const [pickingHueFor, setPickingHueFor] = useState<TagRow>();
@@ -151,10 +151,23 @@ function CategoryForm({
     // Deleting tags removes them from every note that has them, so say so first.
     const deleted = (existing?.tags ?? []).filter((tag) => !check.category.tags.some((t) => t.id === tag.id));
     const affected = notes.filter((note) => deleted.some((tag) => note.tagIds.includes(tag.id))).length;
-    if (affected > 0) {
+    // Changing to single-select leaves notes with only their first tag from the category, so say that too.
+    const keptIds = check.category.tags.flatMap((tag) => (tag.id === undefined ? [] : [tag.id]));
+    const narrowed =
+      existing?.multiSelect && !check.category.multiSelect
+        ? notes.filter((note) => note.tagIds.filter((id) => keptIds.includes(id)).length > 1).length
+        : 0;
+    if (affected > 0 || narrowed > 0) {
       const names = deleted.map((tag) => `"${tag.name}"`).join(", ");
+      const messages = [
+        affected > 0 &&
+          `Delete ${deleted.length === 1 ? "the tag" : "the tags"} ${names}? ${deleted.length === 1 ? "It" : "They"} will be removed from ${plural(affected, "note")}.`,
+        narrowed > 0 &&
+          `Change to single-select? ${plural(narrowed, "note")} with more than one of these tags will keep only the first one in the list.`,
+      ].filter(Boolean);
       setConfirming({
-        message: `Delete ${deleted.length === 1 ? "the tag" : "the tags"} ${names}? ${deleted.length === 1 ? "It" : "They"} will be removed from ${plural(affected, "note")}.`,
+        message: messages.join(" "),
+        confirmLabel: affected > 0 && narrowed > 0 ? "Save" : affected > 0 ? "Delete and save" : "Change and save",
         request: check.category,
       });
       return;
@@ -202,13 +215,13 @@ function CategoryForm({
             id="category-multi-select"
             type="checkbox"
             checked={multiSelect}
-            disabled={saving || existing?.multiSelect}
+            disabled={saving}
             onChange={(event) => setMultiSelect(event.target.checked)}
           />
           <span>Multi-select: a note can have several tags from this category</span>
         </label>
-        {existing?.multiSelect && (
-          <p className="hint">A multi-select category can't be changed back to single-select.</p>
+        {existing?.multiSelect && !multiSelect && (
+          <p className="hint">Notes with more than one of these tags will keep only the first one in the list below.</p>
         )}
 
         <fieldset>
@@ -312,7 +325,7 @@ function CategoryForm({
       {confirming && (
         <ConfirmDialog
           message={confirming.message}
-          confirmLabel="Delete and save"
+          confirmLabel={confirming.confirmLabel}
           onConfirm={() => void send(confirming.request)}
           onCancel={() => setConfirming(undefined)}
         />
