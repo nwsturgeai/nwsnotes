@@ -571,15 +571,25 @@ export class NoteStore {
       // Tags left out were deleted: take them off every note, and out of every tab's filter
       // (a filter left with no tags is dropped; a tab left with no filters shows every note).
       const deleted = existing.tags.filter((tag) => !category.tags.some((t) => t.id === tag.id)).map((tag) => tag.id);
-      if (deleted.length === 0) {
+      // Changed to single-select: a note with several of its tags keeps only the first, in the category's order.
+      const nowSingle = existing.multiSelect && !category.multiSelect;
+      if (deleted.length === 0 && !nowSingle) {
         await this.save(this.nextSaveTime(), { categories });
         return category;
       }
-      const notes = this.notes.map((note) =>
-        note.tagIds.some((tagId) => deleted.includes(tagId))
-          ? { ...note, tagIds: note.tagIds.filter((tagId) => !deleted.includes(tagId)) }
-          : note,
-      );
+      // Like deleting a tag, this is tidying up, so the notes' modified and tags-changed times stay as they are.
+      const notes = this.notes.map((note) => {
+        let tagIds = note.tagIds.filter((tagId) => !deleted.includes(tagId));
+        if (nowSingle) {
+          const kept = category.tags.find((tag) => tagIds.includes(tag.id))?.id;
+          tagIds = tagIds.filter((tagId) => tagId === kept || !category.tags.some((tag) => tag.id === tagId));
+        }
+        return tagIds.length === note.tagIds.length ? note : { ...note, tagIds };
+      });
+      if (deleted.length === 0) {
+        await this.save(this.nextSaveTime(), { categories, notes });
+        return category;
+      }
       const tabs = this.tabs.map((tab) => ({
         ...tab,
         categories: tab.categories

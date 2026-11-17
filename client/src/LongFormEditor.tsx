@@ -18,6 +18,7 @@ import {
 import { ApiError } from "./api";
 import { offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FormattedText } from "./FormattedText";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
@@ -94,6 +95,8 @@ export function LongFormEditor({
   const padRef = useRef<StylusPadHandle>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const detailsRef = useRef<HTMLTextAreaElement>(null);
+  /** The formatted copy of the typed details, under the text box; it scrolls with it. */
+  const displayRef = useRef<HTMLDivElement>(null);
   /** Set when the title is accepted (or on opening a converted note), so the typed details take the focus once enabled. */
   const focusDetails = useRef(startInDetails === true && kind === "text");
   const [busy, setBusy] = useState(false);
@@ -392,19 +395,32 @@ export function LongFormEditor({
 
       <div className={detailsEditable ? "lf-details" : "lf-details locked"}>
         {kind === "text" ? (
-          <textarea
-            ref={detailsRef}
-            aria-label="Details"
-            placeholder={detailsEditable ? "Details" : "Accept the title to write the details"}
-            value={detailsText}
-            maxLength={DETAILS_TEXT_MAX_LENGTH}
-            disabled={!detailsEditable}
-            onChange={(event) => {
-              setDetailsText(event.target.value);
-              latest.current.detailsText = event.target.value;
-              schedule();
-            }}
-          />
+          // Two exactly overlapping layers: the formatted text underneath, and the real text box on top
+          // with invisible text, so typing, the cursor and selection work as usual. Every letter is the
+          // same width in both (see .lf-text in styles.css), so the cursor lines up with what's shown.
+          <div className="lf-text">
+            <div className="lf-text-display" ref={displayRef} aria-hidden>
+              <FormattedText text={detailsText} showMarkers />
+              {/* A last empty line still takes its height, as it does in the text box. */}
+              {detailsText.endsWith("\n") && " "}
+            </div>
+            <textarea
+              ref={detailsRef}
+              aria-label="Details"
+              placeholder={detailsEditable ? "Details" : "Accept the title to write the details"}
+              value={detailsText}
+              maxLength={DETAILS_TEXT_MAX_LENGTH}
+              disabled={!detailsEditable}
+              onChange={(event) => {
+                setDetailsText(event.target.value);
+                latest.current.detailsText = event.target.value;
+                schedule();
+              }}
+              onScroll={(event) => {
+                if (displayRef.current) displayRef.current.scrollTop = event.currentTarget.scrollTop;
+              }}
+            />
+          </div>
         ) : (
           <StylusPad
             ref={padRef}

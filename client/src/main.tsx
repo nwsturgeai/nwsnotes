@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { config as fontAwesomeConfig } from "@fortawesome/fontawesome-svg-core";
 import "@fortawesome/fontawesome-svg-core/styles.css";
+// The app's font, shipped with it: every weight, upright only (italic is the upright letters slanted).
+import "@fontsource-variable/atkinson-hyperlegible-next/wght.css";
 import { App } from "./App";
 import { initAppUpdates } from "./appUpdate";
 import "./styles.css";

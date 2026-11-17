@@ -30,7 +30,7 @@ export default defineConfig({
       workbox: {
         // Only the website's own files are cached. Notes always come from the server, and API
         // addresses (including the backup download link) always go to the network.
-        globPatterns: ["**/*.{js,css,html,svg,png}"],
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api\//, /^\/ws/],
         // Due-date reminders: showing pushed notifications and opening the app when one is tapped.

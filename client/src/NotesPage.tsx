@@ -48,6 +48,7 @@ import {
   orderNotes,
   validateTitle,
   validateTitleImage,
+  withoutMarkers,
   type Category,
   type LifetimeChange,
   type Note,
@@ -59,6 +60,7 @@ import { offlineApi } from "./offline";
 import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
+import { FormattedText } from "./FormattedText";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
 import { useNoteDrag } from "./noteDrag";
@@ -226,7 +228,7 @@ export function NotesPage({
     if (isLongForm(note)) return ["Long Form"];
     const parent = note.parentId === undefined ? undefined : notes.find((n) => n.id === note.parentId);
     // A child whose parent has been deleted shows no parent pill.
-    const title = parent?.titleText;
+    const title = parent?.titleText === undefined ? undefined : withoutMarkers(parent.titleText);
     return title ? [title.length > 20 ? `${title.slice(0, 19)}…` : title] : [];
   }
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
@@ -381,13 +383,22 @@ export function NotesPage({
   /** A note was just added at the top, so the list scrolls to the top instead of the bottom. */
   const scrollToTop = useRef(false);
 
-  // Newest notes are at the bottom, so keep the list scrolled to the bottom
-  // when the page opens, whenever a note is added, and when the tab changes.
+  /** What the list last showed (the tab, its filter row and the search) and how many notes. */
+  const listShown = useRef<{ key: string; length: number }>(undefined);
+
+  // Newest notes are at the bottom, so the list jumps to the bottom when the page opens, when a note
+  // is added (here or elsewhere), and when the tab, the filter row or the search changes. When a note
+  // just leaves the list (archived, moved to the bin, or changed elsewhere), it stays where it is: the
+  // browser keeps the notes in view from moving (scroll anchoring).
   useLayoutEffect(() => {
+    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, searchWords]);
+    const before = listShown.current;
+    listShown.current = { key, length: visibleNotes.length };
+    const jump = !before || before.key !== key || visibleNotes.length > before.length;
     const list = listRef.current;
-    if (list) list.scrollTop = scrollToTop.current ? 0 : list.scrollHeight;
+    if (list && jump) list.scrollTop = scrollToTop.current ? 0 : list.scrollHeight;
     scrollToTop.current = false;
-  }, [visibleNotes.length, selectedTab?.id]);
+  }, [visibleNotes.length, selectedTab?.id, allFilters, searchWords]);
 
   /**
    * Puts a just-added note at the top of the tab: shown at once, then the tab's order is saved in the
@@ -983,7 +994,7 @@ export function NotesPage({
                     </span>
                   )}
                   <div className="note-body">
-                    {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : note.titleText}
+                    {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : <FormattedText text={note.titleText ?? ""} />}
                     <TagPills
                       tagIds={note.tagIds}
                       categories={categories}

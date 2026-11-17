@@ -16,7 +16,7 @@
   --editing-bg: #eef5f2;
   /* Always light, whatever the device's dark-mode setting. */
   color-scheme: light;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: "Atkinson Hyperlegible Next Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   color: var(--text);
@@ -1061,21 +1061,90 @@ body:has(.note-list li.dragging) {
   min-height: 0;
 }
 
-.lf-details textarea {
+/*
+ * The typed details: the formatted text (.lf-text-display) underneath, and the real text box on top
+ * with invisible text. The two must lay out every letter identically, so they share every setting that
+ * affects layout, and the formatting never changes a letter's width (bold is an outline, italic a slant).
+ */
+.lf-text {
+  position: relative;
+  display: flex;
   flex: 1;
-  width: 100%;
+  min-width: 0;
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.lf-text-display,
+.lf-details textarea {
+  box-sizing: border-box;
+  margin: 0;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
   font: inherit;
+  letter-spacing: normal;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 4;
+  /* The same room for a scrollbar in both, whether or not one shows. */
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.lf-text-display {
+  position: absolute;
+  inset: 0;
+  overflow-y: hidden;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.lf-details textarea {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  background: transparent;
+  /* Invisible text: the display layer shows it. The cursor and selection still show. */
+  color: transparent;
+  caret-color: var(--text);
   resize: none;
+}
+
+.lf-details textarea::placeholder {
+  color: var(--muted);
 }
 
 .lf-details textarea:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+
+/* Formatting: *bold*, _underline_ and /italic/. In the list, bold is the font's real bold. */
+.fmt-bold {
+  font-weight: 700;
+}
+
+.fmt-underline {
+  text-decoration: underline;
+}
+
+.fmt-italic {
+  /* The font has no italic version, so this is the upright letters slanted (widths unchanged). */
+  font-style: italic;
+}
+
+/* In the long-form text box bold mustn't change widths, so it's the normal letters with an outline. */
+.lf-text-display .fmt-bold {
+  font-weight: inherit;
+  -webkit-text-stroke: 0.045em currentColor;
+}
+
+/* The markers themselves, shown (dimmed) only in the long-form text box. */
+.fmt-marker {
+  color: var(--muted);
+  -webkit-text-stroke: 0;
 }
 
 .stylus-pad.fill {
@@ -1084,7 +1153,7 @@ body:has(.note-list li.dragging) {
   height: 100%;
 }
 
-.lf-details.locked textarea,
+.lf-details.locked .lf-text,
 .lf-details.locked .stylus-pad {
   opacity: 0.55;
 }

@@ -85,7 +85,7 @@ It should not be allowed to have a tag with the same text as the category name.
 When editing a category, there should be bin icons alongside each Tag allowing Tags to be deleted.  If, when a category is saved, any Tags have been deleted, then that tag-id should be removed from any notes that currently have it.
 For now, it will not be possible to delete categories.
 Categories and tabs can both be reordered.  On the settings page, in both the Categories and Tabs sections, there are up and down buttons to the right of each row; clicking them moves that item up or down.  The updated order is sent to the server on each click.
-After a category has been saved as multi-select, it is not possible to revert it to single-select later.
+A category can be changed from multi-select to single-select.  If/when making this change, then any notes that have more than one tag from this category should auto-pick just the first/highest-ordered tag from the category and lose any other tags from this category.
 
 ### When a note's tags last changed
 For each note, store the date and time when its tags were last set or changed. It isn't shown in the app for now.
@@ -302,6 +302,17 @@ These new regular notes should have their "parentId" field populated with the id
 When these regular notes are shown in the notes-list: after any pills for their tags, the regular note should have an additional final pill with the title of the long-form note, truncated to at most 20 characters.  This final pill should have the same colour as the "Long Form" pill described above.
 
 
+## Text formatting
+Typed note titles and typed long-form note contents support a simple kind of markdown:
+*text* renders as bold, with the asterisks disappearing.
+_text_ renders as underline, with the underscores disappearing.
+/text/ renders as italic, with the slashes disappearing.
+Formatting resets at the start of a new line.
+In the long-form editor's text box, the formatting should show while typing (the markers can stay visible there).
+
+The whole app should use the font Atkinson Hyperlegible.
+
+
 ## Note Lifetime
 
 ### "Lifetime" system Category
@@ -437,6 +448,8 @@ The settings page should show which version is running, and have a button to che
 
 ### Appearance
 - Always light: dark text on light backgrounds, whatever the device's dark-mode setting (`color-scheme: light`, no dark-mode colours).
+- **Font:** Atkinson Hyperlegible Next everywhere, shipped with the app from `@fontsource-variable/atkinson-hyperlegible-next` (every weight in one file, upright only, Latin and Latin Extended). It's cached by the service worker like the app's other files, so it works offline. The device's own font is the fallback while it loads.
+  - The italic version isn't included, so wherever italic is used the browser slants the upright letters. Their widths stay the same, which the long-form formatting relies on (see "Text formatting").
 - **Width:** the app is at most 1280px wide. On a wider window it's centred, with the extra space split equally either side; the side areas are a slightly darker shade, with a thin line at the app's edges. The long-form editor stays within the same 1280px column.
 
 ### New-note area
@@ -446,6 +459,7 @@ The settings page should show which version is running, and have a button to che
 - **Icon buttons:** Add (`fa-circle-plus`), Update (`fa-circle-check`), Cancel (`fa-x`) and Clear (`fa-delete-left`) show only an icon, with a tooltip and screen-reader label giving the action. All four are the same size as the Settings cog (40px square). Add and Update are filled in the accent colour; Cancel and Clear are outlined.
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible. (The box is made read-only, not disabled, while saving, since disabling it would take the focus away.)
 - When the page loads, the list starts scrolled to the bottom.
+- **Keeping the scroll position:** the list only jumps to the bottom when the page opens, when a note is added (here or on another device), or when the tab, the filter row or the search changes. When a note leaves the list (archived, waiting or moved to the bin where the tab hides it, or changed on another device), the list stays where it was. The browser's scroll anchoring keeps the notes in view from moving.
 - In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
 
 ### Stylus mode
@@ -475,7 +489,13 @@ The settings page should show which version is running, and have a button to che
 - Category and tag names are trimmed, can't be empty and are at most 40 characters. Category names must be unique, and tag names unique within their category; both checks ignore upper/lower case ("Work" and "work" count as the same).
 - A tag can't have the same name as its own category (ignoring upper/lower case), as the category name is what an unset dropdown shows. Tags in other categories may share it. Categories saved before this rule still load and work; saving one that breaks it is refused, with a message naming the clashing tag, until the tag or the category is renamed.
 - No user category can be called "Lifetime" (ignoring upper/lower case); that name belongs to the built-in category.
-- `multiSelect` can be changed from false to true, but not back. A note's `tagIds` must all exist, with at most one from each single-select category.
+- `multiSelect` can be changed either way. A note's `tagIds` must all exist, with at most one from each single-select category.
+- **Changing to single-select:** when a category is saved as single-select after being multi-select, each note with more than one of its tags keeps only the first, in the category's tag order as saved, and loses the others, in the same save.
+  - Before saving, the category page says how many notes this affects, in the app's own pop-up ("Change to single-select? 3 notes with more than one of these tags will keep only the first one in the list."), with "Change and save" and Cancel. If tags are being deleted too, both messages show together, with "Save".
+  - While the checkbox is unticked on a saved multi-select category, a hint under it says so.
+  - Like deleting a tag, this is tidying up: the notes' modified and tags-changed times aren't changed.
+  - Tab filters with several of its tags still work, since a filter matches any of its tags.
+  - A new-note dropdown still holding several of its tags (chosen while it was multi-select) shows and uses only the first.
 - Categories and their dropdowns appear in the categories' order, which is set on the settings page (new categories go at the end; see "Ordering categories and tabs"). Tags within a category appear in the category's tag order (see "Tag sort order" below). A note's pills appear in category order, then tag order.
 - Renaming a tag changes it on every note that has it, because notes store only the tag id.
 
@@ -488,7 +508,7 @@ The settings page should show which version is running, and have a button to che
   - The built-in Lifetime category is always last, and "All" is always the first tab. Neither can move, and their rows have no arrows (the space is kept, so the rows line up).
   - The order is used everywhere: the new-note dropdowns and pills, the filter row, the tab editor, the pills on notes, and the tab strip in the header.
   - New categories and tabs are added at the end.
-- Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (locked once the category has been saved as multi-select; tapping its text toggles it), one text box per tag for renaming with a bin button (`fa-trash-can`) beside it, and an "Add tag" button that adds an empty tag row.
+- Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (tapping its text toggles it), one text box per tag for renaming with a bin button (`fa-trash-can`) beside it, and an "Add tag" button that adds an empty tag row.
 - Empty new tag rows are ignored when saving. Emptying an existing tag's name is an error; its bin button deletes it instead.
 - **Deleting tags:** the bin removes the row; nothing changes until Save. A category must keep at least one tag (the last bin is disabled). If deleted tags are on any notes, Save first asks, in the app's own pop-up, "Delete the tag "X"? It will be removed from N notes.". On save the server takes deleted tags off every note and out of every tab's filter; a filter left with no tags is dropped, and a tab left with no filters shows every note (its editor will ask for a tag next time it's saved). Notes' modified times aren't changed by this.
 - "Save" sends the whole category in one call and returns to the settings page. If saving fails, the error is shown on the page and the edits are kept so you can retry.
@@ -824,6 +844,27 @@ The settings page should show which version is running, and have a button to che
 - **The notification:** "Due: <title>", or "A note is due" for handwritten notes, with the app's icon. A second one for the same note replaces the first. Tapping it brings the app to the front, or opens it.
 - **Service worker:** the generated service worker imports a small `push-sw.js` (via Workbox's `importScripts`), which shows the notifications and handles taps.
 - **Offline:** a due date set offline gets its reminder once the change reaches the server.
+
+### Text formatting
+- **Stored as typed:** the markers are kept in the text as typed. The server and the save-files don't change. Formatting is only how the app shows the text.
+- **No library:** a small parser in the app turns each line into React elements, with no HTML strings, so nothing typed can inject code into the page.
+- **When a marker counts** (the rule Org-mode uses), so everyday text like "and/or", "12/11/2026", web addresses, `file_name` and "2*3*4" stays as typed:
+  - An opening marker is at the start of a line, or after a space or one of `( [ { " '`, and is followed by a character that isn't a space.
+  - The closing marker is the next same marker on that line that comes straight after a character that isn't a space, and is followed by the end of the line, a space, or punctuation (`. , ; : ! ? ) ] } " '` or another marker).
+  - The text between the two markers needs at least one character.
+  - A marker without a partner on the same line just shows as typed. Formatting never carries onto the next line.
+- **Combining:** markers can be nested, e.g. `*_bold and underlined_*`.
+- **Where it shows formatted** (with the markers hidden):
+  - typed note titles in the notes list, long-form notes included.
+  - Everywhere else a title is shown as plain text, the markers are removed: the child notes' parent pill, reminder notifications, and notices that name a note.
+- **Where the markers show as typed:** the new-note and edit title boxes, and the long-form editor's title box.
+- **The long-form editor's text box (typed details):** the formatting shows while typing, with the markers dimmed in grey.
+  - It uses two exactly overlapping layers: a display layer underneath with the formatted text, and the real text box on top with invisible text, so typing, the cursor, selection, autocorrect, copy and paste and undo all work as before.
+  - Every letter must stay the same width in both layers, so nothing can drift. In the display layer, bold is drawn as the upright letters with a thin outline (`-webkit-text-stroke`) instead of a bolder weight, and italic is the slanted upright letters (the font has no italic version). Underline doesn't change widths.
+  - Both layers use the same font, size, line height, padding and wrapping, and scroll together.
+- **In the list:** bold uses the font's real bold weight, as nothing needs to line up there.
+- **Search** matches the text as typed, so searching "bold" finds `*bold*`.
+- **Handwritten titles and drawn details** aren't affected.
 
 ### Note lifetime
 - **Built-in category:** Lifetime isn't stored in the save-file; the server adds it to `categories`. It's single-select with negative ids so it can never clash with user categories: category -1, and tags New -1, Active -2, Archived -3, Bin -4, Waiting -5 (added later, so it can't be renumbered; it's still listed in the order New, Active, Waiting, Archived, Bin). It can't be edited or renamed, and user categories can't use its name.
