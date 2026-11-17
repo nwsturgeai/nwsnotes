@@ -1,3 +1,11 @@
-# Keep Linux line endings for files that run on the VM, even in a Windows checkout.
+# Every text file is stored with Linux (LF) line endings, whatever an editor on a Windows checkout
+# writes: git converts on commit, so line-ending-only changes never show up as edits.
+* text=auto eol=lf
+
+# Files that run on the VM must have LF line endings even in a Windows checkout.
 *.sh text eol=lf
 *.yml text eol=lf
+
+# Binary files are never converted.
+*.png binary
+*.woff2 binary
