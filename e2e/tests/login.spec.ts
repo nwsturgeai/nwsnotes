@@ -16,6 +16,18 @@ test("the Log in button needs a password", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Log in" })).toBeDisabled();
 });
 
+test("logging out works even when the service worker isn't running", async ({ page }) => {
+  // Service workers are blocked here, so turning off reminders can't finish: logging out mustn't wait for it.
+  await page.goto("/");
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
+  await expect(page.getByLabel("Password")).toBeVisible({ timeout: 6_000 });
+  await page.reload();
+  await expect(page.getByLabel("Password")).toBeVisible();
+});
+
 test.describe(() => {
   // Logging out first turns off this device's reminders, which waits for the service worker, as on the tablet.
   test.use({ serviceWorkers: "allow" });
