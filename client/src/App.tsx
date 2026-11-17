@@ -33,6 +33,9 @@ type State =
   | { screen: "notes"; data: NotesData }
   | { screen: "error"; error: unknown; when: Date };
 
+/** The longest logging out waits for this device's reminders to be turned off. */
+const LOGOUT_REMINDERS_WAIT_MS = 3000;
+
 export function App() {
   const [state, setState] = useState<State>({ screen: "loading" });
   const [page, navigate] = usePage();
@@ -233,8 +236,12 @@ export function App() {
 
   const logout = useCallback(async () => {
     try {
-      // This device stops getting reminders (while the session still lets it tell the server).
-      await turnOffReminders().catch((error: unknown) => console.warn("Couldn't turn off reminders:", error));
+      // This device stops getting reminders (while the session still lets it tell the server). That waits
+      // for the service worker, which never comes if it didn't install, so logging out doesn't wait long.
+      await Promise.race([
+        turnOffReminders().catch((error: unknown) => console.warn("Couldn't turn off reminders:", error)),
+        new Promise((resolve) => setTimeout(resolve, LOGOUT_REMINDERS_WAIT_MS)),
+      ]);
       await api.logout();
     } finally {
       navigate({ name: "notes" }, { replace: true });

@@ -687,6 +687,26 @@ export class NoteStore {
     return result;
   }
 
+  /**
+   * End-to-end tests only: deletes every save-file and starts again from `seedText` (a save-file's
+   * contents), saved as the only save-file, so every test starts from the same data and note ids.
+   */
+  resetTo(seedText: string): Promise<void> {
+    return this.enqueue(async () => {
+      const seed = parseSaveFile("seed", seedText);
+      for (const file of await this.listSaveFiles()) await unlink(path.join(this.dataDir, file.name));
+      this.lastSaveMs = 0;
+      this.latestFileName = undefined;
+      this.lastLongFormUpdateId = undefined;
+      await this.save(this.nextSaveTime(), {
+        notes: seed.notes,
+        categories: seed.categories,
+        tabs: seed.tabs,
+        lastNoteId: seed.lastNoteId,
+      });
+    });
+  }
+
   /** Save-file names must be unique and in order, so never reuse a time or go back in time. */
   private nextSaveTime(): Date {
     return new Date(Math.max(Date.now(), this.lastSaveMs + 1));

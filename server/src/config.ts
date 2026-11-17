@@ -21,6 +21,11 @@ export interface Config {
   httpsPort: number;
   /** The contact (a mailto: or https: address) that push services ask senders of reminders for. */
   pushContact: string;
+  /**
+   * True when started by the end-to-end tests (NWSNOTES_TEST=1, never in production): adds the
+   * test-only reset endpoint.
+   */
+  testMode: boolean;
 }
 
 const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
@@ -46,13 +51,15 @@ export function loadConfig(): Config {
       production,
       passwordHash: hashPassword(DEV_PASSWORD),
       sessionSecret: "development-only-secret",
-      dataDir: path.resolve("dev-data"),
+      // The end-to-end tests keep their data in their own folder, never with real or dev notes.
+      dataDir: path.resolve(process.env.NWSNOTES_DATA_DIR ?? "dev-data"),
       certDir: "",
       acmeDir: "",
       publicDir,
       httpPort: Number(process.env.PORT ?? 3000),
       httpsPort: 0,
       pushContact: DEFAULT_PUSH_CONTACT,
+      testMode: process.env.NWSNOTES_TEST === "1",
     };
   }
 
@@ -72,5 +79,6 @@ export function loadConfig(): Config {
     httpPort: raw.httpPort ?? 80,
     httpsPort: raw.httpsPort ?? 443,
     pushContact: raw.pushContact ?? DEFAULT_PUSH_CONTACT,
+    testMode: false,
   };
 }

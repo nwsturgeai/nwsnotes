@@ -1,0 +1,93 @@
+import type { Page } from "@playwright/test";
+import { addArea, expect, noteRow, openNotes, test } from "./fixtures";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A day `daysAhead` from now in the tests' time zone: as the date box wants it, and as the app shows it. */
+function dayFromNow(daysAhead: number) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(new Date(Date.now() + daysAhead * DAY_MS))
+    .reduce<Record<string, string>>((all, part) => ({ ...all, [part.type]: part.value }), {});
+  const thisYear = new Date().getFullYear().toString();
+  return {
+    input: `${parts.year}-${parts.month}-${parts.day}`,
+    shown: `${parts.day}/${parts.month}${parts.year === thisYear ? "" : `/${parts.year!.slice(2)}`}`,
+  };
+}
+
+/** Sets the due date of the note being added or edited (the button is in the expanded add area). */
+async function setDueDate(page: Page, day: string, time: string) {
+  await addArea(page).getByRole("button", { name: /^(Set|Change) due date$/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  await dialog.getByLabel("Due date").fill(day);
+  await dialog.getByLabel("Due time").fill(time);
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+async function addNote(page: Page, title: string) {
+  const box = page.getByRole("textbox", { name: "New note" });
+  await box.fill(title);
+  await box.press("Enter");
+  await expect(noteRow(page, title)).toBeVisible();
+}
+
+test("a note's due date is shown instead of its created date, and can be changed or cleared", async ({ page }) => {
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  const due = dayFromNow(20);
+  await setDueDate(page, due.input, "14:30");
+  await expect(addArea(page).getByRole("button", { name: "Change due date" })).toBeVisible();
+  await addNote(page, "Renew passport");
+  const date = noteRow(page, "Renew passport").locator("time");
+  await expect(date).toHaveText(`Due ${due.shown} 14:30`);
+  // The due date doesn't carry over to the next note.
+  await expect(addArea(page).getByRole("button", { name: "Set due date" })).toBeVisible();
+
+  // Editing changes it.
+  await noteRow(page, "Renew passport").getByRole("button", { name: "Edit note" }).click();
+  await setDueDate(page, due.input, "09:15");
+  await addArea(page).getByRole("button", { name: "Update" }).click();
+  await expect(date).toHaveText(`Due ${due.shown} 09:15`);
+
+  // Clearing it shows the created date again.
+  await noteRow(page, "Renew passport").getByRole("button", { name: "Edit note" }).click();
+  await addArea(page).getByRole("button", { name: "Change due date" }).click();
+  await page.getByRole("dialog", { name: "Due date" }).getByRole("button", { name: "Clear Due Date" }).click();
+  await addArea(page).getByRole("button", { name: "Update" }).click();
+  await expect(date).toHaveText(/^Cr\. /);
+  await page.reload();
+  await expect(noteRow(page, "Renew passport").locator("time")).toHaveText(/^Cr\. /);
+});
+
+test("the due-date pop-up needs a date and a time", async ({ page }) => {
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Set due date" }).click();
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  await dialog.getByLabel("Due date").fill("");
+  await expect(dialog.getByRole("button", { name: "Set Due Date" })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(addArea(page).getByRole("button", { name: "Set due date" })).toBeVisible();
+});
+
+test("a due date turns bold in its last week, and red once it has passed", async ({ page }) => {
+  await page.clock.install();
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await setDueDate(page, dayFromNow(10).input, "12:00");
+  await addNote(page, "Pay the tax bill");
+  const date = noteRow(page, "Pay the tax bill").locator("time");
+  await expect(date).not.toHaveClass(/due-soon|overdue/);
+  await expect(date).toHaveCSS("font-weight", "400");
+
+  // Five days on, it's due within the week.
+  await page.clock.fastForward(5 * DAY_MS);
+  await expect(date).toHaveClass(/\bdue-soon\b/);
+  await expect(date).toHaveCSS("font-weight", "700");
+
+  // Past the due date, it's overdue.
+  await page.clock.fastForward(6 * DAY_MS);
+  await expect(date).toHaveClass(/\boverdue\b/);
+  await expect(date).not.toHaveCSS("color", (await noteRow(page, "Buy milk").locator("time").evaluate((e) => getComputedStyle(e).color)));
+});
