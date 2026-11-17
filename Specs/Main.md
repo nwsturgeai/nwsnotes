@@ -1020,7 +1020,8 @@ When a test fails, it should be easy to see what went wrong.
 - **Browser features:**
   - **Service workers** are blocked by default, so a cached old build can't confuse a test. They're allowed in the offline and app-update tests, and in the logout test (logging out turns off the device's reminders, which needs the service worker).
   - **Time zone and language:** the browser is set to Europe/London and en-GB, so dates show the same wherever the tests run.
-  - **Notifications:** permission is granted where reminders are tested.
+  - **Notifications:** permission is granted where reminders are tested. Headless Chromium always reports `Notification.permission` as "denied", so that test also tells the page the permission is granted.
+  - **New versions:** the app-update tests make a "new version" by changing the built `sw.js` the test server serves, and put it back after each test. The browser fetches that file itself, so a test can't intercept the request instead.
   - **Time:** tests that depend on time (due dates turning bold or red, the daily update check) use Playwright's clock control instead of waiting.
 - **First set of tests,** one file per area:
   - **login:** wrong password, logging in, logging out.

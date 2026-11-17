@@ -76,6 +76,30 @@ export async function tickTag(page: Page, category: string, tag: string) {
   await page.keyboard.press("Escape");
 }
 
+/** The filter row above the note list. */
+export function filterRow(page: Page): Locator {
+  return page.locator(".filter-row");
+}
+
+/** Opens one of the filter row's dropdowns, returning its list of tags (check boxes). */
+export async function openFilter(page: Page, category: string): Promise<Locator> {
+  const list = page.getByRole("group", { name: category, exact: true });
+  if (!(await list.isVisible())) await filterRow(page).getByRole("button", { name: new RegExp(`^${category}: `) }).click();
+  await expect(list).toBeVisible();
+  return list;
+}
+
+/** Ticks or unticks a tag in one of the filter row's dropdowns. */
+export async function setFilter(page: Page, category: string, tag: string, ticked: boolean) {
+  const list = await openFilter(page, category);
+  await list.getByRole("checkbox", { name: new RegExp(`^${tag}\\b`) }).setChecked(ticked);
+}
+
+/** The notes page's titles of the listed notes, as a retrying check: `await expectTitles(page, [...])`. */
+export async function expectTitles(page: Page, titles: string[]) {
+  await expect.poll(() => noteTitles(page)).toEqual(titles);
+}
+
 /** A note's pills (its tags' names), for example `expect(pills(row)).toHaveText(["Work", "New"])`. */
 export function pills(row: Locator): Locator {
   return row.locator(".note-body li");
