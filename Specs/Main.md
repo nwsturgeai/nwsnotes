@@ -424,6 +424,19 @@ It should be easy to run the tests on my PC, and they should also run automatica
 When a test fails, it should be easy to see what went wrong.
 
 
+## Database
+The notes, categories and tabs should be stored in a database on the server instead of in save-files.
+Each change should only write what changed, rather than a complete copy of everything.
+Existing notes must be moved across automatically, with nothing lost.
+"Download backup" on the settings page should still give me a single file with all my data.
+
+## History and revert
+The app should keep a history of recent changes: every add, edit, Lifetime change, tag change, and change to categories and tabs.
+The settings page should lead to a History page, listing the changes newest first, each with its time and a short description.
+I should be able to go back to how everything was just after any change in the list. Going back should itself be a change in the history, so it can be undone.
+Bulk changes (such as Empty Bin, or changing the tags of several notes at once) should count as one change, so one step undoes them.
+
+
 ## Agreed technical decisions
 
 ### Code and tooling
@@ -895,7 +908,7 @@ When a test fails, it should be easy to see what went wrong.
   - "Empty Bin" first asks "Permanently delete 4 notes in the bin?".
   - Each button ends with the number of notes it would change, in brackets: "Reset New (3)", "Archived to Bin (5)", "Empty Bin (4)". The counts come from the notes the page has loaded, so they update after each change, made here or on another page. A count of 0 shows as "(0)".
   - The confirmations are the app's own pop-up windows (not the browser's), with the count. If there's nothing to change, the button says so (e.g. "There are no archived notes.") instead of asking.
-  - Emptied notes are gone from the app but remain in the past week's save-files, so they can be recovered from a backup.
+  - Emptied notes are gone from the app, but can be brought back from the History page for 30 days (see "History and revert").
 - **Note ids are never reused:** the save-file stores `lastNoteId`, the highest id ever given, and new notes get `lastNoteId + 1`. Files without it start from the highest id present.
 - **Live updates:** every lifetime change reloads other open pages, as for other changes.
 - **Live updates:** if another page changes the note being edited, the last Update wins; the open edit isn't changed by live updates.
@@ -983,6 +996,7 @@ When a test fails, it should be easy to see what went wrong.
 - **Live updates:** while offline, the WebSocket keeps trying to reconnect as now. Messages that arrive mid-sync are ignored, as the sync ends with a full reload anyway.
 
 ### Save files
+- **Replaced by the database** (see "Database"): the server no longer writes save-files. It reads the latest one once, to import it, and "Download backup" still gives a file in this format.
 - Folder: `/var/lib/nwsnotes/data` (outside the app's code folder, so deployments never touch it).
 - Filename format: `notes-2026-10-24T09-40-12-345Z.json` (UTC timestamp, no colons).
 - Files are written to a temporary name and then renamed, so a crash mid-save can't leave a corrupt file.
@@ -1044,3 +1058,45 @@ When a test fails, it should be easy to see what went wrong.
   - A new workflow, `.github/workflows/test.yml`, runs the tests on every pull request. The report is kept as a download when a test fails.
   - The deploy workflow also runs the tests first, so a failing test stops a deployment.
 - **From now on:** each new feature or change comes with new or updated tests, as part of the same branch.
+
+### Database
+- **Engine:** SQLite, through Node's built-in `node:sqlite` module (Node 24), so there's no extra package to install or compile on the VM. The database is one file, `nwsnotes.db`, in the data folder (`/var/lib/nwsnotes/data` on the VM, `server/dev-data/` in development, and the tests' own folder for the tests).
+- **Settings:** WAL journal mode with `synchronous=FULL`, so a change is safely on disk once the server replies, and a crash or power cut can't corrupt the file.
+- **Tables:**
+  - `notes`: `id` (the note id) and `data`, the note as JSON, exactly as the API sends it.
+  - `categories` and `tabs`: `id`, `position` (their order on the settings page) and `data` as JSON. A category's tags, in their order, are in its JSON, as now.
+  - `meta`: small values by name, such as `lastNoteId`, so ids are still never reused.
+  - `changes` and `change_items`: the history (see "History and revert").
+  - Storing each item as JSON keeps it in exactly the shape the API and the app already use, so nothing else has to change. The server still keeps everything in memory, as now, and reads the database only at start-up.
+- **Writing a change:** each change runs in one transaction that updates only the rows it changed and records the change in the history. If anything fails, nothing is changed, in the database or in memory, and the page shows the error as now.
+- **Moving the data across:** when the server starts and the database has no data, it imports the most recent save-file (if there is one) in one transaction, recorded in the history as "Imported from notes-….json". The old save-files are left where they are, untouched, and no new ones are written.
+- **Download backup:** `GET /api/notes/download` still returns one file in the save-file format (version 2, with `notes`, `categories`, `tabs` and `lastNoteId`), built from the database and named with the time, e.g. `notes-2026-11-18T09-40-12-345Z.json`.
+- **Restoring a backup by hand** (if ever needed): stop the app, move `nwsnotes.db` (and its `-wal` and `-shm` files) out of the data folder, put the backup file in the folder, and start the app. It imports the file as it does the first time.
+- **Daily copy:** once a day the server writes a copy of the database to `backups/nwsnotes-2026-11-18.db` in the data folder, with SQLite's `VACUUM INTO`, which is safe while the app is running. Seven daily copies are kept. They're a safety net against a damaged file, separate from the history.
+- **Push devices** stay in `push-keys.json` and `push-subscriptions.json`: they belong to each device, aren't part of the notes, and aren't in the history.
+- **Tests:** `POST /api/test/reset` empties every table, history included, and imports the seed, so every test still starts the same way. New tests check that the data survives a server restart, and that the first start imports a save-file.
+
+### History and revert
+- **Stored as "before" copies:** every change adds a row to `changes`, and one row to `change_items` for each item it touched, holding that item as it was before the change:
+  - `changes`: `id` (in order), `time`, `summary` (e.g. "Archived 'Buy milk'") and `itemCount`.
+  - `change_items`: `changeId`, `kind` (`note`, `category`, `tab` or `meta`), `itemId` and `before`: the item's row (its JSON, and `position` for categories and tabs) as it was before the change, or empty when the change created it.
+  - A handwritten note's image is only stored again when that note changes.
+- **Going back to just after change P:** in one transaction, for each item touched by a change after P, the server takes its `before` copy from the earliest such change and puts it back: it replaces the item, or deletes it if the copy is empty (the item didn't exist then). Items that no later change touched are already as they were. A deleted note comes back with its old id, which is safe, as ids are never reused. `lastNoteId` isn't taken back, for the same reason.
+- **Going back is a change too:** it's recorded with its own "before" copies and a summary such as "Went back to 18 Nov 09:40 (12 changes undone)", so it can be undone the same way.
+- **Everything about an item comes back:** a note's title, details, tags, due date, Lifetime and its times (`lastModifiedDateTime`, `tagsChangedDateTime`) are all part of its copy, so they return exactly as they were.
+- **One change per action:** an add, an edit, a Lifetime change, a tab's new order, a category or tab saved, and each bulk action (multi-select tags, Reset New, Archived to Bin, Empty Bin, a category changed to single-select, deleting tags) is one change, however many items it touches.
+- **Long-form autosaves:** a save of a long-form note's details while it's being written (every 30 seconds) joins the previous change if that was an update of the same note and nothing else has changed since. The change's time is updated and nothing more is stored, since its "before" copy is already there. This matches how save-files are replaced today.
+- **Offline changes** are recorded when they reach the server, like any other. Changes still waiting on another device are sent after a revert, and apply on top of it.
+- **How long history is kept:** 30 days. Older changes are deleted once a day; going back is possible as far as the oldest change kept.
+- **API:**
+  - `GET /api/history?before=<changeId>&limit=50`: the latest changes, newest first, as `{ changes: [{ id, time, summary, itemCount }] }`. `before` loads the next, older page.
+  - `POST /api/history/revert` with `{ toChangeId }`: goes back to just after that change, returns `{ undone: <number of changes undone> }` and tells other pages to reload.
+  - Both need the login session, like the rest of the API.
+- **History page** (`/history`, reached from a "History" link on the settings page; "← Settings" goes back):
+  - The changes, newest first, under a heading for each day ("Today", "Yesterday", then e.g. "Mon 16 Nov"). Each shows its time and summary.
+  - Each change apart from the newest has a "Go back to here" button. It asks first: "Go back to how everything was just after this change, at 09:40 on 18 Nov? This undoes the 12 later changes. You can undo this too." with "Go back" and "Cancel".
+  - Afterwards, a short message says how many changes were undone, and the new change shows at the top of the list.
+  - "Load older changes" at the bottom, while there are more.
+  - It needs the server, so the link is greyed out offline, like the settings cog.
+- **Not in the history:** device settings (stylus mode, columns, pen thickness, full-tag-list mode, a tab's additional filters), push devices, and logging in or out.
+- **Tests:** a new `history.spec.ts`. Changes are listed with their summaries. Going back undoes later notes, edits, Lifetime changes and settings changes. A bulk change is undone in one step. A revert can itself be undone. Long-form autosaves make one change.
