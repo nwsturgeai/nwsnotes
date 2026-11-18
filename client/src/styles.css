@@ -1815,6 +1815,37 @@ body:has(.note-list li.dragging) {
   color: var(--text);
 }
 
+/* The History page: one line per change, the time, what changed, and the go-back button at the end. */
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-list > li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.history-list time {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-summary {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-list .button {
+  flex: none;
+}
+
 .update-ready {
   display: flex;
   align-items: center;

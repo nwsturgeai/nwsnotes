@@ -12,12 +12,13 @@ import {
   verifyPassword,
 } from "./auth.js";
 import type { Config } from "./config.js";
+import type { Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
 import type { NoteStore } from "./store.js";
 
 /** The main website + API app. */
-export function createApp(config: Config, store: NoteStore, live: LiveUpdates, push: PushReminders) {
+export function createApp(config: Config, store: NoteStore, live: LiveUpdates, push: PushReminders, db: Db) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -170,17 +171,12 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
     });
   }
 
-  // The latest save-file exactly as it is on disk, as a download (for manual backups).
-  notesRouter.get("/download", (_req, res, next) => {
-    const file = store.latestSaveFile();
-    if (!file) {
-      res.status(404).json({ error: "No notes have been saved yet, so there's nothing to download." });
-      return;
-    }
+  // Everything, in the save-file format, as a download (for manual backups).
+  notesRouter.get("/download", (_req, res) => {
+    const file = store.backup();
     res.set("Cache-Control", "no-store");
-    res.download(file.path, file.name, (error) => {
-      if (error && !res.headersSent) next(error);
-    });
+    res.attachment(file.name);
+    res.type("application/json").send(file.content);
   });
 
   app.use("/api/notes", notesRouter);
@@ -297,14 +293,47 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
 
   app.use("/api/push", pushRouter);
 
+  // --- History ----------------------------------------------------------------
+
+  const historyRouter = express.Router();
+  historyRouter.use(requireSession(config.sessionSecret));
+
+  historyRouter.get("/", async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(await store.history(req.query.before, req.query.limit));
+  });
+
+  historyRouter.post("/revert", async (req, res) => {
+    const result = await store.revert(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json(result);
+  });
+
+  app.use("/api/history", historyRouter);
+
   // --- End-to-end tests only -------------------------------------------------
 
   // Puts the data back to the seed the tests send. Only exists when the tests start the server
   // (NWSNOTES_TEST=1, never in production), so it can't be called on the live site.
   if (config.testMode && !config.production) {
     app.post("/api/test/reset", async (req, res) => {
+      db.simulateOutage = false;
       await store.resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
+      res.json({ ok: true });
+    });
+    // Loads the data again from the database, as a restart would.
+    app.post("/api/test/reload", async (_req, res) => {
+      await store.reloadForTests();
+      res.json({ ok: true });
+    });
+    // The first start with a new database: imports this save-file.
+    app.post("/api/test/import", async (req, res) => {
+      res.json({ file: await store.importForTests(JSON.stringify(req.body)) });
+    });
+    // Makes the database unreachable (or reachable again), to test what the app does then.
+    app.post("/api/test/database", (req: Request<object, object, { reachable?: unknown }>, res) => {
+      db.simulateOutage = req.body?.reachable === false;
       res.json({ ok: true });
     });
   }

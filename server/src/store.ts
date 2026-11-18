@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CLIENT_ID_MAX_LENGTH,
@@ -25,7 +25,24 @@ import {
   type NoteDetails,
   type NoteTitle,
   type Tab,
+  withoutMarkers,
 } from "@nwsnotes/shared";
+import { databaseUnreachable, type Db } from "./db.js";
+import { RequestError } from "./errors.js";
+import {
+  ensureSchema,
+  emptyAll,
+  listChanges,
+  loadSnapshot,
+  pruneHistory,
+  revertedSnapshot,
+  writeChange,
+  type ChangeRecord,
+  type ChangeSummary,
+  type Snapshot,
+} from "./persist.js";
+
+export { RequestError };
 
 /** Contents of each save-file. */
 interface SaveFile {
@@ -41,7 +58,6 @@ interface SaveFile {
 }
 
 /** The data the store keeps and saves. */
-type StoreData = Pick<NotesData, "notes" | "categories" | "tabs"> & { lastNoteId: number };
 
 /** A note's tags with any Lifetime tag removed (the server decides a note's Lifetime). */
 function withoutLifetime(rawTagIds: unknown): unknown {
@@ -60,15 +76,6 @@ interface SaveFileV1 {
   notes: Omit<Note, "tagIds">[];
 }
 
-/** An error caused by the request, reported to the website with this HTTP status. */
-export class RequestError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 /** `items` in the order of `raw.ids`, which must list every item's id exactly once. */
 function inOrder<T extends { id: number }>(raw: unknown, items: T[], kind: string): T[] {
@@ -114,7 +121,29 @@ function offlineTime(raw: unknown, now: Date): string | undefined {
 }
 
 const FILE_PATTERN =/^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
-const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** How long the history is kept. */
+const HISTORY_DAYS = 30;
+/** How many daily backup files are kept. */
+const BACKUPS_KEPT = 7;
+const BACKUP_PATTERN = /^notes-\d{4}-\d{2}-\d{2}\.json$/;
+
+/** A note as history summaries name it: its title in quotes (shortened), or "a handwritten note". */
+function label(note: Note): string {
+  if (note.titleText === undefined) return "a handwritten note";
+  const title = withoutMarkers(note.titleText);
+  return `"${title.length > 40 ? `${title.slice(0, 39)}…` : title}"`;
+}
+
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+
+/** How each Lifetime change is described in the history. */
+const LIFETIME_SUMMARIES: Record<LifetimeChange, (note: string) => string> = {
+  Active: (note) => `Reinstated ${note}`,
+  Waiting: (note) => `Set ${note} to Waiting`,
+  Archived: (note) => `Archived ${note}`,
+  Bin: (note) => `Moved ${note} to the bin`,
+};
 
 /** "2026-10-24T09:40:12.345Z" -> "notes-2026-10-24T09-40-12-345Z.json" */
 function fileNameFor(date: Date): string {
@@ -164,9 +193,37 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
   };
 }
 
+/** A save-file's contents as the store's data, with notes from before Lifetime and tag-change times brought up to date. */
+function snapshotOf(content: Required<SaveFile>): Snapshot {
+  return {
+    // Notes saved before Lifetime existed become Active, and notes saved before tag-change times
+    // existed get their created time.
+    notes: content.notes.map((note) => ({
+      ...note,
+      tagIds: note.tagIds.some(isLifetimeTag) ? note.tagIds : [...note.tagIds, LIFETIME_ACTIVE],
+      tagsChangedDateTime: note.tagsChangedDateTime ?? note.createdDateTime,
+    })),
+    categories: content.categories,
+    tabs: content.tabs,
+    lastNoteId: content.lastNoteId,
+  };
+}
+
+/** How long to wait before trying the database again, when it couldn't be reached at start-up. */
+const RETRY_START_MS = 30_000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Options for saving a change. */
+interface SaveOptions {
+  /** How the change is described in the history; without it, the change isn't in the history. */
+  record?: ChangeRecord;
+  /** Set when this is an update of that long-form note: repeated autosaves join one change (see save()). */
+  longFormUpdateId?: number;
+}
+
 /**
- * Keeps all notes, categories and tabs in memory and writes a complete, timestamped
- * save-file to disk every time anything changes.
+ * Keeps all notes, categories and tabs in memory, and saves each change to the database (Supabase's
+ * Postgres, or PGlite in development and the tests) with its history, so earlier states can be gone back to.
  */
 export class NoteStore {
   private notes: Note[] = [];
@@ -175,46 +232,77 @@ export class NoteStore {
   /** The highest note id ever given; new notes get the next one, so ids are never reused. */
   private lastNoteId = 0;
   private lastSaveMs = 0;
-  private latestFileName: string | undefined;
+  /** False until the data has been loaded from the database; until then the API answers 503. */
+  private ready = false;
   /**
-   * Set when the latest save-file was written for an update of this long-form note. Anything else
-   * (creating it, other changes, a restart) clears it, so the file it describes is kept.
+   * Set when the latest change was an update of this long-form note: the next autosave of the same note
+   * joins that change. Anything else (creating it, other changes, a restart) clears it.
    */
-  private lastLongFormUpdateId: number | undefined;
+  private lastLongFormUpdate: { noteId: number; changeId: number } | undefined;
   /** Changes run one at a time, in order. */
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly dataDir: string) {}
+  constructor(
+    private readonly db: Db,
+    private readonly dataDir: string,
+  ) {}
 
-  /** Loads the most recent save-file (if any) and tidies up old ones. */
+  /**
+   * Loads the data from the database (setting it up the first time, and importing the latest save-file
+   * if the database has no data). If the database can't be reached, it tries again every 30 seconds,
+   * and the API answers 503 meanwhile. Then starts the daily jobs.
+   */
   async init(): Promise<void> {
     await mkdir(this.dataDir, { recursive: true });
-    const files = await this.listSaveFiles();
-    const latest = files.at(-1);
-    if (latest) {
-      const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
-      // Notes saved before Lifetime existed become Active, and notes saved before tag-change times
-      // existed get their created time (both stored with the next save).
-      this.notes = content.notes.map((note) => ({
-        ...note,
-        tagIds: note.tagIds.some(isLifetimeTag) ? note.tagIds : [...note.tagIds, LIFETIME_ACTIVE],
-        tagsChangedDateTime: note.tagsChangedDateTime ?? note.createdDateTime,
-      }));
-      this.categories = content.categories;
-      this.tabs = content.tabs;
-      this.lastNoteId = content.lastNoteId;
-      this.lastSaveMs = latest.date.getTime();
-      this.latestFileName = latest.name;
-      console.log(
-        `Loaded ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from ${latest.name}`,
-      );
-    } else {
-      console.log(`No save-files in ${this.dataDir}; starting with no notes.`);
+    try {
+      await this.load();
+    } catch (error) {
+      if (!(error instanceof RequestError && error.status === 503)) throw error;
+      console.warn(`The database can't be reached; trying again in ${RETRY_START_MS / 1000} seconds.`);
+      setTimeout(() => void this.init().catch((e: unknown) => console.error("Couldn't load the data:", e)), RETRY_START_MS).unref();
+      return;
     }
-    await this.deleteOldFiles();
+    void this.daily();
+    setInterval(() => void this.daily(), DAY_MS).unref();
+  }
+
+  private async load(): Promise<void> {
+    await ensureSchema(this.db);
+    const stored = await loadSnapshot(this.db);
+    if (stored) {
+      this.apply(stored);
+      console.log(`Loaded ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from the database.`);
+    } else {
+      // The first start with this database: bring across the latest save-file, if there is one.
+      const latest = (await this.listSaveFiles()).at(-1);
+      const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0 };
+      if (latest) {
+        const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
+        await writeChange(this.db, empty, snapshotOf(content), this.nextSaveTime(), { summary: `Imported from ${latest.name}` });
+        this.apply(snapshotOf(content));
+        console.log(`Imported ${this.notes.length} notes from ${latest.name} into the database.`);
+      } else {
+        // Marks the database as set up (lastNoteId is stored), so a later start doesn't import anything.
+        await writeChange(this.db, { ...empty, lastNoteId: -1 }, empty, this.nextSaveTime(), undefined);
+        console.log("No data or save-files yet; starting with no notes.");
+      }
+    }
+    this.ready = true;
+  }
+
+  private snapshot(): Snapshot {
+    return { notes: this.notes, categories: this.categories, tabs: this.tabs, lastNoteId: this.lastNoteId };
+  }
+
+  private apply(snapshot: Snapshot) {
+    this.notes = snapshot.notes;
+    this.categories = snapshot.categories;
+    this.tabs = snapshot.tabs;
+    this.lastNoteId = snapshot.lastNoteId;
   }
 
   getAll(): NotesData {
+    if (!this.ready) throw databaseUnreachable();
     return { notes: this.notes, categories: this.allCategories(), tabs: this.tabs };
   }
 
@@ -223,10 +311,129 @@ export class NoteStore {
     return [...this.categories, LIFETIME_CATEGORY];
   }
 
-  /** The most recent save-file, or undefined if nothing has been saved yet. */
-  latestSaveFile(): { name: string; path: string } | undefined {
-    if (!this.latestFileName) return undefined;
-    return { name: this.latestFileName, path: path.join(this.dataDir, this.latestFileName) };
+  /** Everything, in the save-file format (version 2): for "Download backup" and the daily backup files. */
+  backup(now = new Date()): { name: string; content: string } {
+    if (!this.ready) throw databaseUnreachable();
+    const content: SaveFile = {
+      version: 2,
+      savedDateTime: now.toISOString(),
+      notes: this.notes,
+      categories: this.categories,
+      tabs: this.tabs,
+      lastNoteId: this.lastNoteId,
+    };
+    return { name: fileNameFor(now), content: JSON.stringify(content, null, 2) };
+  }
+
+  /** The history: the newest changes (older than `before`, a change id, if given), newest first. */
+  history(rawBefore: unknown, rawLimit: unknown): Promise<{ changes: ChangeSummary[]; more: boolean }> {
+    if (!this.ready) throw databaseUnreachable();
+    const before = rawBefore === undefined ? undefined : Number(rawBefore);
+    if (before !== undefined && !Number.isInteger(before)) throw new RequestError(400, '"before" must be a change id.');
+    const limit = rawLimit === undefined ? 50 : Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new RequestError(400, '"limit" must be from 1 to 200.');
+    return listChanges(this.db, before, limit);
+  }
+
+  /** Goes back to how everything was just after change `toChangeId`. Returns how many changes were undone. */
+  revert(raw: unknown): Promise<{ undone: number }> {
+    return this.enqueue(async () => {
+      const toChangeId = (raw as { toChangeId?: unknown } | undefined)?.toChangeId;
+      if (!Number.isInteger(toChangeId)) throw new RequestError(400, '"toChangeId" must be a change id.');
+      const result = await revertedSnapshot(this.db, toChangeId as number, this.snapshot());
+      if (!result) throw new RequestError(404, `There is no change ${String(toChangeId)} in the history (it may be over ${HISTORY_DAYS} days old).`);
+      if (result.undone === 0) throw new RequestError(400, "That's the latest change, so there's nothing to undo.");
+      // A reminder already sent for a note's due date isn't sent again because the note came back.
+      const current = new Map(this.notes.map((note) => [note.id, note]));
+      const notes = result.snapshot.notes.map((note) => {
+        const sent = current.get(note.id)?.reminderSentFor;
+        return sent !== undefined && note.dueDateTime === sent && note.reminderSentFor !== sent ? { ...note, reminderSentFor: sent } : note;
+      });
+      await this.save(this.nextSaveTime(), { ...result.snapshot, notes }, {
+        record: {
+          summary: `Went back to an earlier change (${plural(result.undone, "change")} undone)`,
+          revertedTo: result.time,
+          undone: result.undone,
+        },
+      });
+      return { undone: result.undone };
+    });
+  }
+
+  /**
+   * `--restore <file>`: replaces all the notes, categories and tabs with a backup file's, as one change
+   * in the history (so it can be undone too).
+   */
+  restore(name: string, text: string): Promise<number> {
+    return this.enqueue(async () => {
+      const content = snapshotOf(parseSaveFile(name, text));
+      await this.save(this.nextSaveTime(), { ...content, lastNoteId: Math.max(content.lastNoteId, this.lastNoteId) }, {
+        record: { summary: `Restored from ${name}` },
+      });
+      return this.notes.length;
+    });
+  }
+
+  /**
+   * Once a day: a small query, so Supabase sees the database as in use (free projects are paused after a
+   * week without activity); a backup file in `backups/`, keeping the last seven; and history older than
+   * 30 days deleted. Failures are logged, and tried again the next day.
+   */
+  async daily(): Promise<void> {
+    try {
+      await this.db.query("SELECT 1");
+    } catch (error) {
+      console.warn("Daily database check failed:", error instanceof Error ? error.message : error);
+    }
+    try {
+      const dir = path.join(this.dataDir, "backups");
+      await mkdir(dir, { recursive: true });
+      const now = new Date();
+      await writeFile(path.join(dir, `notes-${now.toISOString().slice(0, 10)}.json`), this.backup(now).content, "utf8");
+      const old = (await readdir(dir)).filter((name) => BACKUP_PATTERN.test(name)).sort().slice(0, -BACKUPS_KEPT);
+      for (const name of old) await unlink(path.join(dir, name));
+    } catch (error) {
+      console.error("Couldn't write the daily backup file:", error);
+    }
+    try {
+      const pruned = await pruneHistory(this.db, HISTORY_DAYS);
+      if (pruned > 0) console.log(`Deleted ${plural(pruned, "change")} older than ${HISTORY_DAYS} days from the history.`);
+    } catch (error) {
+      console.warn("Couldn't tidy the history:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  /** Whether the data has been loaded from the database. */
+  isReady(): boolean {
+    return this.ready;
+  }
+
+  /** End-to-end tests only: forgets what's in memory and loads it again from the database, as a restart would. */
+  reloadForTests(): Promise<void> {
+    return this.enqueue(async () => {
+      this.lastLongFormUpdate = undefined;
+      await this.load();
+    });
+  }
+
+  /**
+   * End-to-end tests only: empties the database and puts a save-file in the data folder, then loads,
+   * as the first start with a new database does (so the file is imported). The file is removed afterwards.
+   */
+  importForTests(saveFileText: string): Promise<string> {
+    return this.enqueue(async () => {
+      const name = fileNameFor(new Date());
+      const file = path.join(this.dataDir, name);
+      await writeFile(file, saveFileText, "utf8");
+      try {
+        await this.db.transaction(emptyAll);
+        this.lastLongFormUpdate = undefined;
+        await this.load();
+      } finally {
+        await unlink(file);
+      }
+      return name;
+    });
   }
 
   /**
@@ -287,7 +494,9 @@ export class NoteStore {
         tagIds: [...tagIds.value, LIFETIME_NEW],
         ...(clientId !== undefined && { clientId }),
       };
-      await this.save(now, { notes: [...this.notes, note], lastNoteId: note.id });
+      await this.save(now, { notes: [...this.notes, note], lastNoteId: note.id }, {
+        record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}` },
+      });
       return { note, created: true };
     });
   }
@@ -359,7 +568,15 @@ export class NoteStore {
         tagIds: newTagIds,
       };
       // Repeated saves of a long-form note being edited replace each other (see save()).
-      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, longForm ? id : undefined);
+      const summary = longForm
+        ? `Edited long-form note ${label(note)}`
+        : details
+          ? `Made ${label(note)} a long-form note`
+          : `Edited ${label(note)}`;
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
+        record: { summary },
+        longFormUpdateId: longForm ? id : undefined,
+      });
       return note;
     });
   }
@@ -418,7 +635,8 @@ export class NoteStore {
         updated.push(next);
         return next;
       });
-      await this.save(now, { notes });
+      const which = updated.length === 1 ? label(updated[0]!) : plural(updated.length, "note");
+      await this.save(now, { notes }, { record: { summary: `Changed the tags on ${which}` } });
       return updated;
     });
   }
@@ -439,7 +657,9 @@ export class NoteStore {
         tagsChangedDateTime: this.tagsChangedTime(existing, tagIds, now, rawTagsChanged),
         tagIds,
       };
-      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) });
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
+        record: { summary: LIFETIME_SUMMARIES[raw as LifetimeChange](label(note)) },
+      });
       return note;
     });
   }
@@ -459,7 +679,11 @@ export class NoteStore {
     return this.enqueue(async () => {
       const kept = this.notes.filter((n) => lifetimeOf(n) !== LIFETIME_BIN);
       const count = this.notes.length - kept.length;
-      if (count > 0) await this.save(this.nextSaveTime(), { notes: kept, tabs: this.tabsKeepingNotes(kept) });
+      if (count > 0) {
+        await this.save(this.nextSaveTime(), { notes: kept, tabs: this.tabsKeepingNotes(kept) }, {
+          record: { summary: `Emptied the bin (${plural(count, "note")} deleted)` },
+        });
+      }
       return count;
     });
   }
@@ -467,9 +691,12 @@ export class NoteStore {
   /** Deletes one note (cancelling a new long-form note), then saves. Child notes keep their `parentId`. */
   deleteNote(id: number): Promise<void> {
     return this.enqueue(async () => {
-      if (!this.notes.some((n) => n.id === id)) throw new RequestError(404, `There is no note with id ${id}.`);
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
       const notes = this.notes.filter((n) => n.id !== id);
-      await this.save(this.nextSaveTime(), { notes, tabs: this.tabsKeepingNotes(notes) });
+      await this.save(this.nextSaveTime(), { notes, tabs: this.tabsKeepingNotes(notes) }, {
+        record: { summary: `Deleted ${label(existing)}` },
+      });
     });
   }
 
@@ -505,6 +732,7 @@ export class NoteStore {
         changed = true;
         return { ...note, reminderSentFor: note.dueDateTime };
       });
+      // Bookkeeping rather than a change of yours, so it isn't in the history.
       if (changed) await this.save(this.nextSaveTime(), { notes });
     });
   }
@@ -529,7 +757,11 @@ export class NoteStore {
           ? { ...n, lastModifiedDateTime: timestamp, tagsChangedDateTime: timestamp, tagIds: withLifetime(n, to) }
           : n,
       );
-      await this.save(now, { notes });
+      const summary =
+        from === LIFETIME_NEW
+          ? `Reset New (${plural(count, "note")} made Active)`
+          : `Archived to Bin (${plural(count, "note")} moved to the bin)`;
+      await this.save(now, { notes }, { record: { summary } });
       return count;
     });
   }
@@ -546,7 +778,9 @@ export class NoteStore {
         multiSelect: check.category.multiSelect,
         tags: this.withTagIds(check.category.tags),
       };
-      await this.save(this.nextSaveTime(), { categories: [...this.categories, category] });
+      await this.save(this.nextSaveTime(), { categories: [...this.categories, category] }, {
+        record: { summary: `Added category "${category.name}"` },
+      });
       return category;
     });
   }
@@ -567,6 +801,7 @@ export class NoteStore {
         tags: this.withTagIds(check.category.tags),
       };
       const categories = this.categories.map((c) => (c.id === id ? category : c));
+      const record = { summary: `Changed category "${category.name}"` };
 
       // Tags left out were deleted: take them off every note, and out of every tab's filter
       // (a filter left with no tags is dropped; a tab left with no filters shows every note).
@@ -574,7 +809,7 @@ export class NoteStore {
       // Changed to single-select: a note with several of its tags keeps only the first, in the category's order.
       const nowSingle = existing.multiSelect && !category.multiSelect;
       if (deleted.length === 0 && !nowSingle) {
-        await this.save(this.nextSaveTime(), { categories });
+        await this.save(this.nextSaveTime(), { categories }, { record });
         return category;
       }
       // Like deleting a tag, this is tidying up, so the notes' modified and tags-changed times stay as they are.
@@ -587,7 +822,7 @@ export class NoteStore {
         return tagIds.length === note.tagIds.length ? note : { ...note, tagIds };
       });
       if (deleted.length === 0) {
-        await this.save(this.nextSaveTime(), { categories, notes });
+        await this.save(this.nextSaveTime(), { categories, notes }, { record });
         return category;
       }
       const tabs = this.tabs.map((tab) => ({
@@ -596,7 +831,7 @@ export class NoteStore {
           .map((filter) => ({ ...filter, tagIds: filter.tagIds.filter((tagId) => !deleted.includes(tagId)) }))
           .filter((filter) => filter.tagIds.length > 0),
       }));
-      await this.save(this.nextSaveTime(), { categories, notes, tabs });
+      await this.save(this.nextSaveTime(), { categories, notes, tabs }, { record });
       return category;
     });
   }
@@ -608,7 +843,7 @@ export class NoteStore {
       if (!check.ok) throw new RequestError(400, check.error);
 
       const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab, noteOrder: [] };
-      await this.save(this.nextSaveTime(), { tabs: [...this.tabs, tab] });
+      await this.save(this.nextSaveTime(), { tabs: [...this.tabs, tab] }, { record: { summary: `Added tab "${tab.name}"` } });
       return tab;
     });
   }
@@ -623,7 +858,9 @@ export class NoteStore {
 
       // Editing a tab's name or filters keeps its note order.
       const tab: Tab = { id, ...check.tab, noteOrder: existing.noteOrder };
-      await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) });
+      await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) }, {
+        record: { summary: `Changed tab "${tab.name}"` },
+      });
       return tab;
     });
   }
@@ -640,7 +877,9 @@ export class NoteStore {
       const ids = new Set(this.notes.map((n) => n.id));
       const noteOrder = [...new Set(order as number[])].filter((noteId) => ids.has(noteId));
       const tab: Tab = { ...existing, noteOrder };
-      await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) });
+      await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) }, {
+        record: { summary: `Changed the order of the notes in tab "${tab.name}"` },
+      });
       return tab;
     });
   }
@@ -648,8 +887,11 @@ export class NoteStore {
   /** Deletes a tab, then saves. Notes aren't changed. */
   deleteTab(id: number): Promise<void> {
     return this.enqueue(async () => {
-      if (!this.tabs.some((t) => t.id === id)) throw new RequestError(404, `There is no tab with id ${id}.`);
-      await this.save(this.nextSaveTime(), { tabs: this.tabs.filter((t) => t.id !== id) });
+      const existing = this.tabs.find((t) => t.id === id);
+      if (!existing) throw new RequestError(404, `There is no tab with id ${id}.`);
+      await this.save(this.nextSaveTime(), { tabs: this.tabs.filter((t) => t.id !== id) }, {
+        record: { summary: `Deleted tab "${existing.name}"` },
+      });
     });
   }
 
@@ -660,7 +902,7 @@ export class NoteStore {
   reorderCategories(raw: unknown): Promise<Category[]> {
     return this.enqueue(async () => {
       const categories = inOrder(raw, this.categories, "category");
-      await this.save(this.nextSaveTime(), { categories });
+      await this.save(this.nextSaveTime(), { categories }, { record: { summary: "Changed the order of the categories" } });
       return this.allCategories();
     });
   }
@@ -669,7 +911,7 @@ export class NoteStore {
   reorderTabs(raw: unknown): Promise<Tab[]> {
     return this.enqueue(async () => {
       const tabs = inOrder(raw, this.tabs, "tab");
-      await this.save(this.nextSaveTime(), { tabs });
+      await this.save(this.nextSaveTime(), { tabs }, { record: { summary: "Changed the order of the tabs" } });
       return tabs;
     });
   }
@@ -681,6 +923,7 @@ export class NoteStore {
   }
 
   private enqueue<T>(change: () => Promise<T>): Promise<T> {
+    if (!this.ready) return Promise.reject(databaseUnreachable());
     const result = this.queue.then(change);
     // Keep the queue going even if this change fails.
     this.queue = result.catch(() => undefined);
@@ -688,93 +931,50 @@ export class NoteStore {
   }
 
   /**
-   * End-to-end tests only: deletes every save-file and starts again from `seedText` (a save-file's
-   * contents), saved as the only save-file, so every test starts from the same data and note ids.
+   * End-to-end tests only: deletes everything, history included, and starts again from `seedText` (a
+   * save-file's contents), imported as the history's first change, so every test starts the same way.
    */
   resetTo(seedText: string): Promise<void> {
     return this.enqueue(async () => {
-      const seed = parseSaveFile("seed", seedText);
-      for (const file of await this.listSaveFiles()) await unlink(path.join(this.dataDir, file.name));
-      this.lastSaveMs = 0;
-      this.latestFileName = undefined;
-      this.lastLongFormUpdateId = undefined;
-      await this.save(this.nextSaveTime(), {
-        notes: seed.notes,
-        categories: seed.categories,
-        tabs: seed.tabs,
-        lastNoteId: seed.lastNoteId,
-      });
+      const seed = snapshotOf(parseSaveFile("seed", seedText));
+      await this.db.transaction(emptyAll);
+      this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1 });
+      this.lastLongFormUpdate = undefined;
+      await this.save(this.nextSaveTime(), seed, { record: { summary: "Imported the test data" } });
     });
   }
 
-  /** Save-file names must be unique and in order, so never reuse a time or go back in time. */
+  /** Change times must be in order, so never reuse a time or go back in time. */
   private nextSaveTime(): Date {
     return new Date(Math.max(Date.now(), this.lastSaveMs + 1));
   }
 
   /**
-   * Saves the current data with `change` applied (only the parts given are replaced).
-   * `longFormUpdateId` is set when this save is an update of that long-form note: if the previous
-   * save-file was too, it's deleted once this one is written, so a long editing session (saving every
-   * 30 seconds) leaves one save-file rather than hundreds.
+   * Saves the current data with `change` applied (only the parts given are replaced): the rows that
+   * differ, and the history entry (`options.record`), in one transaction. Memory is only updated once
+   * that succeeded. Repeated autosaves of a long-form note being edited (`longFormUpdateId`) join the
+   * previous change if it was an update of the same note, so a long editing session is one change.
    */
-  private async save(now: Date, change: Partial<StoreData>, longFormUpdateId?: number): Promise<void> {
-    const replaces =
-      longFormUpdateId !== undefined && this.lastLongFormUpdateId === longFormUpdateId ? this.latestFileName : undefined;
-    const notes = change.notes ?? this.notes;
-    const categories = change.categories ?? this.categories;
-    const tabs = change.tabs ?? this.tabs;
-    const lastNoteId = change.lastNoteId ?? this.lastNoteId;
-    const content: SaveFile = { version: 2, savedDateTime: now.toISOString(), notes, categories, tabs, lastNoteId };
-
-    // Write to a temporary file, then rename, so a crash can't leave a half-written save-file.
-    const fileName = fileNameFor(now);
-    const finalPath = path.join(this.dataDir, fileName);
-    const tempPath = `${finalPath}.tmp`;
-    await writeFile(tempPath, JSON.stringify(content, null, 2), "utf8");
-    await rename(tempPath, finalPath);
-
-    // Only update memory once the save succeeded.
-    this.notes = notes;
-    this.categories = categories;
-    this.tabs = tabs;
-    this.lastNoteId = lastNoteId;
+  private async save(now: Date, change: Partial<Snapshot>, options: SaveOptions = {}): Promise<void> {
+    const before = this.snapshot();
+    const after: Snapshot = { ...before, ...change };
+    const join =
+      options.longFormUpdateId !== undefined && this.lastLongFormUpdate?.noteId === options.longFormUpdateId
+        ? this.lastLongFormUpdate.changeId
+        : undefined;
+    const changeId = await writeChange(this.db, before, after, now, options.record, join);
+    this.apply(after);
     this.lastSaveMs = now.getTime();
-    this.latestFileName = fileName;
-    this.lastLongFormUpdateId = longFormUpdateId;
-
-    try {
-      if (replaces) await unlink(path.join(this.dataDir, replaces));
-    } catch (error) {
-      console.error(`Couldn't delete the replaced save-file ${replaces}:`, error);
-    }
-    try {
-      await this.deleteOldFiles();
-    } catch (error) {
-      // The change is saved; a failed tidy-up shouldn't be reported as a failed save.
-      console.error("Couldn't delete old save-files:", error);
-    }
+    this.lastLongFormUpdate =
+      options.longFormUpdateId !== undefined && changeId !== undefined ? { noteId: options.longFormUpdateId, changeId } : undefined;
   }
 
-  /** Save-files sorted oldest first. */
+  /** Save-files in the data folder (from before the database), oldest first. */
   private async listSaveFiles(): Promise<{ name: string; date: Date }[]> {
     const names = await readdir(this.dataDir);
     return names
       .map((name) => ({ name, date: dateFromFileName(name) }))
       .filter((file): file is { name: string; date: Date } => file.date !== undefined)
       .sort((a, b) => a.date.getTime() - b.date.getTime());
-  }
-
-  /** Deletes save-files older than a week, always keeping the most recent one. */
-  private async deleteOldFiles(): Promise<void> {
-    const files = await this.listSaveFiles();
-    const cutoff = Date.now() - RETENTION_MS;
-    const removable = files.slice(0, -1).filter((file) => file.date.getTime() < cutoff);
-    for (const file of removable) {
-      await unlink(path.join(this.dataDir, file.name));
-    }
-    if (removable.length > 0) {
-      console.log(`Deleted ${removable.length} save-file(s) older than 7 days.`);
-    }
   }
 }

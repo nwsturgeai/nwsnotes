@@ -465,8 +465,16 @@ export function SettingsPage({
       <Reminders />
 
       <section>
+        <h2>History</h2>
+        <p>See the changes from the last 30 days, and go back to how things were after any of them.</p>
+        <a className="button" href={pathFor({ name: "history" })} onClick={(event) => go(event, { name: "history" })}>
+          History
+        </a>
+      </section>
+
+      <section>
         <h2>Backup</h2>
-        <p>Download the latest save-file from the server. It contains all your notes, categories, tags and tabs.</p>
+        <p>Download a file with all your notes, categories, tags and tabs.</p>
         {/* A plain link: the session cookie is sent with it, and the server names the file. */}
         <a className="button" href="/api/notes/download" download>
           Download backup

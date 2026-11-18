@@ -43,7 +43,8 @@ generate_password_and_hash() {
   '
 }
 
-# Writes config.json with the given password hash, keeping the existing session secret if any.
+# Writes config.json with the given password hash, keeping the existing session secret and any other
+# settings already in it (such as the database's, from set-database.sh).
 write_config() {
   local hash=$1
   HASH="$hash" CONFIG_FILE="$CONFIG_FILE" DATA_DIR="$DATA_DIR" CERT_DIR="$CERT_DIR" ACME_DIR="$ACME_DIR" node -e '
@@ -53,6 +54,7 @@ write_config() {
     let existing = {};
     try { existing = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
     const config = {
+      ...existing,
       passwordHash: process.env.HASH,
       sessionSecret: existing.sessionSecret || crypto.randomBytes(32).toString("base64url"),
       dataDir: process.env.DATA_DIR,

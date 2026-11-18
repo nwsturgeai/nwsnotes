@@ -25,7 +25,7 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5173 and log in with the password `dev`. Notes are saved in `server/dev-data/` (ignored by Git).
+Then open http://localhost:5173 and log in with the password `dev`. Notes are saved in `server/dev-data/` (ignored by Git), in PGlite, a local copy of Postgres that runs inside Node, so you don't need Supabase or anything else installed.
 
 `npm run build` produces the deployable app in `dist/`, and `npm run typecheck` checks the TypeScript.
 
@@ -41,7 +41,7 @@ npx playwright install chromium
 
 Then:
 
-- `npm run test:e2e` builds the app and runs every test. Add a file name to run just those tests, e.g. `npm run test:e2e -- notes`.
+- `npm run test:e2e` builds the app and runs every test. Add a file name to run just those tests, e.g. `npm run test:e2e -- notes.spec` (the name must not just be "notes", which the folder name "nwsnotes" also matches).
 - `npm run test:e2e:ui` opens Playwright's UI mode, to run and watch tests one by one.
 - After a failure, `npx playwright show-report e2e/playwright-report` shows what went wrong, with a screenshot, a video and a step-by-step trace.
 
@@ -91,13 +91,34 @@ Let's Encrypt only uses the email for expiry warnings. The certificate renews au
 
 Then open https://nwsnotes.duckdns.org and log in.
 
+### 5. Connect the database (Supabase)
+
+The notes are kept in a Supabase database (the free plan is enough). **Do this before deploying the version with the database**: without it, the app won't start.
+
+1. At https://supabase.com, create a project. Choose the **region nearest the VM**, and save the **database password** in your password manager.
+2. In the project, open **Connect** and copy the **Session pooler** connection string (it works over IPv4, which the VM uses). It looks like `postgresql://postgres.abcdefgh:[YOUR-PASSWORD]@aws-0-eu-west-2.pooler.supabase.com:5432/postgres`. Put your database password in place of `[YOUR-PASSWORD]`.
+3. Open **Project Settings → Database → SSL configuration** and **Download certificate** (`prod-ca-2021.crt`).
+4. Copy the certificate and the script to the VM, and run the script there. It asks for the connection string, without showing it:
+
+   ```bash
+   scp deploy/set-database.sh prod-ca-2021.crt root@nwsnotes.duckdns.org:
+   ssh root@nwsnotes.duckdns.org
+   sudo bash set-database.sh prod-ca-2021.crt
+   ```
+
+5. Deploy (merge to `main`). On its first start the app creates its tables and imports the latest save-file from `/var/lib/nwsnotes/data`. The save-files are left as they are; no new ones are written.
+
+The app makes a small query every day, so Supabase sees the project as in use. If it's paused anyway (free projects pause after a week without activity), the app goes offline: open the project in Supabase and press **Restore**, and the app carries on by itself.
+
 ## Day-to-day
 
 - **Deploying changes:** push or merge to `main`.
 - **Viewing the app's logs:** `sudo -iu nwsnotes pm2 logs nwsnotes`
 - **Restarting the app:** `sudo -iu nwsnotes pm2 restart nwsnotes`
 - **Getting a new password:** `sudo bash setup-vm.sh --new-password` (existing sessions stay logged in).
-- **Taking a backup:** click the cog at the top right, then **Download backup**. This downloads the latest save-file, which can be copied straight back into `/var/lib/nwsnotes/data` to restore.
+- **Taking a backup:** click the cog at the top right, then **Download backup**. This downloads a file with all your notes, categories, tags and tabs. The app also writes one every day to `/var/lib/nwsnotes/data/backups`, keeping the last seven.
+- **Going back to an earlier state:** Settings → **History** lists the last 30 days of changes; **Go back to here** undoes everything after one (and can itself be undone).
+- **Restoring a backup file** (replaces all the notes, as one change in the History, so it can be undone): `sudo -iu nwsnotes bash -c 'cd /opt/nwsnotes/app && NODE_ENV=production node server.cjs --restore /path/to/notes-….json'`, then restart the app.
 
 ## Installing it as an Android app
 
@@ -108,8 +129,11 @@ Open https://nwsnotes.duckdns.org in Chrome on the phone, log in, then choose **
 | Path | Contents |
 | --- | --- |
 | `/opt/nwsnotes/app` | The deployed app (replaced on every deployment) |
-| `/var/lib/nwsnotes/data` | Note save-files, e.g. `notes-2026-10-24T09-40-12-345Z.json` |
-| `/etc/nwsnotes/config.json` | Password hash and session secret |
+| Supabase | The notes, categories, tabs and their 30-day history |
+| `/var/lib/nwsnotes/data/backups` | A backup file a day, the last seven, e.g. `notes-2026-11-18.json` |
+| `/var/lib/nwsnotes/data` | Push-notification keys and devices, and the save-files from before the database |
+| `/etc/nwsnotes/config.json` | Password hash, session secret and the database's connection string |
+| `/etc/nwsnotes/supabase-ca.crt` | Supabase's SSL certificate, to check the database connection |
 | `/etc/nwsnotes/certs` | The app's copy of the HTTPS certificate |
 
-Save-files older than 7 days are deleted automatically, except the most recent one, which is always kept.
+

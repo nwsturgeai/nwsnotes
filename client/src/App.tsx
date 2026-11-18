@@ -22,6 +22,7 @@ import {
 } from "./offline";
 import { registerReminders, turnOffReminders } from "./reminders";
 import { usePage } from "./route";
+import { HistoryPage } from "./HistoryPage";
 import { SettingsPage } from "./SettingsPage";
 import { useColumns, useStylusMode } from "./stylusMode";
 import { TabEditPage } from "./TabEditPage";
@@ -307,6 +308,8 @@ export function App() {
               onSessionExpired={sessionExpired}
               onLogout={logout}
             />
+          ) : page.name === "history" ? (
+            <HistoryPage onReverted={() => void refreshNotes()} onSessionExpired={sessionExpired} />
           ) : page.name === "category" ? (
             <CategoryEditPage
               id={page.id}

@@ -4,6 +4,7 @@ import {
   type BulkTagsRequest,
   type Category,
   type CategoryRequest,
+  type HistoryPage,
   type LifetimeChange,
   type LifetimeRequest,
   type LoginRequest,
@@ -131,6 +132,9 @@ export const api = {
   setTabOrder: (id: number, body: TabOrderRequest) => request<Tab>("PUT", `/api/tabs/${id}/order`, body, changeHeaders()),
   deleteTab: (id: number) => request<{ ok: true }>("DELETE", `/api/tabs/${id}`, undefined, changeHeaders()),
   /** Reminders: the server's public push key, and registering or forgetting this device. */
+  history: (before?: number) => request<HistoryPage>("GET", `/api/history${before === undefined ? "" : `?before=${before}`}`),
+  revert: (toChangeId: number) => request<{ undone: number }>("POST", "/api/history/revert", { toChangeId }, changeHeaders()),
+
   pushKey: () => request<{ publicKey: string }>("GET", "/api/push/key"),
   pushSubscribe: (subscription: PushSubscriptionJSON) => request<{ ok: true }>("POST", "/api/push/subscribe", subscription),
   pushUnsubscribe: (endpoint: string) => request<{ ok: true }>("POST", "/api/push/unsubscribe", { endpoint }),
