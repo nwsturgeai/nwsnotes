@@ -425,7 +425,7 @@ When a test fails, it should be easy to see what went wrong.
 
 
 ## Database
-The notes, categories and tabs should be stored in a database on the server instead of in save-files.
+The notes, categories and tabs should be stored in a database hosted by Supabase (on the free plan) instead of in save-files.
 Each change should only write what changed, rather than a complete copy of everything.
 Existing notes must be moved across automatically, with nothing lost.
 "Download backup" on the settings page should still give me a single file with all my data.
@@ -1060,21 +1060,32 @@ Bulk changes (such as Empty Bin, or changing the tags of several notes at once) 
 - **From now on:** each new feature or change comes with new or updated tests, as part of the same branch.
 
 ### Database
-- **Engine:** SQLite, through Node's built-in `node:sqlite` module (Node 24), so there's no extra package to install or compile on the VM. The database is one file, `nwsnotes.db`, in the data folder (`/var/lib/nwsnotes/data` on the VM, `server/dev-data/` in development, and the tests' own folder for the tests).
-- **Settings:** WAL journal mode with `synchronous=FULL`, so a change is safely on disk once the server replies, and a crash or power cut can't corrupt the file.
+- **Engine:** PostgreSQL hosted by Supabase, on the free plan. The Supabase dashboard isn't used to look at or edit the data.
+- **Connecting:** the server connects straight to Postgres with the `pg` package, through Supabase's connection pooler (session mode, which works over IPv4), using a small pool of connections. It doesn't use Supabase's JavaScript library or web API: a change and its history must be saved together in one transaction, which a direct connection does simply.
+  - The connection string (with its password) is `databaseUrl` in `/etc/nwsnotes/config.json` on the VM, never in the repository. In production the server won't start without it.
+  - The connection uses SSL, checked against Supabase's certificate, saved from the dashboard to `/etc/nwsnotes/supabase-ca.crt`.
+  - The Supabase project's region should be the one nearest the VM, so each change adds only a few milliseconds.
+- **Private tables:** the tables live in their own schema, `nwsnotes`, not in `public`. Supabase's automatic web API only shows the schemas it's told to, so nothing is reachable except through the app's own server.
 - **Tables:**
-  - `notes`: `id` (the note id) and `data`, the note as JSON, exactly as the API sends it.
-  - `categories` and `tabs`: `id`, `position` (their order on the settings page) and `data` as JSON. A category's tags, in their order, are in its JSON, as now.
+  - `notes`: `id` (the note id) and `data`, the note as `jsonb`, exactly as the API sends it.
+  - `categories` and `tabs`: `id`, `position` (their order on the settings page) and `data` as `jsonb`. A category's tags, in their order, are in its JSON, as now.
   - `meta`: small values by name, such as `lastNoteId`, so ids are still never reused.
   - `changes` and `change_items`: the history (see "History and revert").
-  - Storing each item as JSON keeps it in exactly the shape the API and the app already use, so nothing else has to change. The server still keeps everything in memory, as now, and reads the database only at start-up.
-- **Writing a change:** each change runs in one transaction that updates only the rows it changed and records the change in the history. If anything fails, nothing is changed, in the database or in memory, and the page shows the error as now.
-- **Moving the data across:** when the server starts and the database has no data, it imports the most recent save-file (if there is one) in one transaction, recorded in the history as "Imported from notes-….json". The old save-files are left where they are, untouched, and no new ones are written.
-- **Download backup:** `GET /api/notes/download` still returns one file in the save-file format (version 2, with `notes`, `categories`, `tabs` and `lastNoteId`), built from the database and named with the time, e.g. `notes-2026-11-18T09-40-12-345Z.json`.
-- **Restoring a backup by hand** (if ever needed): stop the app, move `nwsnotes.db` (and its `-wal` and `-shm` files) out of the data folder, put the backup file in the folder, and start the app. It imports the file as it does the first time.
-- **Daily copy:** once a day the server writes a copy of the database to `backups/nwsnotes-2026-11-18.db` in the data folder, with SQLite's `VACUUM INTO`, which is safe while the app is running. Seven daily copies are kept. They're a safety net against a damaged file, separate from the history.
-- **Push devices** stay in `push-keys.json` and `push-subscriptions.json`: they belong to each device, aren't part of the notes, and aren't in the history.
-- **Tests:** `POST /api/test/reset` empties every table, history included, and imports the seed, so every test still starts the same way. New tests check that the data survives a server restart, and that the first start imports a save-file.
+  - Storing each item as JSON keeps it in exactly the shape the API and the app already use, so nothing else has to change. The server keeps everything in memory, as now, and reads the database only at start-up.
+  - The server creates the schema and tables itself when they don't exist yet, so setting up needs only an empty Supabase project.
+- **Writing a change:** each change runs in one transaction that updates only the rows it changed and records the change in the history. If anything fails, nothing is changed, in the database or in memory.
+- **When Supabase can't be reached:** the server answers 503 "The database can't be reached". The app already treats 503 as being offline: changes wait in the outbox and are sent once the server answers again.
+  - If the database can't be reached when the server starts, it keeps trying every 30 seconds, answering 503 meanwhile, rather than stopping.
+  - If a free project has been paused after a week without activity, it needs "Restore" pressing in the Supabase dashboard; the app then carries on by itself.
+- **Daily activity:** once a day the server runs a small query, so the project counts as in use and isn't paused while the app is idle. Supabase may not count this as activity, in which case a pause after a long break is accepted (see above).
+- **Moving the data across:** when the server starts and the database has no data, it imports the most recent save-file in the data folder (if there is one) in one transaction, recorded in the history as "Imported from notes-….json". The old save-files are left where they are, untouched, and no new ones are written.
+- **Download backup:** `GET /api/notes/download` still returns one file in the save-file format (version 2, with `notes`, `categories`, `tabs` and `lastNoteId`), built from the data and named with the time, e.g. `notes-2026-11-18T09-40-12-345Z.json`.
+- **Daily backup file:** once a day the server also writes that same file to `backups/` in the data folder on the VM, e.g. `backups/notes-2026-11-18.json`. Seven are kept. They're a copy away from Supabase, as the free plan has no backups of its own.
+- **Restoring a backup by hand** (if ever needed): on the VM, `node server.cjs --restore <file>` replaces all the notes, categories and tabs with the file's, in one transaction, recorded in the history as "Restored from <file>" (so even that can be undone). The app is restarted afterwards.
+- **Push devices** stay in `push-keys.json` and `push-subscriptions.json` on the VM: they belong to each device, aren't part of the notes, and aren't in the history.
+- **Development and tests use PGlite,** a copy of Postgres that runs inside Node (the `@electric-sql/pglite` package), with nothing else to install. It's used whenever no `databaseUrl` is set: in development its files are in `server/dev-data/pglite/`, and the tests have their own. So development and tests never touch the real database, and GitHub runs the tests without Supabase.
+  - The server's code is the same for both; only the connection differs. The tables and queries are plain Postgres, which both understand.
+- **Tests:** `POST /api/test/reset` empties every table, history included, and imports the seed, so every test still starts the same way. New tests check that the data survives a server restart, that the first start imports a save-file, and that the app goes offline (and catches up) when the database can't be reached.
 
 ### History and revert
 - **Stored as "before" copies:** every change adds a row to `changes`, and one row to `change_items` for each item it touched, holding that item as it was before the change:
