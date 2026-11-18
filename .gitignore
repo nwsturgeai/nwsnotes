@@ -158,3 +158,5 @@ e2e/.auth/
 e2e/test-results/
 e2e/playwright-report/
 *.tsbuildinfo
+# Certificates (e.g. Supabase's, copied to the VM by set-database.sh) never go in the repository.
+*.crt

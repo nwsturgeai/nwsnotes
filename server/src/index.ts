@@ -4,18 +4,33 @@ import https from "node:https";
 import path from "node:path";
 import { createApp, createHttpApp } from "./app.js";
 import { loadConfig } from "./config.js";
+import { openDatabase } from "./db.js";
 import { LiveUpdates } from "./live.js";
 import { PushReminders } from "./push.js";
 import { NoteStore } from "./store.js";
 
 async function main() {
   const config = loadConfig();
-  const store = new NoteStore(config.dataDir);
+  const db = await openDatabase(config);
+  const store = new NoteStore(db, config.dataDir);
+
+  // `node server.cjs --restore <file>`: replaces all the data with a backup file's, then stops.
+  const restoreAt = process.argv.indexOf("--restore");
+  if (restoreAt >= 0) {
+    const file = process.argv[restoreAt + 1];
+    if (!file) throw new Error("Give the backup file to restore: --restore <file>");
+    await store.init();
+    if (!store.isReady()) throw new Error("The database can't be reached, so nothing was restored.");
+    const count = await store.restore(path.basename(file), readFileSync(file, "utf8"));
+    console.log(`Restored ${count} notes from ${file}. Restart the app (pm2 restart nwsnotes) so it loads them.`);
+    process.exit(0);
+  }
+
   await store.init();
   const push = new PushReminders(config.dataDir, config.pushContact, store);
   await push.init();
   const live = new LiveUpdates(config.sessionSecret);
-  const app = createApp(config, store, live, push);
+  const app = createApp(config, store, live, push, db);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {

@@ -26,6 +26,13 @@ export interface Config {
    * test-only reset endpoint.
    */
   testMode: boolean;
+  /**
+   * The Supabase (Postgres) connection string. Required in production; without it (development and
+   * the tests) the server uses PGlite, a local copy of Postgres, in `dataDir`.
+   */
+  databaseUrl?: string;
+  /** Supabase's SSL certificate, to check the database connection against (production only). */
+  databaseCaFile?: string;
 }
 
 const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
@@ -60,12 +67,14 @@ export function loadConfig(): Config {
       httpsPort: 0,
       pushContact: DEFAULT_PUSH_CONTACT,
       testMode: process.env.NWSNOTES_TEST === "1",
+      // Normally unset, so development uses PGlite; set it to try a real Postgres database.
+      databaseUrl: process.env.NWSNOTES_DATABASE_URL,
     };
   }
 
   const file = process.env.NWSNOTES_CONFIG ?? "/etc/nwsnotes/config.json";
   const raw = JSON.parse(readFileSync(file, "utf8")) as Partial<Config>;
-  for (const key of ["passwordHash", "sessionSecret"] as const) {
+  for (const key of ["passwordHash", "sessionSecret", "databaseUrl"] as const) {
     if (!raw[key]) throw new Error(`${file} is missing "${key}"`);
   }
   return {
@@ -80,5 +89,7 @@ export function loadConfig(): Config {
     httpsPort: raw.httpsPort ?? 443,
     pushContact: raw.pushContact ?? DEFAULT_PUSH_CONTACT,
     testMode: false,
+    databaseUrl: raw.databaseUrl!,
+    databaseCaFile: raw.databaseCaFile ?? "/etc/nwsnotes/supabase-ca.crt",
   };
 }

@@ -5,19 +5,22 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/server.cjs --external:bufferutil --external:utf-8-validate"
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/server.cjs --external:bufferutil --external:utf-8-validate --external:pg-native --external:@electric-sql/pglite"
   },
   "dependencies": {
+    "@electric-sql/pglite": "0.5.14",
     "@nwsnotes/shared": "*",
     "express": "^5.1.0",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
+    "pg": "^8.23.1",
     "web-push": "^3.6.7",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.23.1",
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.0",
     "esbuild": "^0.25.0",

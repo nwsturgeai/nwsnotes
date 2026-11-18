@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 export type Page =
   | { name: "notes" }
   | { name: "settings" }
+  /** The history of changes, where earlier states can be gone back to. */
+  | { name: "history" }
   /** Adding (id "new") or editing a category. */
   | { name: "category"; id: number | "new" }
   /** Adding (id "new") or editing a tab. */
@@ -15,6 +17,8 @@ export function pathFor(page: Page): string {
       return "/";
     case "settings":
       return "/settings";
+    case "history":
+      return "/history";
     case "category":
       return `/settings/categories/${page.id}`;
     case "tab":
@@ -24,6 +28,7 @@ export function pathFor(page: Page): string {
 
 function pageFromPath(pathname: string): Page {
   if (pathname === "/settings") return { name: "settings" };
+  if (pathname === "/history") return { name: "history" };
   const match = /^\/settings\/(categories|tabs)\/(new|\d+)$/.exec(pathname);
   if (match) {
     const id = match[2] === "new" ? "new" : Number(match[2]);

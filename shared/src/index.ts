@@ -624,3 +624,23 @@ export function withoutMarkers(text: string): string {
     )
     .join("\n");
 }
+
+/** One change in the history (GET /api/history). */
+export interface HistoryChange {
+  id: number;
+  /** ISO 8601, UTC. */
+  time: string;
+  /** E.g. "Archived \"Buy milk\"". */
+  summary: string;
+  /** How many notes, categories and tabs it changed. */
+  itemCount: number;
+  /** For going back: the time of the change gone back to, and how many changes were undone. */
+  revertedTo?: string;
+  undone?: number;
+}
+
+/** A page of the history, newest first; `more` says whether there are older changes. */
+export interface HistoryPage {
+  changes: HistoryChange[];
+  more: boolean;
+}
