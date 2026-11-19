@@ -36,7 +36,7 @@ When a test fails, it should be easy to see what went wrong.
   - **notes:** adding typed notes with tags (Enter, Ctrl+Enter to the top, long press), editing, cancelling, the "Cr."/"Due" dates.
   - **lifetime:** waiting, archive, reinstate, bin, Reset New, Archived to Bin and Empty Bin, with their confirmations and counts.
   - **tabs and filters:** switching tabs, the filter row, its counts and TOTAL, reset filters, search, and the "…" menu at narrow widths.
-  - **ordering:** edit-order mode and dragging a note.
+  - **ordering:** edit-order mode and dragging a note; the shared order (a note on two tabs keeps its place relative to the others on both, "All" included, and adding at the top there); making the shared order from older per-tab orders, the higher tab winning; going back in the History.
   - **multi-select:** selecting notes, All/None, and bulk tag changes.
   - **long-form:** creating, editing, autosave, cancel and delete, child notes, converting a note, matching the tab, and the formatting overlay lining up.
   - **formatting:** `*bold*`, `_underline_` and `/italic/` in the list, and words like "and/or" left alone.

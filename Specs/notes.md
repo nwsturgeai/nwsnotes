@@ -16,7 +16,7 @@ parentId - an integer, nullable.  When this note is a child of a long-form note,
 dueDateTime - an optional date-time value for when this note is due to be resolved.  May only be populated for regular notes, not long-form notes.
 
 The main app screen will show:
-A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list.  Each row should show the note title.  Rows should be separated by a thin horizontal line.
+A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list, apart from notes put in order (see "Setting the order of notes").  Each row should show the note title.  Rows should be separated by a thin horizontal line.
 If there isn't enough space to show all notes, then scroll vertically to see the rest.
 There will be an area to enter a new note at the bottom of the page - always visible even if there are more notes than fit.  This area at the bottom should not scroll when the list of notes scrolls.  This area should be fixed height, 150px tall.
 There should be no "New note" heading.
@@ -38,7 +38,8 @@ When this button is clicked, editing-order mode is activated.  The "edit order" 
 Whilst the notes-list page is in editing-order mode, each note should have an icon on its left: fa-grip-vertical.
 Whilst in editing-order mode, the edit / set-waiting / set-archived buttons on each note are hidden. In their place are two buttons: fa-angles-up and fa-angles-down. Clicking angles-up moves the note to the top of the list; clicking angles-down moves it to the bottom.
 Clicking and holding on one of the fa-grip-vertical icons causes that note to start dragging.  It can be dragged up or down.  When the note-being-dragged is hovered over the gap between two other notes, then a gap opens up between those notes ready to accept the note-being-dragged.  If the mouse/finger/stylus is then released, the note is dropped into this new location.  This updated ordering is then sent to the server and should be reflected in all other browsers that have this tab open.
-The note ordering should be saved as an integer-array attribute on each Tab.  Any notes shown in a Tab that are not listed in the ordering should appear below any notes that have an ordering specified.
+There is one shared order of all notes, rather than one per Tab. Every Tab, including "All", lists its notes in that shared order, so notes that show on several tabs are always in the same order relative to each other, whichever tab is showing. Moving a note within a tab moves it relative to the notes that tab shows, and notes the tab doesn't show keep their places. Notes not yet in the shared order (such as newly added ones) appear below the ordered ones, oldest first.
+The "All" tab can be ordered too, and supports adding a note at the top.
 
 ### Adding a note at the top
 When adding a new regular note, adding it with Ctrl+Enter puts it at the top of the list in the current tab, instead of at the bottom as usual.
@@ -74,14 +75,20 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - **Balanced columns (accepted):** adding a note can move other notes between columns, as the columns even out. If this feels jumpy in use, an alternative is to fill each column to the screen's height and scroll sideways.
 
 ### Note ordering
-- **Stored on the tab:** each tab has `noteOrder`, an array of note ids (empty or missing for tabs saved before this). The save-file format stays version 2, since a missing `noteOrder` simply means empty. The tab editor doesn't change it. It's set with `PUT /api/tabs/:id/order` and `{ noteOrder: number[] }`. The server keeps only ids of existing notes, drops duplicates, saves, and tells other pages to reload. If two browsers reorder at the same time, the last save wins.
-- **"All" can't be ordered:** the edit-order button isn't shown on "All", which always lists notes in creation order.
-- **List order:** within a tab, notes listed in `noteOrder` come first, in that order. Notes that aren't listed (including new ones) follow in creation order, so a new note still appears at the bottom. Notes in `noteOrder` that don't match the tab or the filters are simply not shown.
-- **Deleted notes:** when notes are deleted (Empty Bin, or cancelling a new long-form note), the server removes their ids from every tab's `noteOrder` in the same save.
+- **One shared order:** a single `noteOrder`, an array of note ids, for all notes and every tab ("All" included). It's kept as a small setting on the server, in the database's `meta` table (like the All tab's placement), and in the save-file as a top-level `"noteOrder": [...]` (still version 2; a file without it has none, or gets one made from its tabs' orders, below).
+  - `GET /api/notes` includes it as `noteOrder`. It's set with `PUT /api/notes/order` and `{ noteOrder: number[] }`; the server keeps only ids of existing notes, drops duplicates, saves, and tells other pages to reload. If two browsers reorder at the same time, the last save wins.
+  - Changing it is one change in the History ("Changed the order of the notes"), with a "before" copy (a `setting` item, id 2), so going back undoes it.
+- **List order:** every tab, "All" included, lists notes in `noteOrder` first, in that order. Notes that aren't in it (such as new ones) follow in creation order, so a normal add still appears at the bottom. Notes in `noteOrder` that a tab or its filters don't show are simply not listed there.
+- **Deleted notes:** when notes are deleted (Empty Bin, or cancelling a new long-form note), the server removes their ids from `noteOrder` in the same save.
+- **Switching from per-tab orders (once):** tabs used to keep their own `noteOrder`. When the server loads data with no shared order (the database the first time, or an older save-file), it makes one from the tabs' orders, then drops the tabs' own:
+  - Tabs are taken in their Settings order. Each tab's notes are placed in its order wherever that doesn't conflict with a tab above it; where two tabs disagree, the higher tab wins. In practice: each of the tab's notes not yet placed goes straight after the nearest note before it in that tab's order that is already placed (or before the first placed one, if none is).
+  - Notes in no tab's order aren't in the shared order, so they follow, oldest first.
+  - This isn't a change in the History. The tab editor never changes the order, and a tab's `noteOrder` sent to the server is ignored.
+- **"All" can be ordered:** it has the edit-order button like any tab, and adding at the top works there.
 - **Edit-order button:** in the filter row, at the far right, the same 24px size as the note buttons. It shows `fa-arrow-down-wide-short` ("Edit order") when ordering is off and `fa-clipboard-check` ("Finish ordering") when it's on. If a tab already filters on every category, the row has no dropdowns. The row (and its reset button) is then still shown, just to hold the edit-order button. On "All", the row only shows its dropdowns and reset button.
 - **Edit-order mode:**
   - It isn't remembered: it's off when the app opens.
-  - It stays on when switching tabs, and turns off on "All".
+  - It stays on when switching tabs, "All" included.
   - It can't be turned on while a note or long-form note is being edited. The button is greyed out, with the hint "Finish or cancel the edit first".
   - The note buttons (edit, Waiting or Reinstate, Archive or Move to bin) are hidden while it's on. In their place each note has two buttons of the same size: `fa-angles-up` ("Move to top") and `fa-angles-down` ("Move to bottom"), which move the note to the top or bottom of the list as shown (the same as dragging it there, so the rules under "Under extra filters" apply) and save the order. "Move to top" is greyed out on the first note and "Move to bottom" on the last, and both are while a note is being dragged.
 - **Grips:** in edit-order mode each note shows an `fa-grip-vertical` icon at its left, in a 24px-wide handle.
@@ -92,11 +99,11 @@ Tag selections for a note can be updated in edit mode to have any new tag values
   - The list scrolls by itself when the pointer is near its top or bottom edge.
   - The grip has `touch-action: none`, so a finger drag doesn't scroll the page.
 - **Columns:** with several columns, the order runs down the first column and then on down the next, and a note can be dropped into any column. The drop point is worked out from where the notes were when the drag started, so the columns re-balancing as the gap opens doesn't make it jump.
-- **Under extra filters:** the moved note goes straight after the visible note it was dropped below, or straight before the first visible note if dropped at the top. Notes that are filtered out keep their places. Each drop saves the order of every note in the tab (all notes matching the tab's own filter, Bin included), so after the first drag nothing in that tab is unordered.
+- **Moving within the shared order:** the moved note goes straight after the visible note it was dropped below, or straight before the first visible note if dropped at the top. "Move to top" and "Move to bottom" put it straight before the first visible note or straight after the last. Notes the tab or its filters don't show keep their places, so a move changes the note's place in every tab that shows it, but only among the notes it was near. Each move saves the whole order of every note (unordered ones are added at the end, oldest first), so after the first move nothing is unordered.
 - **Live updates:** the list shows the new order as soon as the note is dropped, and the save is sent in the background. If it fails, the list returns to the saved order and a notice shows the error. If another page changes something mid-drag, the reload waits until the drag ends.
 
 ### Adding a note at the top
-- **How:** the note is added as usual, then the tab's order is saved with the new note's id at the front of `noteOrder`. Notes not in `noteOrder` still follow in creation order, so nothing else moves. The server API doesn't change.
+- **How:** the note is added as usual, then the shared order is saved with the new note straight before the first note listed in the tab (as filtered), or at the very front if the tab lists none. It's then at the top of this tab, and in the same place relative to those notes on every other tab.
 - **Ctrl+Enter:** in the new-note title box (Cmd+Enter on a Mac). In stylus mode there's no text box, so only the long press applies.
 - **Long press:** holding the Add button for 1 second (mouse, finger or stylus).
   - From then on, while it's still held, the button's icon changes from `fa-circle-plus` to `fa-circle-up`, and it gets a darker background and a ring. Letting go then adds the note at the top.
@@ -109,8 +116,7 @@ Tag selections for a note can be updated in edit mode to have any new tag values
   - The browser's own long-press menu and text selection are suppressed on the button.
   - **Added on letting go, not on the click:** Chrome on Android sends no click when a finger is lifted after a long hold, so the long press acts when the finger (or mouse or stylus) is let go on the button. If a click follows anyway (mouse, stylus, some tablets), it's ignored, so the note is never added twice. Quick taps, clicks and Enter still add through the click as before.
   - **The keyboard comes back:** after a typed note is added, by a tap or a long press, the title box gets focus again, ready for the next note. Chrome closes the keyboard during a long hold and the app can't stop that, so it may close and then reopen.
-- **Where it applies:** only when adding a new note on a tab other than "All", while online. Otherwise Ctrl+Enter and a long press do a normal add, and a long press shows no change on the button:
-  - "All" always lists notes in creation order, so the note goes at the bottom there.
+- **Where it applies:** only when adding a new note, while online, on any tab, "All" included. Otherwise Ctrl+Enter and a long press do a normal add, and a long press shows no change on the button:
   - Offline, note ordering isn't available. The note is added at the bottom, with the notice "Added at the bottom: adding at the top isn't available offline."
   - While a note is being edited, the button is "Update", and Ctrl+Enter or a long press just saves.
   - While a long-form note is open, its new child notes can be added at the top too.
