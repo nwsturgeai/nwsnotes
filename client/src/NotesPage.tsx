@@ -6,7 +6,6 @@ import {
   useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAlarmClock, faCircle } from "@fortawesome/free-regular-svg-icons";
@@ -64,6 +63,7 @@ import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
+import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
 import { useFullTagList } from "./stylusMode";
 
@@ -133,9 +133,6 @@ function selectionFor(note: Note, categories: Category[]): TagSelection {
 
 const NOTICE_MS = 4000;
 /** Holding Add this long adds the note at the top of the tab. */
-const LONG_PRESS_MS = 1000;
-/** The buzz when a long press on Add is reached. */
-const HOLD_BUZZ_MS = 40;
 
 export function NotesPage({
   notes,
@@ -430,63 +427,8 @@ export function NotesPage({
 
   /** A long press on Add puts the note at the top: only for new notes, on a tab, online. */
   const canAddAtTop = !editingNote && !onAll && !offline;
-  /** The Add button has been held long enough: letting go adds the note at the top. */
-  const [heldLong, setHeldLong] = useState(false);
-  const heldLongRef = useRef(false);
-  const pressing = useRef(false);
-  const holdTimer = useRef<number>(undefined);
-  /**
-   * While Add is pressed (when a long press can add at the top): the button's centre and size on the
-   * screen, where the rings are drawn. A ring fills round the button during the hold, then rings burst
-   * out from it, beyond the finger, once it's been held long enough.
-   */
-  const [holdRing, setHoldRing] = useState<{ x: number; y: number; size: number }>();
-
-  function endHold() {
-    window.clearTimeout(holdTimer.current);
-    pressing.current = false;
-    setHoldRing(undefined);
-  }
-
-  function setHeld(held: boolean) {
-    heldLongRef.current = held;
-    setHeldLong(held);
-  }
-
-  /** The Add button's long-press handlers. Refs, not state, decide the click: the pointer events come first. */
-  const longPress = {
-    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
-      endHold();
-      setHeld(false);
-      if (event.button !== 0 || !canAddAtTop) return;
-      pressing.current = true;
-      const rect = event.currentTarget.getBoundingClientRect();
-      setHoldRing({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, size: rect.width });
-      holdTimer.current = window.setTimeout(() => {
-        setHeld(true);
-        // A short buzz too, where the device can (Android; iPhones can't).
-        if ("vibrate" in navigator) navigator.vibrate(HOLD_BUZZ_MS);
-      }, LONG_PRESS_MS);
-    },
-    onPointerUp: endHold,
-    // Sliding off the button before letting go adds nothing, so the long press is forgotten.
-    onPointerLeave: () => {
-      if (pressing.current) setHeld(false);
-      endHold();
-    },
-    onPointerCancel: () => {
-      setHeld(false);
-      endHold();
-    },
-    // Android's long-press menu would otherwise open over the button.
-    onContextMenu: (event: ReactMouseEvent) => event.preventDefault(),
-    // Enter in the title box also "clicks" Add (with no pointer: detail 0), which is never a long press.
-    onClick: (event: ReactMouseEvent) => {
-      addAtTop.current = heldLongRef.current && event.detail > 0;
-      setHeld(false);
-    },
-  };
-  useEffect(() => () => window.clearTimeout(holdTimer.current), []);
+  /** Add's long press: letting go after holding it for a second adds the note at the top. */
+  const addHold = useLongPress(canAddAtTop);
 
   // Notices disappear by themselves.
   useEffect(() => {
@@ -742,16 +684,20 @@ export function NotesPage({
   }, [syncNotice]);
 
   /** The list-check button: on starts with nothing selected; off discards any selections and pill clicks. */
-  function toggleBulk() {
+  /** Turns multi-select on (a long press starts with every listed note selected) or off. */
+  function toggleBulk(selectAll = false) {
     if (bulk) {
       setBulk(undefined);
       setSaveError(undefined);
     } else if (!listCheckHint) {
-      setBulk({ noteIds: [], changes: new Map() });
+      setBulk({ noteIds: selectAll ? visibleNotes.map((note) => note.id) : [], changes: new Map() });
       setSaveError(undefined);
       setPadInked(false);
     }
   }
+
+  /** Multi-select's long press: holding the button for a second turns it on with every listed note selected. */
+  const bulkHold = useLongPress(!bulk && listCheckHint === undefined && !saving);
 
   /** Selects or unselects a note, until a pill has been clicked. */
   function toggleBulkNote(noteId: number) {
@@ -1261,7 +1207,7 @@ export function NotesPage({
               {!bulk && (
                 <button
                   type="submit"
-                  className={heldLong ? "icon-button primary add-button held" : "icon-button primary add-button"}
+                  className={addHold.held ? "icon-button primary add-button held" : "icon-button primary add-button"}
                   aria-label={editingNote ? "Update" : "Add"}
                   title={
                     editingNote
@@ -1273,30 +1219,18 @@ export function NotesPage({
                           : "Add"
                   }
                   disabled={saving || addBlocked}
-                  {...longPress}
+                  {...addHold.handlers}
+                  // Enter in the title box also "clicks" Add (with no pointer), which is never a long press.
+                  onClick={(event) => {
+                    addAtTop.current = addHold.takeLongPress(event);
+                  }}
                 >
-                  <FontAwesomeIcon icon={editingNote ? faCircleCheck : heldLong ? faCircleUp : faCirclePlus} />
+                  <FontAwesomeIcon icon={editingNote ? faCircleCheck : addHold.held ? faCircleUp : faCirclePlus} />
                 </button>
               )}
               {/* Drawn on the screen rather than in the add area, so they aren't cut off at its edges. */}
-              {holdRing && (
-                <span
-                  className={heldLong ? "hold-ring held" : "hold-ring"}
-                  style={{ left: holdRing.x, top: holdRing.y, width: holdRing.size, height: holdRing.size }}
-                  aria-hidden
-                >
-                  {heldLong ? (
-                    <>
-                      <span className="hold-burst" />
-                      <span className="hold-burst second" />
-                    </>
-                  ) : (
-                    <svg className="hold-progress" viewBox="0 0 52 52">
-                      <circle cx="26" cy="26" r="24" pathLength={100} />
-                    </svg>
-                  )}
-                </span>
-              )}
+              {addHold.rings}
+              {bulkHold.rings}
               {editingNote && (
                 <button
                   type="button"
@@ -1355,12 +1289,17 @@ export function NotesPage({
               {fullTagList && !editingNote && (
                 <button
                   type="button"
-                  className={bulk ? "icon-button primary" : "icon-button"}
+                  className={bulk ? "icon-button primary" : bulkHold.held ? "icon-button held" : "icon-button"}
                   aria-label={bulk ? "Stop selecting notes" : "Select notes to change their tags"}
                   aria-pressed={bulkActive}
-                  title={bulk ? "Stop selecting notes (no changes)" : (listCheckHint ?? "Select notes to change their tags")}
+                  title={
+                    bulk
+                      ? "Stop selecting notes (no changes)"
+                      : (listCheckHint ?? "Select notes to change their tags (hold to select them all)")
+                  }
                   disabled={saving || (!bulk && listCheckHint !== undefined)}
-                  onClick={toggleBulk}
+                  {...bulkHold.handlers}
+                  onClick={(event) => toggleBulk(bulkHold.takeLongPress(event))}
                 >
                   <FontAwesomeIcon icon={faListCheck} />
                 </button>

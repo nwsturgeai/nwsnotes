@@ -1243,16 +1243,25 @@ body:has(.note-list li.dragging) {
   background: var(--accent-hover);
 }
 
-/* Add: held down, so no text selection or Android long-press menu. */
-.add-button {
+/* Buttons with a long press are held down, so no text selection or Android long-press menu. */
+.add-button,
+.icon-button {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
 
-/* Held long enough to add the note at the top: darker, with a ring. */
+/* Held long enough for a long press (Add, multi-select): darker, with a ring. */
+.icon-button.held,
+.icon-button.held:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  color: var(--accent-text);
+}
+
 .add-button.held,
-.add-button.held:hover:not(:disabled) {
+.add-button.held:hover:not(:disabled),
+.icon-button.held,
+.icon-button.held:hover:not(:disabled) {
   background: var(--accent-hover);
   box-shadow: 0 0 0 3px var(--focus);
 }

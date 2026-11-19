@@ -65,6 +65,7 @@ Whilst the list-check button is on: all the notes in the notes-list gain an icon
 Whilst the list-check button is on, it is not possible to edit / wait / archive / bin any notes.
 Whilst the list-check button is on but no notes have been selected or no tag pills have been clicked, then clicking the list-check button again just toggles it off and the page returns to regular behaviour.
 Any note-selections are lost when list-check mode is ended - restarting list-check mode always starts with no notes selected.
+The list-check button also accepts a long-click (the same long-click behaviour as the add-note button). A long-click on the list-check button starts list-check mode with all the notes in the tab already selected.
 
 The point of multi-selecting notes is to be able to bulk-edit their tags.
 The tag pill statuses (selected or unselected) in the new-note area should be updated to reflect which tags are set on the notes that have been selected.
@@ -183,7 +184,7 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
 - Under the title text box there is one dropdown per category, with no visible title. Every dropdown is the app's own button-and-list control, not the browser's built-in dropdown, so single- and multi-select look and behave alike (and the app controls which inputs they respond to).
 - The button shows the chosen tag names, or the category name in grey when no tag is chosen. Hovering shows the category name (useful once a tag is chosen), and screen readers announce it as the button's label.
 - Single-select: the list shows the category name first (meaning no tag), then the tags, with the chosen one marked. Choosing an option replaces the previous choice and closes the list.
-- Multi-select: the list is a check-list of the tags; it stays open while ticking, and closes when clicking elsewhere or pressing Escape.
+- Multi-select: the list is a check-list of the tags; it stays open while ticking, and closes when clicking elsewhere or pressing Escape. Scrolling elsewhere only closes a list if it moves the dropdown's button (the list is placed beside it), so the note list jumping to the bottom when a filter is ticked doesn't close it.
 - **List size:** an open list (in every dropdown and check-list) shows up to 15 rows before it scrolls.
   - It opens downwards if the whole list fits there. Otherwise it opens towards the side of the button with more room, which is upwards from the new-note area at the bottom.
   - It's never taller than the room on that side, leaving 8px to the window's edge, so in a short window it shows fewer rows and scrolls.
@@ -209,6 +210,7 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
   - **When it can be turned on:** only while the new-note title box is empty or the canvas has no ink, no note or long-form note is being edited, and edit-order mode is off. Otherwise it's greyed out, with a hint saying why.
   - **Two modes never overlap:** while list-check is on, the Edit order button is greyed out too.
   - **While it's on:** its colours are inverted (accent background, light icon) and it's marked as pressed. The title box or canvas, and the Add, Clear and long-form buttons, are hidden, so it's the only button in the column until Accept appears.
+- **Long press on the list-check button:** holding it for a second, then letting go, turns list-check on with every note in the list selected (the same as turning it on and tapping "All"). It looks and feels the same as the long press on Add (see "Adding a note at the top" in [notes.md](notes.md)): a ring fills round the button during the hold, then rings burst out from it with a short buzz, and the button turns dark. A short click still turns it on with nothing selected. While list-check is on, the button only turns it off, short or long.
 - **Turning it off:** clicking it again, or pressing Escape, always turns it off with no changes. Note selections and pill clicks are discarded, and the next time starts with nothing selected. The normal new-note tag choices come back as they were.
 - **While it's on, the page is held still, as during an edit:** the tabs and the expand/collapse toggle are blocked. So selected notes can't disappear from the list, and the pills can't be collapsed away.
 - **The filter row** keeps its filters as they are, but hides its dropdowns and "reset filters" button. In their place are two small text buttons, "All" and "None". The Edit order button stays at the far right, greyed out.
