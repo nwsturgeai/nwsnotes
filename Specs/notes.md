@@ -36,6 +36,7 @@ The order of notes should be: top to bottom in the first column, then continuing
 In the second header (with the additional filter dropdowns): to the far right of the screen, have a new button with icon fa-arrow-down-wide-short.  This is the "edit order" button.
 When this button is clicked, editing-order mode is activated.  The "edit order" button should change to icon fa-clipboard-check.  Clicking the button again deactivates editing-order mode.
 Whilst the notes-list page is in editing-order mode, each note should have an icon on its left: fa-grip-vertical.
+Whilst in editing-order mode, the edit / set-waiting / set-archived buttons on each note are hidden. In their place are two buttons: fa-angles-up and fa-angles-down. Clicking angles-up moves the note to the top of the list; clicking angles-down moves it to the bottom.
 Clicking and holding on one of the fa-grip-vertical icons causes that note to start dragging.  It can be dragged up or down.  When the note-being-dragged is hovered over the gap between two other notes, then a gap opens up between those notes ready to accept the note-being-dragged.  If the mouse/finger/stylus is then released, the note is dropped into this new location.  This updated ordering is then sent to the server and should be reflected in all other browsers that have this tab open.
 The note ordering should be saved as an integer-array attribute on each Tab.  Any notes shown in a Tab that are not listed in the ordering should appear below any notes that have an ordering specified.
 
@@ -81,7 +82,7 @@ Tag selections for a note can be updated in edit mode to have any new tag values
   - It isn't remembered: it's off when the app opens.
   - It stays on when switching tabs, and turns off on "All".
   - It can't be turned on while a note or long-form note is being edited. The button is greyed out, with the hint "Finish or cancel the edit first".
-  - Note buttons (edit, archive and so on) keep working while it's on. Editing a note turns ordering mode off.
+  - The note buttons (edit, Waiting or Reinstate, Archive or Move to bin) are hidden while it's on. In their place each note has two buttons of the same size: `fa-angles-up` ("Move to top") and `fa-angles-down` ("Move to bottom"), which move the note to the top or bottom of the list as shown (the same as dragging it there, so the rules under "Under extra filters" apply) and save the order. "Move to top" is greyed out on the first note and "Move to bottom" on the last, and both are while a note is being dragged.
 - **Grips:** in edit-order mode each note shows an `fa-grip-vertical` icon at its left, in a 24px-wide handle.
 - **Dragging:**
   - Pressing on a grip starts the drag straight away, with no hold delay. Mouse, stylus and finger all work, in stylus mode too, as the grips only appear in this mode.

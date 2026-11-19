@@ -1,6 +1,8 @@
 :root {
   --bg: #f6f4ef;
   --surface: #ffffff;
+  /* The filter row while it has tags ticked. */
+  --filtered: #ffe94d;
   --text: #1f2421;
   --muted: #6b716d;
   --line: #e2ded5;
@@ -396,6 +398,11 @@ a:focus-visible {
 }
 
 /* The reset button sits just right of the dropdowns; the edit-order button is at the far right. */
+/* Some of its dropdowns have tags ticked: bright yellow, so the narrowed list stands out. */
+.filter-row.filtered {
+  background: var(--filtered);
+}
+
 .filter-row .tag-pickers {
   flex: 0 1 auto;
   margin-top: 0;

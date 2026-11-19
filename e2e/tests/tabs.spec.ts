@@ -38,7 +38,11 @@ test("the filter row's dropdowns count the notes each tag would list, and the TO
 });
 
 test("ticking filters narrows the list, and Reset filters clears them", async ({ page }) => {
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
   await setFilter(page, "Area", "Work", true);
+  // The row turns bright yellow while it's filtering.
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
+  await expect(filterRow(page)).toHaveCSS("background-color", "rgb(255, 233, 77)");
   await expectTitles(page, ["Plan the team meeting", "Read the quarterly report", "Old invoice"]);
   // The other dropdowns' counts follow the filter.
   const topic = await openFilter(page, "Topic");
@@ -53,6 +57,7 @@ test("ticking filters narrows the list, and Reset filters clears them", async ({
   await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
   await expectTitles(page, ALL);
   await expect(filterRow(page).getByRole("button", { name: "Reset filters" })).toHaveCount(0);
+  await expect(filterRow(page)).toHaveCSS("background-color", "rgb(255, 255, 255)");
 });
 
 test("each tab remembers its own filters", async ({ page }) => {
