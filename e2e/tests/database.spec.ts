@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, expectTitles, noteRow, openNotes, seed, test } from "./fixtures";
+import { expect, expectTitles, noteRow, noteTitles, openNotes, seed, test } from "./fixtures";
 
 async function addNote(page: Page, title: string) {
   const box = page.getByRole("textbox", { name: "New note" });
@@ -38,6 +38,27 @@ test("the first start with a new database imports the latest save-file", async (
   await expect(page.locator(".history-list .history-summary")).toHaveText([`Imported from ${name}`]);
 });
 
+test("a save-file from before the order was shared gets one shared order, the higher tab winning", async ({ page }) => {
+  const old = JSON.parse(JSON.stringify(seed)) as { noteOrder?: unknown; tabs: { id: number; noteOrder?: number[] }[] };
+  delete old.noteOrder;
+  // Work lists Old invoice before Plan the team meeting; Home disagrees, so Work wins.
+  const orders: Record<number, number[]> = { 1: [4, 1], 2: [9, 2, 1, 4], 3: [] };
+  for (const tab of old.tabs) tab.noteOrder = orders[tab.id] ?? [];
+  await page.request.post("/api/test/import", { data: old });
+
+  const data = (await (await page.request.get("/api/notes")).json()) as { noteOrder: number[]; tabs: object[] };
+  expect(data.noteOrder).toEqual([4, 9, 2, 1]);
+  for (const tab of data.tabs) expect(tab).not.toHaveProperty("noteOrder");
+  await openNotes(page);
+  await expect.poll(async () => (await noteTitles(page)).slice(0, 5)).toEqual([
+    "Old invoice",
+    "Garden ideas",
+    "Buy milk",
+    "Plan the team meeting",
+    "Read the quarterly report",
+  ]);
+});
+
 test("Download backup gives every note in the save-file format", async ({ page }) => {
   await openNotes(page);
   await page.getByRole("link", { name: "Settings" }).click();
@@ -51,6 +72,7 @@ test("Download backup gives every note in the save-file format", async ({ page }
   expect(content.lastNoteId).toBe(9);
   expect((content.tabs as unknown[]).length).toBe(3);
   expect((content.categories as unknown[]).length).toBe(2);
+  expect(content.noteOrder).toEqual([]);
 });
 
 test("when the database can't be reached, the app works offline and catches up afterwards", async ({ page }) => {

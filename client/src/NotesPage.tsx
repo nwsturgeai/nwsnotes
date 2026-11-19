@@ -109,8 +109,10 @@ interface Props {
   onNoteUpdated: (note: Note) => void;
   /** Several notes changed at once (resetting the New tags); reload them. */
   onNotesChanged: () => void;
-  /** A tab's note order changed (shown straight away, before it's saved). */
-  onTabUpdated: (tab: Tab) => void;
+  /** The shared order of the notes, for every tab ("All" included). */
+  noteOrder: number[];
+  /** The note order changed (shown straight away, before it's saved). */
+  onNoteOrderChanged: (noteOrder: number[]) => void;
   /** Multi-select mode started or ended; the app blocks the tabs and Settings while it's on, as during an edit. */
   onBulkChange: (active: boolean) => void;
   /** Whether there's unsaved work on the page (an edit, a long-form note, a title being written), which hides "Reload". */
@@ -156,7 +158,8 @@ export function NotesPage({
   onNoteAdded,
   onNoteUpdated,
   onNotesChanged,
-  onTabUpdated,
+  noteOrder,
+  onNoteOrderChanged,
   onBulkChange,
   onUnsavedChange,
   offline,
@@ -242,7 +245,14 @@ export function NotesPage({
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
   const [extraSelection, setExtraSelection] = useExtraFilters(selectedTab?.id);
-  const [fullTagList, setFullTagList] = useFullTagList();
+  const [fullTagListSetting, setFullTagList] = useFullTagList();
+  /**
+   * While a long-form note with handwritten details is open, the area is collapsed (more room for the
+   * canvas) and can't be expanded; the remembered setting isn't changed, so it comes back afterwards.
+   */
+  const handwrittenLongForm = longForm !== undefined && (longForm.note ? longForm.note.detailsImage !== undefined : stylusMode);
+  /** Whether the add/edit area is expanded (full-tag-list mode) just now. */
+  const fullTagList = fullTagListSetting && !handwrittenLongForm;
   /** The tag choosers in the add/edit area: dropdowns, or pills in full-tag-list mode. */
   const TagChooser = fullTagList ? TagPillPicker : TagPickers;
 
@@ -295,7 +305,7 @@ export function NotesPage({
   );
 
   // Hidden notes aren't changed, just not listed. Bin notes are hidden unless a filter ticks Bin.
-  // A tab lists its ordered notes first, then the rest in creation order; "All" is in creation order.
+  // Every tab ("All" included) lists the notes in the shared order, then any unordered ones in creation order.
   /** Search: on while the box is shown; its text narrows the list further. Kept across tabs, not remembered. */
   const [searchOn, setSearchOn] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -303,8 +313,8 @@ export function NotesPage({
 
   const visibleNotes = useMemo(() => {
     const matching = notes.filter((note) => noteMatchesFilters(note, allFilters) && matchesSearch(note, searchWords));
-    return selectedTab ? orderNotes(matching, selectedTab.noteOrder) : matching;
-  }, [notes, allFilters, searchWords, selectedTab]);
+    return orderNotes(matching, noteOrder);
+  }, [notes, allFilters, searchWords, noteOrder]);
 
   /** The filter row's ticked tags, as filters (the reset button only shows while there are some). */
   const extraFilters = useMemo(() => selectionToFilters(extraCategories, extraSelection), [extraCategories, extraSelection]);
@@ -331,39 +341,34 @@ export function NotesPage({
     setSearchText("");
   }
 
-  const onAll = selectedTab === undefined;
-  useEffect(() => {
-    if (onAll) setOrdering(false);
-  }, [onAll]);
-
   /** The list as it was when a drag started: live updates don't change what's shown until the drop. */
   const dragList = useRef<Note[]>(undefined);
   const { drag, gripHandlers } = useNoteDrag(listRef, (noteId, target) => void dropNote(noteId, target));
   const listedNotes = drag && dragList.current ? dragList.current : visibleNotes;
 
+  /** Every note's id in the shared order (unordered notes after, oldest first), without `leaving`. */
+  function fullOrderWithout(leaving: number): number[] {
+    return orderNotes(notes, noteOrder)
+      .map((note) => note.id)
+      .filter((id) => id !== leaving);
+  }
+
   /**
-   * Saves the tab's order with the note moved to `target` among the other listed notes: straight after
-   * the listed note above it (or before the first one). Notes hidden by the filters keep their places,
-   * and every note in the tab (Bin included) is in the saved order. Shown at once; reverted if it fails.
+   * Saves the shared order with the note moved to `target` among the other listed notes: straight after
+   * the listed note above it (or before the first one). Notes this tab or its filters don't show keep
+   * their places, and every note is in the saved order. Shown at once; reverted if it fails.
    */
   async function dropNote(noteId: number, target: number) {
-    const tab = selectedTab;
-    if (!tab) return;
     const others = (dragList.current ?? visibleNotes).filter((note) => note.id !== noteId);
-    const order = orderNotes(
-      notes.filter((note) => noteMatchesFilters(note, tab.categories, true)),
-      tab.noteOrder,
-    )
-      .map((note) => note.id)
-      .filter((id) => id !== noteId);
+    const order = fullOrderWithout(noteId);
     const above = others[target - 1];
     const below = others[0];
     const anchor = above ? order.indexOf(above.id) + 1 : below ? order.indexOf(below.id) : 0;
     const at = anchor < 0 ? order.length : anchor;
-    const noteOrder = [...order.slice(0, at), noteId, ...order.slice(at)];
-    onTabUpdated({ ...tab, noteOrder });
+    const next = [...order.slice(0, at), noteId, ...order.slice(at)];
+    onNoteOrderChanged(next);
     try {
-      await api.setTabOrder(tab.id, { noteOrder });
+      await api.setNoteOrder({ noteOrder: next });
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -416,14 +421,17 @@ export function NotesPage({
   }, [visibleNotes.length, selectedTab?.id, allFilters, searchWords]);
 
   /**
-   * Puts a just-added note at the top of the tab: shown at once, then the tab's order is saved in the
-   * background. Notes not in the order follow in creation order, so nothing else moves.
+   * Puts a just-added note at the top of the tab: straight before the first note the tab lists (or at the
+   * very front if it lists none), shown at once, then the shared order is saved in the background.
    */
-  function addToTopOfTab(tab: Tab, note: Note) {
-    const noteOrder = [note.id, ...tab.noteOrder.filter((id) => id !== note.id)];
+  function addToTopOfTab(note: Note) {
+    const order = fullOrderWithout(note.id);
+    const first = visibleNotes.find((listed) => listed.id !== note.id);
+    const at = first ? Math.max(0, order.indexOf(first.id)) : 0;
+    const next = [...order.slice(0, at), note.id, ...order.slice(at)];
     scrollToTop.current = true;
-    onTabUpdated({ ...tab, noteOrder });
-    api.setTabOrder(tab.id, { noteOrder }).catch((error: unknown) => {
+    onNoteOrderChanged(next);
+    api.setNoteOrder({ noteOrder: next }).catch((error: unknown) => {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
         return;
@@ -433,8 +441,8 @@ export function NotesPage({
     });
   }
 
-  /** A long press on Add puts the note at the top: only for new notes, on a tab, online. */
-  const canAddAtTop = !editingNote && !onAll && !offline;
+  /** A long press on Add puts the note at the top: only for new notes, online (on any tab, "All" included). */
+  const canAddAtTop = !editingNote && !offline;
   const addButtonRef = useRef<HTMLButtonElement>(null);
   /** Add's long press: letting go after holding it for a second adds the note at the top. */
   const addHold = useLongPress(
@@ -643,8 +651,8 @@ export function NotesPage({
         });
         // The due date doesn't carry over to the next note (unlike the tags).
         setDueDate(undefined);
-        // "All" is always in creation order. A note added offline (a temporary id) can't be ordered yet.
-        if (atTop && selectedTab && note.id > 0) addToTopOfTab(selectedTab, note);
+        // A note added offline (a temporary id) can't be ordered yet.
+        if (atTop && note.id > 0) addToTopOfTab(note);
         onNoteAdded(note);
         if (showCanvas) {
           padRef.current?.clear();
@@ -659,7 +667,7 @@ export function NotesPage({
           });
         } else if (!matchesSearch(note, searchWords)) {
           setNotice({ text: "Note added, but it doesn't match the search." });
-        } else if (atTop && selectedTab && note.id < 0) {
+        } else if (atTop && note.id < 0) {
           setNotice({ text: "Added at the bottom: adding at the top isn't available offline." });
         }
       }
@@ -908,16 +916,14 @@ export function NotesPage({
                 )}
               </>
             )}
-            {selectedTab && (
-              <div className="filter-row-end">
-                <IconButton
-                  icon={ordering ? faClipboardCheck : faArrowDownWideShort}
-                  label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
-                  disabled={!ordering && (editBlocked || offline)}
-                  onClick={() => setOrdering(!ordering)}
-                />
-              </div>
-            )}
+            <div className="filter-row-end">
+              <IconButton
+                icon={ordering ? faClipboardCheck : faArrowDownWideShort}
+                label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
+                disabled={!ordering && (editBlocked || offline)}
+                onClick={() => setOrdering(!ordering)}
+              />
+            </div>
           </div>
 
           <div className="note-list" ref={listRef}>
@@ -1154,9 +1160,9 @@ export function NotesPage({
           aria-pressed={fullTagList}
           aria-label={fullTagList ? "Show tag dropdowns" : "Show all tags"}
           title={fullTagList ? "Show tag dropdowns" : "Show all tags"}
-          // Not while a long-form note is open, so the editor's space doesn't change under it,
-          // nor in multi-select, which needs the pills.
-          disabled={longForm !== undefined || bulkActive}
+          // Not with a handwritten long-form note open (the area stays collapsed for its canvas),
+          // nor in multi-select, which needs the pills. With a typed long-form note it can be toggled.
+          disabled={handwrittenLongForm || bulkActive}
           onClick={() => setFullTagList(!fullTagList)}
         >
           <FontAwesomeIcon icon={fullTagList ? faChevronDown : faChevronUp} />

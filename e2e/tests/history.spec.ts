@@ -152,3 +152,17 @@ test("other open pages reload after going back", async ({ page, context }) => {
   await goBackTo(page, "Imported the test data", 1);
   await expect(noteRow(other, "Seen elsewhere")).toHaveCount(0, { timeout: 10_000 });
 });
+
+test("going back undoes a change to the note order", async ({ page }) => {
+  const moved = await page.request.put("/api/notes/order", { data: { noteOrder: [9, 1, 2] } });
+  expect(moved.ok()).toBe(true);
+  await page.reload();
+  await expect.poll(async () => (await page.locator(".note-list li[data-note-id] .note-body").first().textContent()) ?? "").toContain("Garden ideas");
+
+  await openHistory(page);
+  await expect(historyLines(page).first()).toContainText("Changed the order of the notes");
+  await goBackTo(page, "Imported the test data", 1);
+  await page.getByRole("link", { name: "← Settings" }).click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  await expectTitles(page, ALL);
+});

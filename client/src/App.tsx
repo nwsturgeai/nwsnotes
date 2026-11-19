@@ -361,7 +361,8 @@ export function App() {
               onNoteAdded={addNote}
               onNoteUpdated={updateNote}
               onNotesChanged={() => void refreshNotes()}
-              onTabUpdated={saveTab}
+              noteOrder={state.data.noteOrder ?? []}
+              onNoteOrderChanged={(noteOrder) => applySaved((data) => ({ ...data, noteOrder }))}
               onBulkChange={setBulkActive}
               onUnsavedChange={setNotesUnsaved}
               offline={offlineState.offline}

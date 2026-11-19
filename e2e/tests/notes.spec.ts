@@ -42,8 +42,8 @@ test("on a tab, Ctrl+Enter adds the note at the top and Enter at the bottom", as
   await title.press("Enter");
   await expect(noteRow(page, "At the bottom")).toBeVisible();
   await title.fill("At the top");
-  // The tab's new order is saved straight after the note.
-  const orderSaved = page.waitForResponse((response) => /\/api\/tabs\/1\/order$/.test(response.url()) && response.ok());
+  // The new order is saved straight after the note.
+  const orderSaved = page.waitForResponse((response) => /\/api\/notes\/order$/.test(response.url()) && response.ok());
   await title.press("Control+Enter");
   await expect(noteRow(page, "At the top")).toBeVisible();
   await orderSaved;
@@ -63,7 +63,7 @@ test("holding Add for a second adds the note at the top, and shows it's been hel
   await selectTab(page, "Work");
   const add = addArea(page).getByRole("button", { name: "Add" });
   await page.getByRole("textbox", { name: "New note" }).fill("Held down");
-  const orderSaved = page.waitForResponse((response) => /\/api\/tabs\/1\/order$/.test(response.url()) && response.ok());
+  const orderSaved = page.waitForResponse((response) => /\/api\/notes\/order$/.test(response.url()) && response.ok());
 
   // Records the buzz at 1 second.
   await page.evaluate(() => {

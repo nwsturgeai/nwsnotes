@@ -1,4 +1,4 @@
-import type { Category, HistoryChange, Note, Tab, TabPlacement } from "@nwsnotes/shared";
+import { mergeNoteOrders, type Category, type HistoryChange, type Note, type Tab, type TabPlacement } from "@nwsnotes/shared";
 import type { Db, Query } from "./db.js";
 
 /*
@@ -16,13 +16,36 @@ export interface Snapshot {
   lastNoteId: number;
   /** Where the built-in "All" tab shows. */
   allTabPlacement: TabPlacement;
+  /** The shared order of the notes (every tab's, "All" included). */
+  noteOrder: number[];
 }
 
-/** "setting": a small setting such as the All tab's placement (item id 1), kept in `meta`. */
+/** "setting": a small setting such as the All tab's placement (item id 1) or the note order (2), kept in `meta`. */
 type Kind = "note" | "category" | "tab" | "setting";
 
 /** The settings kept in `meta` that the history covers, with their item ids. */
 const ALL_TAB_PLACEMENT_ID = 1;
+const NOTE_ORDER_ID = 2;
+
+/** Tabs once kept their own note order (`noteOrder`); it's no longer part of a tab. */
+export function withoutNoteOrder(tab: Tab): Tab {
+  if (!("noteOrder" in tab)) return tab;
+  const { noteOrder: _old, ...rest } = tab as Tab & { noteOrder?: unknown };
+  return rest;
+}
+
+/** The note ids in tabs' old `noteOrder`s, one list per tab, in the tabs' order. */
+export function oldTabOrders(tabs: Tab[]): number[][] {
+  return tabs.map((tab) => {
+    const order = (tab as { noteOrder?: unknown }).noteOrder;
+    return Array.isArray(order) ? order.filter((id): id is number => Number.isInteger(id)) : [];
+  });
+}
+
+/** A stored note order, keeping only whole numbers. */
+function readOrder(value: unknown): number[] {
+  return Array.isArray(value) ? value.filter((id): id is number => Number.isInteger(id)) : [];
+}
 
 /** An item as stored in the history: a note's JSON, or a category's or tab's position and JSON. */
 type Copy = Note | { position: number; data: Category | Tab } | { value: unknown };
@@ -66,20 +89,34 @@ export async function ensureSchema(db: Db): Promise<void> {
   for (const sql of SCHEMA) await db.query(sql);
 }
 
-/** Everything in the database, or undefined if it has no data yet (it's never been given any). */
-export async function loadSnapshot(db: Db): Promise<Snapshot | undefined> {
+/**
+ * Everything in the database, or undefined if it has no data yet (it's never been given any). With
+ * `stored`, when the data is from before the note order was shared: as it is in the database (tabs with
+ * their own orders), for saving the shared order made from them.
+ */
+export async function loadSnapshot(db: Db): Promise<{ snapshot: Snapshot; stored?: Snapshot } | undefined> {
   const meta = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'lastNoteId'");
   if (meta.length === 0) return undefined;
   const [placement] = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'allTabPlacement'");
+  const [order] = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'noteOrder'");
   const notes = await db.query<{ data: Note }>("SELECT data FROM nwsnotes.notes ORDER BY id");
   const categories = await db.query<{ data: Category }>("SELECT data FROM nwsnotes.categories ORDER BY position, id");
   const tabs = await db.query<{ data: Tab }>("SELECT data FROM nwsnotes.tabs ORDER BY position, id");
-  return {
+  const snapshot: Snapshot = {
     notes: notes.map((row) => row.data),
     categories: categories.map((row) => row.data),
-    tabs: tabs.map((row) => row.data),
+    tabs: tabs.map((row) => withoutNoteOrder(row.data)),
     lastNoteId: Number(meta[0]!.value),
     allTabPlacement: placement?.value === "left" ? "left" : "top",
+    noteOrder: readOrder(order?.value),
+  };
+  if (order) return { snapshot };
+  // From before the order was shared: make it from the tabs' own orders (the higher tab wins).
+  const ids = new Set(snapshot.notes.map((note) => note.id));
+  const stored: Snapshot = { ...snapshot, tabs: tabs.map((row) => row.data), noteOrder: [] };
+  return {
+    snapshot: { ...snapshot, noteOrder: mergeNoteOrders(oldTabOrders(stored.tabs)).filter((id) => ids.has(id)) },
+    stored,
   };
 }
 
@@ -138,6 +175,9 @@ export async function writeChange(
   const befores = Object.values(tables).flatMap((table) => table.befores);
   const placementChanged = before.allTabPlacement !== after.allTabPlacement;
   if (placementChanged) befores.push({ kind: "setting", id: ALL_TAB_PLACEMENT_ID, before: { value: before.allTabPlacement } });
+  // Written whenever it differs, or isn't stored yet (`stored` from loadSnapshot has an empty one).
+  const orderChanged = JSON.stringify(before.noteOrder) !== JSON.stringify(after.noteOrder);
+  if (orderChanged) befores.push({ kind: "setting", id: NOTE_ORDER_ID, before: { value: before.noteOrder } });
   if (befores.length === 0 && before.lastNoteId === after.lastNoteId) return joinChangeId;
 
   return db.transaction(async (query) => {
@@ -178,6 +218,14 @@ export async function writeChange(
         `INSERT INTO nwsnotes.meta (name, value) VALUES ('allTabPlacement', $1::jsonb)
          ON CONFLICT (name) DO UPDATE SET value = excluded.value`,
         [JSON.stringify(after.allTabPlacement)],
+      );
+    }
+
+    if (orderChanged) {
+      await query(
+        `INSERT INTO nwsnotes.meta (name, value) VALUES ('noteOrder', $1::jsonb)
+         ON CONFLICT (name) DO UPDATE SET value = excluded.value`,
+        [JSON.stringify(after.noteOrder)],
       );
     }
 
@@ -247,10 +295,12 @@ export async function revertedSnapshot(db: Db, toId: number, current: Snapshot):
     tab: new Map(current.tabs.map((item, position) => [item.id, { position, data: item as Category | Tab }])),
   };
   let allTabPlacement = current.allTabPlacement;
+  let noteOrder = current.noteOrder;
   for (const item of items) {
     const id = Number(item.item_id);
     if (item.kind === "setting") {
       if (id === ALL_TAB_PLACEMENT_ID) allTabPlacement = (item.before as { value: unknown } | null)?.value === "left" ? "left" : "top";
+      else if (id === NOTE_ORDER_ID) noteOrder = readOrder((item.before as { value: unknown } | null)?.value);
     } else if (item.kind === "note") {
       if (item.before === null) notes.delete(id);
       else notes.set(id, item.before as Note);
@@ -268,10 +318,13 @@ export async function revertedSnapshot(db: Db, toId: number, current: Snapshot):
     snapshot: {
       notes: [...notes.values()].sort((a, b) => a.id - b.id),
       categories: ordered(positioned.category) as Category[],
-      tabs: ordered(positioned.tab) as Tab[],
+      // Tabs from before the order was shared come back without their own order.
+      tabs: (ordered(positioned.tab) as Tab[]).map(withoutNoteOrder),
       // Ids are never reused, so this isn't taken back.
       lastNoteId: current.lastNoteId,
       allTabPlacement,
+      // Notes that have gone (going back to before they were added) are left out.
+      noteOrder: noteOrder.filter((id) => notes.has(id)),
     },
   };
 }

@@ -12,6 +12,7 @@ import {
   LIFETIME_CHANGES,
   LIFETIME_NEW,
   LIFETIME_WAITING,
+  mergeNoteOrders,
   sameTags,
   validateCategory,
   validateTab,
@@ -35,8 +36,10 @@ import {
   emptyAll,
   listChanges,
   loadSnapshot,
+  oldTabOrders,
   pruneHistory,
   revertedSnapshot,
+  withoutNoteOrder,
   writeChange,
   type ChangeRecord,
   type ChangeSummary,
@@ -58,6 +61,8 @@ interface SaveFile {
   lastNoteId?: number;
   /** Where the built-in "All" tab shows. Missing in older files (and then "top"). */
   allTabPlacement?: TabPlacement;
+  /** The shared order of the notes. Missing in older files, where each tab had its own (then made from those). */
+  noteOrder?: number[];
 }
 
 /** The data the store keeps and saves. */
@@ -179,19 +184,23 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
       tabs: [],
       lastNoteId: Math.max(0, ...content.notes.map((n) => n.id)),
       allTabPlacement: "top",
+      noteOrder: [],
     };
   }
   if (content.version !== 2 || !Array.isArray(content.categories)) {
     throw new Error(`Save-file ${name} has an unknown format (version ${String((content as { version?: unknown }).version)}).`);
   }
+  // Files saved before tabs existed have no "tabs" list.
+  const tabs = Array.isArray(content.tabs) ? content.tabs : [];
+  const ids = new Set(content.notes.map((n) => n.id));
   return {
     ...content,
-    // Files saved before tabs existed have no "tabs" list.
-    // Tabs saved before ordering existed have no "noteOrder".
-    tabs: (Array.isArray(content.tabs) ? content.tabs : []).map((tab) => ({
-      ...tab,
-      noteOrder: Array.isArray(tab.noteOrder) ? tab.noteOrder : [],
-    })),
+    tabs: tabs.map(withoutNoteOrder),
+    // Files from before the order was shared have the tabs' own orders instead: one is made from them.
+    noteOrder: (Array.isArray(content.noteOrder)
+      ? [...new Set(content.noteOrder.filter((id) => Number.isInteger(id)))]
+      : mergeNoteOrders(oldTabOrders(tabs))
+    ).filter((id) => ids.has(id)),
     // Files saved before notes could be deleted have no "lastNoteId"; the highest id present is right for them.
     lastNoteId: typeof content.lastNoteId === "number" ? content.lastNoteId : Math.max(0, ...content.notes.map((n) => n.id)),
     allTabPlacement: content.allTabPlacement === "left" ? "left" : "top",
@@ -212,6 +221,7 @@ function snapshotOf(content: Required<SaveFile>): Snapshot {
     tabs: content.tabs,
     lastNoteId: content.lastNoteId,
     allTabPlacement: content.allTabPlacement,
+    noteOrder: content.noteOrder,
   };
 }
 
@@ -239,6 +249,8 @@ export class NoteStore {
   private lastNoteId = 0;
   /** Where the built-in "All" tab shows. */
   private allTabPlacement: TabPlacement = "top";
+  /** The shared order of the notes, for every tab. */
+  private noteOrder: number[] = [];
   private lastSaveMs = 0;
   /** False until the data has been loaded from the database; until then the API answers 503. */
   private ready = false;
@@ -276,14 +288,19 @@ export class NoteStore {
 
   private async load(): Promise<void> {
     await ensureSchema(this.db);
-    const stored = await loadSnapshot(this.db);
-    if (stored) {
-      this.apply(stored);
+    const loaded = await loadSnapshot(this.db);
+    if (loaded) {
+      // Data from before the order was shared: the order made from the tabs' own is saved (not in the history).
+      if (loaded.stored) {
+        await writeChange(this.db, loaded.stored, loaded.snapshot, this.nextSaveTime(), undefined);
+        console.log("Made the shared note order from the tabs' own orders.");
+      }
+      this.apply(loaded.snapshot);
       console.log(`Loaded ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from the database.`);
     } else {
       // The first start with this database: bring across the latest save-file, if there is one.
       const latest = (await this.listSaveFiles()).at(-1);
-      const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0, allTabPlacement: "top" };
+      const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0, allTabPlacement: "top", noteOrder: [] };
       if (latest) {
         const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
         await writeChange(this.db, empty, snapshotOf(content), this.nextSaveTime(), { summary: `Imported from ${latest.name}` });
@@ -305,6 +322,7 @@ export class NoteStore {
       tabs: this.tabs,
       lastNoteId: this.lastNoteId,
       allTabPlacement: this.allTabPlacement,
+      noteOrder: this.noteOrder,
     };
   }
 
@@ -314,11 +332,18 @@ export class NoteStore {
     this.tabs = snapshot.tabs;
     this.lastNoteId = snapshot.lastNoteId;
     this.allTabPlacement = snapshot.allTabPlacement;
+    this.noteOrder = snapshot.noteOrder;
   }
 
   getAll(): NotesData {
     if (!this.ready) throw databaseUnreachable();
-    return { notes: this.notes, categories: this.allCategories(), tabs: this.tabs, allTabPlacement: this.allTabPlacement };
+    return {
+      notes: this.notes,
+      categories: this.allCategories(),
+      tabs: this.tabs,
+      allTabPlacement: this.allTabPlacement,
+      noteOrder: this.noteOrder,
+    };
   }
 
   /** User categories plus the built-in Lifetime category (which tabs can filter on). */
@@ -337,6 +362,7 @@ export class NoteStore {
       tabs: this.tabs,
       lastNoteId: this.lastNoteId,
       allTabPlacement: this.allTabPlacement,
+      noteOrder: this.noteOrder,
     };
     return { name: fileNameFor(now), content: JSON.stringify(content, null, 2) };
   }
@@ -696,7 +722,7 @@ export class NoteStore {
       const kept = this.notes.filter((n) => lifetimeOf(n) !== LIFETIME_BIN);
       const count = this.notes.length - kept.length;
       if (count > 0) {
-        await this.save(this.nextSaveTime(), { notes: kept, tabs: this.tabsKeepingNotes(kept) }, {
+        await this.save(this.nextSaveTime(), { notes: kept, noteOrder: this.orderKeepingNotes(kept) }, {
           record: { summary: `Emptied the bin (${plural(count, "note")} deleted)` },
         });
       }
@@ -710,7 +736,7 @@ export class NoteStore {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
       const notes = this.notes.filter((n) => n.id !== id);
-      await this.save(this.nextSaveTime(), { notes, tabs: this.tabsKeepingNotes(notes) }, {
+      await this.save(this.nextSaveTime(), { notes, noteOrder: this.orderKeepingNotes(notes) }, {
         record: { summary: `Deleted ${label(existing)}` },
       });
     });
@@ -753,12 +779,10 @@ export class NoteStore {
     });
   }
 
-  /** The tabs with deleted notes' ids taken out of their `noteOrder`. */
-  private tabsKeepingNotes(notes: Note[]): Tab[] {
+  /** The note order with deleted notes' ids taken out. */
+  private orderKeepingNotes(notes: Note[]): number[] {
     const ids = new Set(notes.map((n) => n.id));
-    return this.tabs.map((tab) =>
-      tab.noteOrder.every((id) => ids.has(id)) ? tab : { ...tab, noteOrder: tab.noteOrder.filter((id) => ids.has(id)) },
-    );
+    return this.noteOrder.filter((id) => ids.has(id));
   }
 
   /** Moves every note with one Lifetime to another in a single save. Returns how many changed. */
@@ -870,7 +894,7 @@ export class NoteStore {
       const check = validateTab(raw, this.tabs, this.allCategories());
       if (!check.ok) throw new RequestError(400, check.error);
 
-      const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab, noteOrder: [] };
+      const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab };
       await this.save(this.nextSaveTime(), { tabs: [...this.tabs, tab] }, { record: { summary: `Added tab "${tab.name}"` } });
       return tab;
     });
@@ -884,8 +908,7 @@ export class NoteStore {
       const check = validateTab(raw, this.tabs, this.allCategories(), existing);
       if (!check.ok) throw new RequestError(400, check.error);
 
-      // Editing a tab's name or filters keeps its note order.
-      const tab: Tab = { id, ...check.tab, noteOrder: existing.noteOrder };
+      const tab: Tab = { id, ...check.tab };
       await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) }, {
         record: { summary: `Changed tab "${tab.name}"` },
       });
@@ -893,22 +916,17 @@ export class NoteStore {
     });
   }
 
-  /** Replaces a tab's note order (dragging notes), keeping only existing notes' ids, once each. */
-  setTabOrder(id: number, raw: unknown): Promise<Tab> {
+  /** Replaces the shared note order (moving notes in any tab), keeping only existing notes' ids, once each. */
+  setNoteOrder(raw: unknown): Promise<number[]> {
     return this.enqueue(async () => {
-      const existing = this.tabs.find((t) => t.id === id);
-      if (!existing) throw new RequestError(404, `There is no tab with id ${id}.`);
       const order = (raw as { noteOrder?: unknown } | undefined)?.noteOrder;
       if (!Array.isArray(order) || !order.every((n) => Number.isInteger(n))) {
         throw new RequestError(400, '"noteOrder" must be an array of note ids.');
       }
       const ids = new Set(this.notes.map((n) => n.id));
       const noteOrder = [...new Set(order as number[])].filter((noteId) => ids.has(noteId));
-      const tab: Tab = { ...existing, noteOrder };
-      await this.save(this.nextSaveTime(), { tabs: this.tabs.map((t) => (t.id === id ? tab : t)) }, {
-        record: { summary: `Changed the order of the notes in tab "${tab.name}"` },
-      });
-      return tab;
+      await this.save(this.nextSaveTime(), { noteOrder }, { record: { summary: "Changed the order of the notes" } });
+      return noteOrder;
     });
   }
 
@@ -966,7 +984,7 @@ export class NoteStore {
     return this.enqueue(async () => {
       const seed = snapshotOf(parseSaveFile("seed", seedText));
       await this.db.transaction(emptyAll);
-      this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1, allTabPlacement: "top" });
+      this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1, allTabPlacement: "top", noteOrder: [] });
       this.lastLongFormUpdate = undefined;
       await this.save(this.nextSaveTime(), seed, { record: { summary: "Imported the test data" } });
     });

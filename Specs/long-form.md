@@ -4,6 +4,7 @@
 
 A long-form note has "details" (text or image) as well as a title.  The title of a long-form note must always be text (i.e. never an image).  Long-form notes can have "child" regular notes.
 When creating or editing a long-form note, the long-form note editing area takes up all of the screen apart from the create/edit regular note section (which takes up the bottom 150px or 250px).  In other words, the long-form editing area covers over both header strips and the whole note list area.
+While creating or editing a long-form note with typed details, the create/edit regular note section can still be collapsed or expanded. While creating or editing a long-form note with handwritten details, that section switches to collapsed mode and can't be expanded.
 The button to create a new long-form note appears when the create-regular-note section is expanded to 250px height.  When this happens, a new "create long form note" button should appear underneath the create-note button (or underneath the "clear" button in stylus mode).  The new button should be the same size as the create-note button, and should have icon fa-file-lines, in its outline style (Font Awesome "regular").
 After clicking "create long form note", the long-form note editing area should be shown, and the long-form-note workflow begins (see below).  The chevron to collapse the create-regular-note section should be disabled whilst creating or editing a long-form note.
 
@@ -57,7 +58,7 @@ In its place there should be a new "Convert to long-form note" button, icon fa-m
 
 ### Matching the tab's tags in the long-form editor
 In the long-form note editor's tag dropdowns bar (just under the title), there is no "Tags" text label.
-On the far right of this bar there is an icon button (the same size as the single-note edit button), with icon fa-rectangle-list.  Clicking this button causes the tag dropdown selections to be updated to match the current Tab: within this Tab, any filters that have single values cause that Tag to be selected within the corresponding Category dropdown.
+On the far right of this bar there is an icon button (the same size as the single-note edit button), with icon fa-tags.  Clicking this button causes the tag dropdown selections to be updated to match the current Tab: within this Tab, any filters that have single values cause that Tag to be selected within the corresponding Category dropdown.
 
 ### Regular notes whilst creating / editing a long-form note
 Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
@@ -82,13 +83,15 @@ When these regular notes are shown in the notes-list: after any pills for their 
   - The server allows a regular note to gain details only if it could have been created as a long-form note: a typed title, and no parent. Otherwise the button is greyed out, with the hint "Only typed notes can become long-form notes" (handwritten notes) or "This note belongs to a long-form note, so it can't become one" (child notes).
   - A long-form note can't be turned back into a regular one.
   - Offline, it's queued like any other edit.
-- **Opening the editor:** the "create long-form note" button (`fa-file-lines`, the outline ("regular") version, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
+- **Opening the editor:** the "create long-form note" button (`fa-file-lines`, the outline ("regular") version, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open:
+  - **Typed details:** the bottom area's chevron works as usual, and changing it changes the remembered setting, as anywhere else.
+  - **Handwritten details:** the bottom area collapses to 150px when the editor opens, giving the canvas more height, and its chevron is disabled. This doesn't change the remembered setting: when the editor closes, the area goes back to how it was before.
 - **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to the bottom row, with the Finish button at its right-hand end.
 - **Tags band:** so the note's tags stand out, the dropdowns sit in a full-width band between the title and the details.
   - The band has the header's background colour and a thin line above and below. It has no text label (it's labelled "Tags" for screen readers).
   - Its dropdown buttons have a 2px border: dark grey when no tag is chosen, and accent green, with dark text, once one is.
   - This is only in the long-form editor; the new-note area's dropdowns are unchanged.
-- **Match the tab:** at the far right of the tags band, an `fa-rectangle-list` icon button, the same 24px size as the note buttons.
+- **Match the tab:** at the far right of the tags band, an `fa-tags` icon button, the same 24px size as the note buttons.
   - Clicking it chooses every tag that the selected tab's filters (and the additional filters) fix to a single value. These are the same tags the new-note area locks in.
   - In a single-select category the tag replaces whatever was chosen. In a multi-select category it's added to the tags already chosen.
   - Other categories, and filters that allow several tags, are left alone.
