@@ -77,7 +77,7 @@ If any text is typed into the search box, the list of notes shown in the main ar
 
 ### Tabs on the notes page
 - The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it. Each tab has 0.3rem of padding at its left and right.
-- **Size:** the header is 40px tall (on the settings pages too). The tabs are 36px tall, with a 4px gap above them, and their names are 0.9rem. The Settings cog and stylus icon stay 40px squares, filling the header's height.
+- **Size:** the header is 40px tall (on the settings pages too). The tabs are 36px tall, with a 4px gap above them, and their names are 0.9rem. The Settings cog and stylus icon stay 40px squares, filling the header's height. The header has no padding on its right, so the cog's square reaches the right-hand edge of the screen (on every page).
 - **Too many to fit:** all tabs shrink equally so they fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
 - **Tabs menu:** no tab is narrower than 55px. When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
   - How many fit is worked out from the tab strip's actual width (measured whenever it changes), with no breakpoints.
