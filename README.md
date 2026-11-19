@@ -2,7 +2,7 @@
 
 A personal notes website: a React front end and an Express API, written in TypeScript and served by Node.js from a DigitalOcean Ubuntu VM at https://nwsnotes.duckdns.org.
 
-The full specification is in [Specs/Main.md](Specs/Main.md).
+The full specification is in [Specs/](Specs/README.md), one file per area.
 
 ## Project layout
 
