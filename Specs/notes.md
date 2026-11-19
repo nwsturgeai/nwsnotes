@@ -41,7 +41,7 @@ The note ordering should be saved as an integer-array attribute on each Tab.  An
 
 ### Adding a note at the top
 When adding a new regular note, adding it with Ctrl+Enter puts it at the top of the list in the current tab, instead of at the bottom as usual.
-A long press on the Add button (instead of a normal short click) does the same. Once the press has lasted long enough, the button changes so it's clear that the long press has been detected.
+A long press on the Add button (instead of a normal short click) does the same. Once the press has lasted long enough, the button changes so it's clear that the long press has been detected. This must be easy to see while a finger covers the button: an animation spreads out beyond it.
 
 ## Editing Notes
 
@@ -98,6 +98,11 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - **Ctrl+Enter:** in the new-note title box (Cmd+Enter on a Mac). In stylus mode there's no text box, so only the long press applies.
 - **Long press:** holding the Add button for 1 second (mouse, finger or stylus).
   - From then on, while it's still held, the button's icon changes from `fa-circle-plus` to `fa-circle-up`, and it gets a darker background and a ring. Letting go then adds the note at the top.
+  - **While holding:** a thin ring in the accent colour fills round the button, clockwise from the top, over the second, so it's clear how long is left.
+  - **At 1 second:** rings burst out from the button to about 3½ times its size, fading as they grow, two every second, until it's let go. They're drawn over the note list, outside the add area, so they show well beyond the finger.
+  - **And a short buzz** (40 ms) where the device can vibrate (Android; iPhones can't).
+  - **Reduced motion:** on devices set to reduce motion, there's no filling ring, and a steady ring round the button replaces the bursts.
+  - Sliding off the button or letting go removes the rings straight away.
   - Letting go sooner is a normal add. Sliding off the button before letting go adds nothing, as with any button.
   - The browser's own long-press menu and text selection are suppressed on the button.
 - **Where it applies:** only when adding a new note on a tab other than "All", while online. Otherwise Ctrl+Enter and a long press do a normal add, and a long press shows no change on the button:

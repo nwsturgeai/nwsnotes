@@ -1250,6 +1250,84 @@ body:has(.note-list li.dragging) {
   box-shadow: 0 0 0 3px var(--focus);
 }
 
+/*
+ * Holding Add: a ring fills round the button over the second, then rings burst out from it, well beyond
+ * the finger, and keep pulsing until it's let go. Fixed on the screen, centred on the button (see NotesPage).
+ */
+.hold-ring {
+  position: fixed;
+  z-index: 30;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.hold-progress {
+  position: absolute;
+  inset: -8px;
+  width: calc(100% + 16px);
+  height: calc(100% + 16px);
+  /* Starts at the top and goes clockwise. */
+  transform: rotate(-90deg);
+}
+
+.hold-progress circle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  stroke-linecap: round;
+  animation: hold-fill 1s linear forwards;
+}
+
+@keyframes hold-fill {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.hold-burst {
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  animation: hold-burst 1s ease-out infinite;
+}
+
+.hold-burst.second {
+  animation-delay: 0.5s;
+  opacity: 0;
+}
+
+@keyframes hold-burst {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(3.5);
+    opacity: 0;
+  }
+}
+
+/* With reduced motion: no filling, and a steady ring round the button once it's held long enough. */
+@media (prefers-reduced-motion: reduce) {
+  .hold-progress {
+    display: none;
+  }
+
+  .hold-burst {
+    animation: none;
+    transform: scale(1.8);
+    opacity: 0.8;
+  }
+
+  .hold-burst.second {
+    display: none;
+  }
+}
+
 /* ---- Stylus mode: writing canvas and handwritten notes ------------------ */
 
 /* Handwriting is black ink, so it always sits on light "paper", in dark mode too. */

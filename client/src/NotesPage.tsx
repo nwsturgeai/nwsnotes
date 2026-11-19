@@ -132,6 +132,8 @@ function selectionFor(note: Note, categories: Category[]): TagSelection {
 const NOTICE_MS = 4000;
 /** Holding Add this long adds the note at the top of the tab. */
 const LONG_PRESS_MS = 1000;
+/** The buzz when a long press on Add is reached. */
+const HOLD_BUZZ_MS = 40;
 
 export function NotesPage({
   notes,
@@ -424,10 +426,17 @@ export function NotesPage({
   const heldLongRef = useRef(false);
   const pressing = useRef(false);
   const holdTimer = useRef<number>(undefined);
+  /**
+   * While Add is pressed (when a long press can add at the top): the button's centre and size on the
+   * screen, where the rings are drawn. A ring fills round the button during the hold, then rings burst
+   * out from it, beyond the finger, once it's been held long enough.
+   */
+  const [holdRing, setHoldRing] = useState<{ x: number; y: number; size: number }>();
 
   function endHold() {
     window.clearTimeout(holdTimer.current);
     pressing.current = false;
+    setHoldRing(undefined);
   }
 
   function setHeld(held: boolean) {
@@ -442,7 +451,13 @@ export function NotesPage({
       setHeld(false);
       if (event.button !== 0 || !canAddAtTop) return;
       pressing.current = true;
-      holdTimer.current = window.setTimeout(() => setHeld(true), LONG_PRESS_MS);
+      const rect = event.currentTarget.getBoundingClientRect();
+      setHoldRing({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, size: rect.width });
+      holdTimer.current = window.setTimeout(() => {
+        setHeld(true);
+        // A short buzz too, where the device can (Android; iPhones can't).
+        if ("vibrate" in navigator) navigator.vibrate(HOLD_BUZZ_MS);
+      }, LONG_PRESS_MS);
     },
     onPointerUp: endHold,
     // Sliding off the button before letting go adds nothing, so the long press is forgotten.
@@ -1228,6 +1243,25 @@ export function NotesPage({
                 >
                   <FontAwesomeIcon icon={editingNote ? faCircleCheck : heldLong ? faCircleUp : faCirclePlus} />
                 </button>
+              )}
+              {/* Drawn on the screen rather than in the add area, so they aren't cut off at its edges. */}
+              {holdRing && (
+                <span
+                  className={heldLong ? "hold-ring held" : "hold-ring"}
+                  style={{ left: holdRing.x, top: holdRing.y, width: holdRing.size, height: holdRing.size }}
+                  aria-hidden
+                >
+                  {heldLong ? (
+                    <>
+                      <span className="hold-burst" />
+                      <span className="hold-burst second" />
+                    </>
+                  ) : (
+                    <svg className="hold-progress" viewBox="0 0 52 52">
+                      <circle cx="26" cy="26" r="24" pathLength={100} />
+                    </svg>
+                  )}
+                </span>
               )}
               {editingNote && (
                 <button
