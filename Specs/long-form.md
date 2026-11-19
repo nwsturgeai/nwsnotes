@@ -12,7 +12,7 @@ A textbox to type the title, across most of the top of the screen.
 An "accept title" icon button (fa-check) in the top-right.
 A set of dropdowns for setting tags.  These appear underneath the title textbox.
 A large textarea (multiline text accepted) or canvas for entering the details of this note (canvas if in stylus-mode, textarea otherwise).
-A button with text "Finish" centred below the textarea/canvas.  The textarea/canvas should occupy all the vertical space between the dropdowns and the Finish button.
+A "Finish" icon button at the right-hand end of the strip below the textarea/canvas.  The textarea/canvas should occupy all the vertical space between the dropdowns and that strip.
 
 ### Eraser
 When creating/editing a long-form note in stylus mode, alongside the Finish button (and maybe Cancel button), right at the left-hand edge of the page, there should be an icon button with icon fa-eraser.
@@ -33,7 +33,7 @@ When "Finish" is clicked, then:
 the current version of the note is saved i.e. don't wait for the 30-second timer to complete.
 the screen reverts to the regular notes-list view, including the 2 header strips.
 
-When initially creating a new long-form note (not when editing one), there is a "Cancel" button to the left of the "Finish" button.
+When initially creating a new long-form note (not when editing one), there is a "Cancel" icon button just to the left of the "Finish" button.
 If Cancel is clicked and the details are empty, then the new long-form note page closes and the screen reverts to the notes list.  If the new long-form note had already been saved (because the title had been set), then it is deleted.
 If Cancel is clicked and the details are non-empty, then a confirmation modal opens: "Are you sure you want to delete this note?", with options "Yes" and "No".
 
@@ -80,7 +80,7 @@ When these regular notes are shown in the notes-list: after any pills for their 
   - A long-form note can't be turned back into a regular one.
   - Offline, it's queued like any other edit.
 - **Opening the editor:** the "create long-form note" button (`fa-file-lines`, the outline ("regular") version, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open, the bottom area's chevron is disabled.
-- **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to a centred "Finish" button.
+- **Editor layout:** it covers the header, the filter row and the note list, leaving only the bottom add-note area. Top: the title box with the accept-title (`fa-check`) / edit-title (`fa-pen`) button at the top right; the box is 40px high, the same as that button. Under it: the tag dropdowns (the normal kind; no Lifetime dropdown and no tab rules). Then the details textarea or canvas filling the space down to the bottom row, with the Finish button at its right-hand end.
 - **Tags band:** so the note's tags stand out, the dropdowns sit in a full-width band between the title and the details.
   - The band has the header's background colour and a thin line above and below. It has no text label (it's labelled "Tags" for screen readers).
   - Its dropdown buttons have a 2px border: dark grey when no tag is chosen, and accent green, with dark text, once one is.
@@ -100,6 +100,7 @@ When these regular notes are shown in the notes-list: after any pills for their 
   - Accepting the title (first time) creates the note; accepting it again saves the new title. Tag changes made while editing the title are saved with it. After accepting, typed details get the focus.
   - While the title is locked, clicking the title box does the same as "edit title".
   - Details and tag changes made while editing the details are saved at most every 30 seconds: the first change starts a 30-second timer, and when it runs out the latest version is sent; later changes wait for the next window.
+  - **Finish and Cancel buttons:** 40px icon buttons, like the editor's other buttons, at the right-hand end of the bottom row: Finish (`fa-circle-check`, filled in the accent colour) at the far right, with Cancel (`fa-x`, plain) just to its left when shown. Their tooltips and accessible labels are "Finish (Ctrl+Enter)" (just "Finish" in stylus mode) and "Cancel".
   - "Finish" sends any pending change straight away, then closes the editor. A pending change is also sent straight away if the app goes into the background.
   - Outside stylus mode, Ctrl+Enter, Alt+Enter or Cmd+Enter (Mac) anywhere in the editor does the same as clicking "Finish" (plain Enter still adds a line in the details, or accepts the title).
   - **Cancel (new notes only):** a "Cancel" button left of "Finish", shown only when the editor was opened to create a note (and still shown after its title is accepted), never when editing an existing one. Details count as empty when the typed text is only spaces or the canvas has no ink. With empty details it closes straight away. Otherwise it first asks "Are you sure you want to delete this note?" in the app's own pop-up, with Yes (red, focused) and No (Escape counts as No; the editor stays open). Closing drops any unsent change; if the title had been accepted, the note is deleted on the server (`DELETE /api/notes/:id`, a normal save) and the list reloads. If the delete fails, the error shows in the editor and it stays open. Child notes added while it was open are kept, and lose their parent pill, as when a parent is emptied from the Bin. In stylus mode, finger taps on Cancel are ignored, like Finish.
@@ -109,7 +110,7 @@ When these regular notes are shown in the notes-list: after any pills for their 
 - **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish", "Cancel" and the eraser button are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas; the eraser is used instead (see below). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
 - **Eraser:**
   - **When it shows:** whenever a long-form note's details are a canvas, whatever the stylus-mode setting. Handwritten details stay a canvas even with stylus mode off.
-  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row with Cancel and Finish, which stay centred.
+  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row, with Cancel and Finish at the far right.
     - Tapping it toggles it between unselected and selected. When selected its colours are inverted (accent background, light icon) and it's marked as pressed for screen readers.
     - It starts unselected each time the editor opens, and stays selected across strokes until tapped again.
     - It's greyed out while the details are locked, i.e. while the title is being edited.
