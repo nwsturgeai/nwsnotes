@@ -62,6 +62,7 @@ import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
+import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
 import { useFullTagList } from "./stylusMode";
@@ -87,6 +88,11 @@ interface Props {
   categories: Category[];
   /** The selected tab, or undefined for "All". Only matching notes are listed. */
   selectedTab: Tab | undefined;
+  /** The tabs set to "Left" ("All" first if it is), shown in a strip left of the filter row and list. */
+  leftTabs: TabEntry[];
+  onSelectTab: (id: number | undefined) => void;
+  /** While a note is being edited or notes are being selected, the tabs can't be changed. */
+  tabsBlocked: boolean;
   /** In stylus mode, new notes are written on a canvas instead of typed. */
   stylusMode: boolean;
   /** How many balanced columns the note list is split into (the Columns setting). */
@@ -137,6 +143,9 @@ export function NotesPage({
   notes,
   categories,
   selectedTab,
+  leftTabs,
+  onSelectTab,
+  tabsBlocked,
   stylusMode,
   columns,
   tagSelection,
@@ -806,261 +815,269 @@ export function NotesPage({
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
-      {/* Yellow while any of its dropdowns has a tag ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
-      <div
-        className={extraFilters.length > 0 || searchWords.length > 0 ? "filter-row filtered" : "filter-row"}
-        aria-label="More filters for this tab"
-      >
-        {bulk ? (
-          // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
-          <div className="bulk-select-all" role="group" aria-label="Select notes">
-            <button
-              type="button"
-              className="small-button"
-              title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Select every note in the list"}
-              disabled={bulk.changes.size > 0}
-              onClick={() => selectBulkNotes(visibleNotes.map((note) => note.id))}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              className="small-button"
-              title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Unselect every note"}
-              disabled={bulk.changes.size > 0}
-              onClick={() => selectBulkNotes([])}
-            >
-              None
-            </button>
-          </div>
-        ) : (
-          <>
-            {extraCategories.length > 0 && (
-              <TagPickers
-                categories={extraCategories}
-                selection={extraSelection}
-                onChange={setExtraSelection}
-                disabled={rowBlocked}
-                checkLists
-                counts={filterCounts}
-                selectAll
-              />
-            )}
-            {/* Only while a tag is ticked; otherwise it takes no space. */}
-            {extraFilters.length > 0 && (
-              <IconButton
-                icon={faReplyAll}
-                label={rowBlocked ? rowHint : "Reset filters"}
-                disabled={rowBlocked}
-                onClick={() => setExtraSelection({})}
-              />
-            )}
-            <IconButton
-              icon={faMagnifyingGlass}
-              label={rowBlocked ? rowHint : searchOn ? "Close search" : "Search"}
-              disabled={rowBlocked}
-              pressed={searchOn}
-              onClick={toggleSearch}
-            />
-            {searchOn && (
-              <input
-                className="filter-search"
-                type="search"
-                aria-label="Search notes"
-                placeholder="Search titles and long-form text"
-                autoComplete="off"
-                autoFocus
-                value={searchText}
-                disabled={rowBlocked}
-                onChange={(event) => setSearchText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    toggleSearch();
-                  }
-                }}
-              />
-            )}
-          </>
+      {/* The left tab strip (if any tabs are set to "Left") beside the filter row and the list. */}
+      <div className="notes-body">
+        {leftTabs.length > 0 && (
+          <LeftTabStrip tabs={leftTabs} selectedTabId={selectedTab?.id} onSelectTab={onSelectTab} editing={tabsBlocked} />
         )}
-        {selectedTab && (
-          <div className="filter-row-end">
-            <IconButton
-              icon={ordering ? faClipboardCheck : faArrowDownWideShort}
-              label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
-              disabled={!ordering && (editBlocked || offline)}
-              onClick={() => setOrdering(!ordering)}
-            />
-          </div>
-        )}
-      </div>
-
-      <div className="note-list" ref={listRef}>
-        {visibleNotes.length === 0 ? (
-          <p className="empty">
-            {searchWords.length > 0
-              ? "No notes match the search."
-              : allFilters.length > 0
-                ? "No notes in this tab yet."
-                : "No notes yet. Add your first one below."}
-          </p>
-        ) : (
-          // Notes run top to bottom down each column, then on to the next column to the right.
-          <ul style={{ columnCount: columns }}>
-            {rows.map((row) => {
-              if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
-              const note = row.note;
-              const dragging = note.id === drag?.noteId;
-              const selected = bulk?.noteIds.includes(note.id) ?? false;
-              const lifetime = lifetimeOf(note);
-              // A tag's colour tints the row, shaded by its Lifetime (never Bin notes). While a coloured note is
-              // being edited it shows the edit highlight instead, whatever its Lifetime.
-              const editing = note.id === editingNote?.id;
-              const coloured = lifetime !== LIFETIME_BIN && noteHue(note, categories) !== undefined;
-              const hue = coloured && !editing ? noteHue(note, categories) : undefined;
-              const classes = [
-                dragging && "dragging",
-                editing && "editing",
-                hue !== undefined && "tinted",
-                !coloured && lifetime === LIFETIME_WAITING && "waiting",
-                !coloured && lifetime === LIFETIME_ARCHIVED && "archived",
-                lifetime === LIFETIME_BIN && "binned",
-                selected && "selected",
-                bulk && (bulk.changes.size > 0 ? "selection-locked" : "selectable"),
-              ].filter(Boolean);
-              const busy = blocked || busyNoteId !== undefined || bulkActive;
-              const hint = bulkActive
-                ? "Not while selecting notes"
-                : blocked
-                  ? "Finish or cancel the current edit first"
-                  : undefined;
-              return (
-                <li
-                  key={note.id}
-                  data-note-id={note.id}
-                  className={classes.join(" ") || undefined}
-                  style={{
-                    ...(hue !== undefined && { background: noteBackground(note, hue) }),
-                    ...(dragging && { top: drag.top, left: drag.left, width: drag.width, height: drag.height }),
-                  }}
-                  // Multi-select: tapping anywhere on the row toggles it (the greyed buttons do nothing).
-                  onClick={bulk ? () => toggleBulkNote(note.id) : undefined}
-                  aria-selected={bulk ? selected : undefined}
+        <div className="notes-main">
+          {/* Yellow while any of its dropdowns has a tag ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
+          <div
+            className={extraFilters.length > 0 || searchWords.length > 0 ? "filter-row filtered" : "filter-row"}
+            aria-label="More filters for this tab"
+          >
+            {bulk ? (
+              // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
+              <div className="bulk-select-all" role="group" aria-label="Select notes">
+                <button
+                  type="button"
+                  className="small-button"
+                  title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Select every note in the list"}
+                  disabled={bulk.changes.size > 0}
+                  onClick={() => selectBulkNotes(visibleNotes.map((note) => note.id))}
                 >
-                  {bulk && (
-                    <span className="note-select" aria-hidden>
-                      <FontAwesomeIcon icon={selected ? faCircleCheck : faCircle} />
-                    </span>
-                  )}
-                  {ordering && (
-                    <span
-                      className="note-grip"
-                      title="Drag to reorder"
-                      {...gripHandlers(note.id)}
-                      onPointerDown={(event) => {
-                        // What's shown stays as it is until the drop, whatever live updates arrive.
-                        if (!drag) dragList.current = visibleNotes;
-                        gripHandlers(note.id).onPointerDown(event);
+                  All
+                </button>
+                <button
+                  type="button"
+                  className="small-button"
+                  title={bulk.changes.size > 0 ? "Selection is fixed once a tag has been clicked" : "Unselect every note"}
+                  disabled={bulk.changes.size > 0}
+                  onClick={() => selectBulkNotes([])}
+                >
+                  None
+                </button>
+              </div>
+            ) : (
+              <>
+                {extraCategories.length > 0 && (
+                  <TagPickers
+                    categories={extraCategories}
+                    selection={extraSelection}
+                    onChange={setExtraSelection}
+                    disabled={rowBlocked}
+                    checkLists
+                    counts={filterCounts}
+                    selectAll
+                  />
+                )}
+                {/* Only while a tag is ticked; otherwise it takes no space. */}
+                {extraFilters.length > 0 && (
+                  <IconButton
+                    icon={faReplyAll}
+                    label={rowBlocked ? rowHint : "Reset filters"}
+                    disabled={rowBlocked}
+                    onClick={() => setExtraSelection({})}
+                  />
+                )}
+                <IconButton
+                  icon={faMagnifyingGlass}
+                  label={rowBlocked ? rowHint : searchOn ? "Close search" : "Search"}
+                  disabled={rowBlocked}
+                  pressed={searchOn}
+                  onClick={toggleSearch}
+                />
+                {searchOn && (
+                  <input
+                    className="filter-search"
+                    type="search"
+                    aria-label="Search notes"
+                    placeholder="Search titles and long-form text"
+                    autoComplete="off"
+                    autoFocus
+                    value={searchText}
+                    disabled={rowBlocked}
+                    onChange={(event) => setSearchText(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        toggleSearch();
+                      }
+                    }}
+                  />
+                )}
+              </>
+            )}
+            {selectedTab && (
+              <div className="filter-row-end">
+                <IconButton
+                  icon={ordering ? faClipboardCheck : faArrowDownWideShort}
+                  label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
+                  disabled={!ordering && (editBlocked || offline)}
+                  onClick={() => setOrdering(!ordering)}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="note-list" ref={listRef}>
+            {visibleNotes.length === 0 ? (
+              <p className="empty">
+                {searchWords.length > 0
+                  ? "No notes match the search."
+                  : allFilters.length > 0
+                    ? "No notes in this tab yet."
+                    : "No notes yet. Add your first one below."}
+              </p>
+            ) : (
+              // Notes run top to bottom down each column, then on to the next column to the right.
+              <ul style={{ columnCount: columns }}>
+                {rows.map((row) => {
+                  if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
+                  const note = row.note;
+                  const dragging = note.id === drag?.noteId;
+                  const selected = bulk?.noteIds.includes(note.id) ?? false;
+                  const lifetime = lifetimeOf(note);
+                  // A tag's colour tints the row, shaded by its Lifetime (never Bin notes). While a coloured note is
+                  // being edited it shows the edit highlight instead, whatever its Lifetime.
+                  const editing = note.id === editingNote?.id;
+                  const coloured = lifetime !== LIFETIME_BIN && noteHue(note, categories) !== undefined;
+                  const hue = coloured && !editing ? noteHue(note, categories) : undefined;
+                  const classes = [
+                    dragging && "dragging",
+                    editing && "editing",
+                    hue !== undefined && "tinted",
+                    !coloured && lifetime === LIFETIME_WAITING && "waiting",
+                    !coloured && lifetime === LIFETIME_ARCHIVED && "archived",
+                    lifetime === LIFETIME_BIN && "binned",
+                    selected && "selected",
+                    bulk && (bulk.changes.size > 0 ? "selection-locked" : "selectable"),
+                  ].filter(Boolean);
+                  const busy = blocked || busyNoteId !== undefined || bulkActive;
+                  const hint = bulkActive
+                    ? "Not while selecting notes"
+                    : blocked
+                      ? "Finish or cancel the current edit first"
+                      : undefined;
+                  return (
+                    <li
+                      key={note.id}
+                      data-note-id={note.id}
+                      className={classes.join(" ") || undefined}
+                      style={{
+                        ...(hue !== undefined && { background: noteBackground(note, hue) }),
+                        ...(dragging && { top: drag.top, left: drag.left, width: drag.width, height: drag.height }),
                       }}
+                      // Multi-select: tapping anywhere on the row toggles it (the greyed buttons do nothing).
+                      onClick={bulk ? () => toggleBulkNote(note.id) : undefined}
+                      aria-selected={bulk ? selected : undefined}
                     >
-                      <FontAwesomeIcon icon={faGripVertical} />
-                    </span>
-                  )}
-                  <div className="note-body">
-                    {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : <FormattedText text={note.titleText ?? ""} />}
-                    <TagPills
-                      tagIds={note.tagIds}
-                      categories={categories}
-                      extra={specialPills(note)}
-                      hideCategoryIds={filteredSingleSelect}
-                      // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
-                      // Offline it's plain too: resetting the New tags needs the server.
-                      onNewClick={bulk || offline ? undefined : () => setConfirmResetNew(true)}
-                      newClickDisabled={resettingNew}
-                    />
-                  </div>
-                  {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
-                  <div className="note-side">
-                  <div className="note-actions">
-                    {ordering ? (
-                      // Edit-order mode: instead of the usual buttons, move the note to the top or bottom of the tab.
-                      <>
-                        <IconButton
-                          icon={faAnglesUp}
-                          label="Move to top"
-                          disabled={drag !== undefined || listedNotes[0]?.id === note.id}
-                          onClick={() => moveToEnd(note.id, "top")}
+                      {bulk && (
+                        <span className="note-select" aria-hidden>
+                          <FontAwesomeIcon icon={selected ? faCircleCheck : faCircle} />
+                        </span>
+                      )}
+                      {ordering && (
+                        <span
+                          className="note-grip"
+                          title="Drag to reorder"
+                          {...gripHandlers(note.id)}
+                          onPointerDown={(event) => {
+                            // What's shown stays as it is until the drop, whatever live updates arrive.
+                            if (!drag) dragList.current = visibleNotes;
+                            gripHandlers(note.id).onPointerDown(event);
+                          }}
+                        >
+                          <FontAwesomeIcon icon={faGripVertical} />
+                        </span>
+                      )}
+                      <div className="note-body">
+                        {note.titleImage !== undefined ? <HandwrittenTitle image={note.titleImage} /> : <FormattedText text={note.titleText ?? ""} />}
+                        <TagPills
+                          tagIds={note.tagIds}
+                          categories={categories}
+                          extra={specialPills(note)}
+                          hideCategoryIds={filteredSingleSelect}
+                          // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
+                          // Offline it's plain too: resetting the New tags needs the server.
+                          onNewClick={bulk || offline ? undefined : () => setConfirmResetNew(true)}
+                          newClickDisabled={resettingNew}
                         />
+                      </div>
+                      {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
+                      <div className="note-side">
+                      <div className="note-actions">
+                        {ordering ? (
+                          // Edit-order mode: instead of the usual buttons, move the note to the top or bottom of the tab.
+                          <>
+                            <IconButton
+                              icon={faAnglesUp}
+                              label="Move to top"
+                              disabled={drag !== undefined || listedNotes[0]?.id === note.id}
+                              onClick={() => moveToEnd(note.id, "top")}
+                            />
+                            <IconButton
+                              icon={faAnglesDown}
+                              label="Move to bottom"
+                              disabled={drag !== undefined || listedNotes.at(-1)?.id === note.id}
+                              onClick={() => moveToEnd(note.id, "bottom")}
+                            />
+                          </>
+                        ) : (
+                          <>
                         <IconButton
-                          icon={faAnglesDown}
-                          label="Move to bottom"
-                          disabled={drag !== undefined || listedNotes.at(-1)?.id === note.id}
-                          onClick={() => moveToEnd(note.id, "bottom")}
+                          icon={faPen}
+                          label={note.id === editingNote?.id ? "Editing this note" : (hint ?? "Edit note")}
+                          disabled={busy || saving}
+                          onClick={() => (isLongForm(note) ? openLongForm(note) : startEdit(note))}
                         />
-                      </>
-                    ) : (
-                      <>
-                    <IconButton
-                      icon={faPen}
-                      label={note.id === editingNote?.id ? "Editing this note" : (hint ?? "Edit note")}
-                      disabled={busy || saving}
-                      onClick={() => (isLongForm(note) ? openLongForm(note) : startEdit(note))}
-                    />
-                    {/* New and Active notes can be put on hold; anything else can be reinstated to Active. */}
-                    {lifetime === LIFETIME_NEW || lifetime === LIFETIME_ACTIVE ? (
-                      <IconButton
-                        icon={faHourglass}
-                        label={hint ?? "Waiting"}
-                        disabled={busy}
-                        onClick={() => void changeLifetime(note, "Waiting")}
-                      />
-                    ) : (
-                      <IconButton
-                        icon={faRotateLeft}
-                        label={hint ?? "Reinstate"}
-                        disabled={busy}
-                        onClick={() => void changeLifetime(note, "Active")}
-                      />
-                    )}
-                    {/* Anything not yet Archived or in the Bin can be archived; Archived notes can be binned. */}
-                    {lifetime === LIFETIME_ARCHIVED ? (
-                      <IconButton
-                        icon={faTrashCan}
-                        label={hint ?? "Move to bin"}
-                        disabled={busy}
-                        onClick={() => void changeLifetime(note, "Bin")}
-                      />
-                    ) : (
-                      lifetime !== LIFETIME_BIN && (
-                        <IconButton
-                          icon={faBoxArchive}
-                          label={hint ?? "Archive"}
-                          disabled={busy}
-                          onClick={() => void changeLifetime(note, "Archived")}
-                        />
-                      )
-                    )}
-                      </>
-                    )}
-                  </div>
-                  {/* The due date if the note has one, otherwise when it was created. */}
-                  <time
-                    className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
-                    dateTime={note.dueDateTime ?? note.createdDateTime}
-                    title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}`}
-                  >
-                    {pendingIds.has(note.id) && (
-                      <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
-                    )}
-                    {note.dueDateTime ? "Due " : "Cr. "}
-                    {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
-                  </time>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                        {/* New and Active notes can be put on hold; anything else can be reinstated to Active. */}
+                        {lifetime === LIFETIME_NEW || lifetime === LIFETIME_ACTIVE ? (
+                          <IconButton
+                            icon={faHourglass}
+                            label={hint ?? "Waiting"}
+                            disabled={busy}
+                            onClick={() => void changeLifetime(note, "Waiting")}
+                          />
+                        ) : (
+                          <IconButton
+                            icon={faRotateLeft}
+                            label={hint ?? "Reinstate"}
+                            disabled={busy}
+                            onClick={() => void changeLifetime(note, "Active")}
+                          />
+                        )}
+                        {/* Anything not yet Archived or in the Bin can be archived; Archived notes can be binned. */}
+                        {lifetime === LIFETIME_ARCHIVED ? (
+                          <IconButton
+                            icon={faTrashCan}
+                            label={hint ?? "Move to bin"}
+                            disabled={busy}
+                            onClick={() => void changeLifetime(note, "Bin")}
+                          />
+                        ) : (
+                          lifetime !== LIFETIME_BIN && (
+                            <IconButton
+                              icon={faBoxArchive}
+                              label={hint ?? "Archive"}
+                              disabled={busy}
+                              onClick={() => void changeLifetime(note, "Archived")}
+                            />
+                          )
+                        )}
+                          </>
+                        )}
+                      </div>
+                      {/* The due date if the note has one, otherwise when it was created. */}
+                      <time
+                        className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
+                        dateTime={note.dueDateTime ?? note.createdDateTime}
+                        title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}`}
+                      >
+                        {pendingIds.has(note.id) && (
+                          <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
+                        )}
+                        {note.dueDateTime ? "Due " : "Cr. "}
+                        {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
+                      </time>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
 
       {confirmResetNew && (

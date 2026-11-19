@@ -1,12 +1,23 @@
 import { useState, type FormEvent } from "react";
-import { TAB_NAME_MAX_LENGTH, validateTab, type Category, type Tab, type TabRequest } from "@nwsnotes/shared";
+import {
+  ALL_TAB_NAME,
+  TAB_NAME_MAX_LENGTH,
+  validateTab,
+  type Category,
+  type Tab,
+  type TabPlacement,
+  type TabRequest,
+} from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { TagPickers, type TagSelection } from "./TagPickers";
 
 interface Props {
-  /** "new" to add a tab. */
-  id: number | "new";
+  /** "new" to add a tab; "all" for the built-in tab, whose only setting is where it shows. */
+  id: number | "new" | "all";
   tabs: Tab[];
+  /** Where the built-in "All" tab shows. */
+  allTabPlacement: TabPlacement;
+  onAllTabPlacementSaved: (placement: TabPlacement) => void;
   categories: Category[];
   onSaved: (tab: Tab) => void;
   onDeleted: (id: number) => void;
@@ -17,6 +28,7 @@ interface Props {
 
 /** Adding and editing a tab share this page. */
 export function TabEditPage(props: Props) {
+  if (props.id === "all") return <AllTabForm {...props} />;
   const existing = props.id === "new" ? undefined : props.tabs.find((t) => t.id === props.id);
   if (props.id !== "new" && !existing) {
     return (
@@ -47,6 +59,7 @@ function TabForm({
   const [selection, setSelection] = useState<TagSelection>(() =>
     Object.fromEntries((existing?.categories ?? []).map((filter) => [filter.categoryId, filter.tagIds])),
   );
+  const [placement, setPlacement] = useState<TabPlacement>(existing?.placement ?? "top");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -79,6 +92,7 @@ function TabForm({
           tagIds: category.tags.filter((tag) => (selection[category.id] ?? []).includes(tag.id)).map((tag) => tag.id),
         }))
         .filter((filter) => filter.tagIds.length > 0),
+      ...(placement === "left" && { placement }),
     };
     const check = validateTab(request, tabs, categories, existing);
     if (!check.ok) {
@@ -114,6 +128,8 @@ function TabForm({
           disabled={busy}
           onChange={(event) => setName(event.target.value)}
         />
+
+        <PlacementSwitch placement={placement} onChange={setPlacement} disabled={busy} />
 
         <fieldset>
           <legend>Show notes with</legend>
@@ -153,6 +169,85 @@ function TabForm({
               Delete
             </button>
           )}
+        </div>
+      </form>
+    </main>
+  );
+}
+
+/** Where a tab shows: a switch between "Top" (off) and "Left" (on). */
+function PlacementSwitch({
+  placement,
+  onChange,
+  disabled,
+}: {
+  placement: TabPlacement;
+  onChange: (placement: TabPlacement) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="placement-setting">
+      <span className="placement-heading">Where the tab shows</span>
+      <label className="switch">
+        <span className="switch-label">Top</span>
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Show on the left"
+          checked={placement === "left"}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.checked ? "left" : "top")}
+        />
+        <span className="switch-track" aria-hidden="true" />
+        <span className="switch-label">Left</span>
+      </label>
+    </div>
+  );
+}
+
+/** The built-in "All" tab: its name and filters can't change, so its only setting is where it shows. */
+function AllTabForm({ allTabPlacement, onAllTabPlacementSaved, onClose, onSessionExpired }: Props) {
+  const [placement, setPlacement] = useState(allTabPlacement);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await api.setAllTabPlacement({ placement });
+      onAllTabPlacementSaved(placement);
+      onClose();
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setError(`The tab wasn't saved: ${err instanceof Error ? err.message : String(err)}`);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="settings-page">
+      <h1>{ALL_TAB_NAME} tab</h1>
+      <p>The built-in tab that shows every note. Its name and filters can't be changed, and it can't be deleted.</p>
+      <form className="category-form" onSubmit={(event) => void save(event)}>
+        <PlacementSwitch placement={placement} onChange={setPlacement} disabled={busy} />
+        {error && (
+          <p className="save-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="form-buttons">
+          <button type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+          <button type="button" className="button" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
         </div>
       </form>
     </main>

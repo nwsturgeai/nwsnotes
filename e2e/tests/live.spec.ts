@@ -23,7 +23,7 @@ test("settings changed in one window appear in the other", async ({ page, contex
 
   await page.getByRole("link", { name: "Settings" }).click();
   await page.locator("section").filter({ hasText: "Tabs" }).getByRole("button", { name: "Move up Home" }).click();
-  await expect(other.getByRole("tablist", { name: "Tabs" }).getByRole("tab")).toHaveText(["All", "Home", "Work", "On hold"], {
+  await expect(other.getByRole("tablist", { name: "Tabs", exact: true }).getByRole("tab")).toHaveText(["All", "Home", "Work", "On hold"], {
     timeout: 10_000,
   });
 

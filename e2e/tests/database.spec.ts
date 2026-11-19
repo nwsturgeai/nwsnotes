@@ -22,7 +22,7 @@ test("every change is in the database, as a restart shows", async ({ page }) => 
   expect(await (await page.request.get("/api/notes")).json()).toEqual(before);
   await page.reload();
   await expect(noteRow(page, "Stored for good")).toBeVisible();
-  await expect(page.getByRole("tablist", { name: "Tabs" }).getByRole("tab")).toHaveText(["All", "On hold", "Work", "Home"]);
+  await expect(page.getByRole("tablist", { name: "Tabs", exact: true }).getByRole("tab")).toHaveText(["All", "On hold", "Work", "Home"]);
 });
 
 test("the first start with a new database imports the latest save-file", async ({ page }) => {

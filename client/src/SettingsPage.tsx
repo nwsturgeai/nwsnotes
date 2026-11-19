@@ -10,6 +10,7 @@ import {
   type Category,
   type Note,
   type Tab,
+  type TabPlacement,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { buildTime, checkForUpdate, reloadToUpdate, updatesAvailable, useUpdateReady } from "./appUpdate";
@@ -25,6 +26,8 @@ interface Props {
   /** All categories, including the built-in Lifetime one. */
   categories: Category[];
   tabs: Tab[];
+  /** Where the built-in "All" tab shows. */
+  allTabPlacement: TabPlacement;
   stylusMode: boolean;
   onStylusModeChange: (on: boolean) => void;
   columns: number;
@@ -101,6 +104,7 @@ export function SettingsPage({
   notes,
   categories,
   tabs,
+  allTabPlacement,
   stylusMode,
   onStylusModeChange,
   columns,
@@ -426,11 +430,12 @@ export function SettingsPage({
         <p>A tab shows only the notes with the tags it lists. Click a tab to change or delete it.</p>
         <ul className="category-list">
           <li>
-            {/* The built-in tab can't be edited, so it isn't a link. */}
-            <span className="tab-entry">
+            {/* The built-in tab: its page only sets where it shows. */}
+            <a href={pathFor({ name: "tab", id: "all" })} onClick={(event) => go(event, { name: "tab", id: "all" })}>
               <span className="category-name">{ALL_TAB_NAME}</span>
+              {allTabPlacement === "left" && <span className="category-kind">left</span>}
               <span className="category-tags">Always shows every note</span>
-            </span>
+            </a>
             {/* "All" is always the first tab, so it can't be moved. */}
             <span className="order-buttons" aria-hidden />
           </li>
@@ -440,6 +445,7 @@ export function SettingsPage({
               <li key={tab.id}>
                 <a href={pathFor(page)} onClick={(event) => go(event, page)}>
                   <span className="category-name">{tab.name}</span>
+                  {tab.placement === "left" && <span className="category-kind">left</span>}
                   <div className="category-tags">
                     <TagPills
                       tagIds={tab.categories.flatMap((filter) => filter.tagIds)}

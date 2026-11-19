@@ -23,7 +23,7 @@ function categoryLine(page: Page, name: string) {
   return section(page, "Categories").getByRole("listitem").filter({ has: page.locator(".category-name", { hasText: new RegExp(`^${name}$`) }) });
 }
 
-const tabNames = (page: Page) => page.getByRole("tablist", { name: "Tabs" }).getByRole("tab");
+const tabNames = (page: Page) => page.getByRole("tablist", { name: "Tabs", exact: true }).getByRole("tab");
 
 test.beforeEach(async ({ page }) => {
   await openSettings(page);

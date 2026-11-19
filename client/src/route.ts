@@ -8,8 +8,8 @@ export type Page =
   | { name: "history" }
   /** Adding (id "new") or editing a category. */
   | { name: "category"; id: number | "new" }
-  /** Adding (id "new") or editing a tab. */
-  | { name: "tab"; id: number | "new" };
+  /** Adding (id "new") or editing a tab; "all" is the built-in tab, whose only setting is where it shows. */
+  | { name: "tab"; id: number | "new" | "all" };
 
 export function pathFor(page: Page): string {
   switch (page.name) {
@@ -29,6 +29,7 @@ export function pathFor(page: Page): string {
 function pageFromPath(pathname: string): Page {
   if (pathname === "/settings") return { name: "settings" };
   if (pathname === "/history") return { name: "history" };
+  if (pathname === "/settings/tabs/all") return { name: "tab", id: "all" };
   const match = /^\/settings\/(categories|tabs)\/(new|\d+)$/.exec(pathname);
   if (match) {
     const id = match[2] === "new" ? "new" : Number(match[2]);
