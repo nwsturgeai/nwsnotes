@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faCircleCheck, faEraser, faPen, faRectangleList, faX } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faCircleCheck, faEraser, faPen, faRectangleList, faShareFromSquare, faX } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -110,6 +110,8 @@ export function LongFormEditor({
   const [erasing, setErasing] = useState(false);
   /** The device's pen thickness, also chosen with the buttons beside the eraser. */
   const [penWidth, setPenWidth] = usePenWidth();
+  /** Whether the details canvas has any ink, for the export button. */
+  const [padHasInk, setPadHasInk] = useState(false);
 
   // The latest values, for saves that run from a timer.
   const latest = useRef({ selection, detailsText });
@@ -282,6 +284,30 @@ export function LongFormEditor({
     setErasing(false);
   }
 
+  /**
+   * Exports the handwritten details as a PNG (black on white, cropped to the ink): through the device's
+   * share sheet where the browser can share files (Android), otherwise as a download.
+   */
+  function onExportClick(event: ReactMouseEvent) {
+    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    const pad = padRef.current;
+    if (!pad?.hasInk()) return;
+    const dataUrl = pad.toImage("#fff");
+    const file = new File([dataUrlToBlob(dataUrl)], exportFileName(title), { type: "image/png" });
+    // Shared straight away (no waiting first), as sharing needs the tap that asked for it.
+    if (navigator.canShare?.({ files: [file] })) {
+      navigator.share({ files: [file] }).catch((err: unknown) => {
+        // Closing the share sheet without choosing anything isn't an error.
+        if (!(err instanceof DOMException && err.name === "AbortError")) setError(`The image couldn't be shared: ${err instanceof Error ? err.message : String(err)}`);
+      });
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = file.name;
+    link.click();
+  }
+
   /** Cancel (new notes only): straight away if there are no details, otherwise after asking. */
   function onCancelClick(event: ReactMouseEvent) {
     if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
@@ -440,6 +466,7 @@ export function LongFormEditor({
             erasing={erasing}
             initialImage={note?.detailsImage || undefined}
             onInk={schedule}
+            onInkChange={setPadHasInk}
           />
         )}
         {!detailsEditable && kind === "image" && (
@@ -485,6 +512,16 @@ export function LongFormEditor({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className="icon-button lf-export"
+            aria-label="Export as image"
+            title="Export as image"
+            disabled={busy || !detailsEditable || !padHasInk}
+            onClick={onExportClick}
+          >
+            <FontAwesomeIcon icon={faShareFromSquare} />
+          </button>
           </>
         )}
         <div className="lf-finish-end">
@@ -525,4 +562,19 @@ export function LongFormEditor({
       )}
     </div>
   );
+}
+
+/** A data URL's contents, as a Blob. */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, data] = dataUrl.split(",", 2) as [string, string];
+  const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+  return new Blob([bytes], { type: header.slice(5).split(";")[0] });
+}
+
+/** An exported image's file name: the note's title and today's date, e.g. "Garden plan 2026-11-19.png". */
+function exportFileName(title: string, now = new Date()): string {
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  // Characters that file names can't have (on Windows, the strictest), and control characters.
+  const safe = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 80).trim();
+  return `${safe ? `${safe} ` : ""}${date}.png`;
 }

@@ -1279,6 +1279,11 @@ body:has(.note-list li.dragging) {
   margin-left: 12px;
 }
 
+/* Export, after the pen thicknesses with the same wider gap. */
+.lf-export {
+  margin-left: 12px;
+}
+
 /* A short line at the button's thickness, in the icon's colour (light when chosen). */
 .lf-pen-sample {
   display: block;

@@ -17,8 +17,11 @@ const CROP_MARGIN = 4;
 export interface StylusPadHandle {
   /** True once anything has been written. */
   hasInk(): boolean;
-  /** The writing as a PNG data URL, cropped to what was written plus a small margin. */
-  toImage(): string;
+  /**
+   * The writing as a PNG data URL, cropped to what was written plus a small margin: on a transparent
+   * background, or on `background` (e.g. white, for exporting).
+   */
+  toImage(background?: string): string;
   clear(): void;
 }
 
@@ -27,6 +30,8 @@ interface Props {
   disabled: boolean;
   /** Called when a new stroke (drawing or erasing) starts. */
   onInk?: () => void;
+  /** Called when the canvas gains its first ink or loses the last of it (loading, strokes, erasing, clearing). */
+  onInkChange?: (hasInk: boolean) => void;
   /** The eraser is selected: a stylus or mouse erases instead of drawing. A stylus's eraser end always erases. */
   erasing?: boolean;
   /** A handwritten note's image (PNG data URL) to start from, when editing it. */
@@ -57,7 +62,13 @@ function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
  * A canvas to write a note on. Only a stylus (or a mouse, for testing on a computer) draws;
  * fingers and palms are ignored.
  */
-export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, label = "Writing area for a new note" }: Props) {
+export function StylusPad({ ref, disabled, onInk, onInkChange, erasing, initialImage, fill, label = "Writing area for a new note" }: Props) {
+  const inkChanged = useRef(onInkChange);
+  inkChanged.current = onInkChange;
+  /** Tells `onInkChange` whether there's ink now. */
+  function reportInk() {
+    inkChanged.current?.(bounds.current !== undefined);
+  }
   /** The Pen thickness setting, for new strokes (changed in Settings, or by the long-form editor's pen buttons). */
   const [penWidth] = usePenWidth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -76,6 +87,7 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
     bounds.current = undefined;
     stroke.current = undefined;
     changedSinceLoad.current = true;
+    reportInk();
   }
 
   /**
@@ -105,13 +117,14 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
         maxX: Math.max(right - margin, right / 2),
         maxY: Math.max(bottom - margin, bottom / 2),
       };
+      reportInk();
     };
     image.src = dataUrl;
   }
 
   useImperativeHandle(ref, () => ({
     hasInk: () => bounds.current !== undefined,
-    toImage: () => {
+    toImage: (background?: string) => {
       const canvas = canvasRef.current!;
       const b = bounds.current!;
       const left = Math.max(0, Math.floor((b.minX - CROP_MARGIN) * INK_SCALE));
@@ -121,7 +134,12 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
       const cropped = document.createElement("canvas");
       cropped.width = right - left;
       cropped.height = bottom - top;
-      cropped.getContext("2d")!.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
+      const context = cropped.getContext("2d")!;
+      if (background) {
+        context.fillStyle = background;
+        context.fillRect(0, 0, cropped.width, cropped.height);
+      }
+      context.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
       return cropped.toDataURL("image/png");
     },
     clear,
@@ -146,6 +164,7 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
         return;
       }
       bounds.current = undefined;
+      reportInk();
       if (initialImage && !changedSinceLoad.current) loadImage(initialImage);
     };
     resize();
@@ -270,6 +289,7 @@ export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, l
     if (current?.pointerId !== event.pointerId) return;
     stroke.current = undefined;
     if (current.erase) measureInk();
+    reportInk();
     // The outline stays while hovering with the eraser selected; otherwise it goes.
     if (!erasing || event.type !== "pointerup") showRing(undefined);
   }

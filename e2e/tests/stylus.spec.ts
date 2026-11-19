@@ -164,3 +164,56 @@ test("the pen thickness setting draws thicker or thinner lines", async ({ page }
   const thick = await lineAt("4.5px");
   expect(thick).toBeGreaterThan(thin * 2);
 });
+
+test("handwritten long-form details can be exported as an image, shared or downloaded", async ({ page }) => {
+  await turnOnStylusMode(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Garden: plan?");
+  await editor.getByRole("button", { name: "Accept title" }).click();
+  const exportButton = editor.getByRole("button", { name: "Export as image" });
+  // Nothing written yet.
+  await expect(exportButton).toBeDisabled();
+  await draw(page, editor.getByRole("img", { name: "Details of the long-form note" }), 0.2, 0.6);
+  await expect(exportButton).toBeEnabled();
+
+  const today = await page.evaluate(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  });
+
+  // Where files can be shared (Android), the share sheet gets the image.
+  await page.evaluate(() => {
+    const shared = window as unknown as { shared?: { name: string; type: string; corner: number[]; inked: boolean } };
+    navigator.canShare = () => true;
+    navigator.share = async (data?: ShareData) => {
+      const file = data!.files![0]!;
+      const image = await createImageBitmap(file);
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, image.width, image.height).data;
+      let inked = false;
+      for (let i = 0; i < pixels.length; i += 4) if (pixels[i]! < 100 && pixels[i + 3] === 255) inked = true;
+      shared.shared = { name: file.name, type: file.type, corner: Array.from(pixels.slice(0, 4)), inked };
+    };
+  });
+  await exportButton.click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { shared?: unknown }).shared)).toEqual({
+    name: `Garden plan ${today}.png`,
+    type: "image/png",
+    // Black ink on white, not on a transparent background.
+    corner: [255, 255, 255, 255],
+    inked: true,
+  });
+
+  // Elsewhere, it's downloaded.
+  await page.evaluate(() => {
+    (navigator as { canShare?: unknown }).canShare = undefined;
+  });
+  const download = page.waitForEvent("download");
+  await exportButton.click();
+  expect((await download).suggestedFilename()).toBe(`Garden plan ${today}.png`);
+});
+
