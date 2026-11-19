@@ -31,6 +31,14 @@ Notes that are "filtered out" remain in the system, they are just hidden.  They 
 When the currently-selected Tab has a Category filter containing a single Tag: the new-note area should have that one Tag automatically selected in the corresponding dropdown.  It should not be possible to change this selection.
 Changing tab should cause all new-note dropdowns to reset, either to "unselected", or to the single value from the corresponding Tab Category filter.
 
+### Tabs on the left
+
+Tabs can appear down the left-hand side of the main screen as well as along the top.
+Each Tab has a new setting, "Top" or "Left". When editing a Tab, there is a toggle-switch to switch between these 2 settings. The All tab can also be set to Left.
+Tabs set to "Left" appear down the left-hand side of the notes list screen, ordered from top to bottom.
+Layout: the top tab strip stays at the top. The left tab strip runs down the side, from under the top tab strip all the way to the top of the new-note section. The dynamic tab filter dropdowns (the second header row) stay where they are, but the row is no longer full-width: it loses a bit on the left for the left tab strip.
+The left tab strip is narrow: at most 48 pixels wide. Long tab names are truncated (on one line) rather than wrapping to a second line.
+
 ### Additional Tab filters
 
 Underneath the main "Tabs" header, a second header area is shown within the tab but above the list of notes.  This second header area should not scroll with the notes.
@@ -119,3 +127,24 @@ If any text is typed into the search box, the list of notes shown in the main ar
 - **Turning it off:** clicking the button again, or Escape while in the search box, clears the text and closes the box.
 - **Not remembered:** while it's on, the search and its text stay as they are when switching tabs. It isn't saved on the device, so it's off when the app opens.
 - **Offline:** it works offline, since all the notes are already on the device.
+
+### Tabs on the left
+- **Stored on the tab:** a new `placement` field, `"top"` or `"left"`, sent and checked with the tab's name and filters (`POST` and `PUT /api/tabs`). Tabs without it are Top, so existing tabs stay where they are. It's called `placement` because the database already has a `position` column for the tabs' order.
+- **The "All" tab:** it isn't a stored tab, so its placement is kept as a small setting on the server, `allTabPlacement` (`"top"` or `"left"`, default `"top"`), in the database's `meta` table. `GET /api/notes` includes it as `allTabPlacement`, and `PUT /api/tabs/all` with `{ "placement": "left" }` changes it and tells other pages to reload. Changing it is a change in the History ("Moved the All tab to the left"), so going back undoes it too: the history keeps a "before" copy of it, as for notes, categories and tabs.
+- **The switch in the tab editor:** below the name, a toggle switch labelled "Top" on its left and "Left" on its right, off (Top) by default, saved with the tab. In Settings, the "All" row becomes a link too, to a short page with only that switch (its name and filters still can't be changed, and it can't be deleted).
+- **Order:** the one tab order set with the arrows in Settings. Top tabs appear along the top in that order, and Left tabs down the side in that order. "All" is always first in whichever strip it's in. In Settings the list stays as one list, with a small "left" label on Left tabs.
+- **Layout of the notes page:**
+  - The top tab strip, full width, at the top, as now.
+  - Below it, the left tab strip on the left, running down to the top of the new-note area.
+  - To its right, the filter row and then the note list: the filter row now starts at the left strip's edge rather than the screen's.
+  - The new-note area at the bottom stays full width.
+  - With no Left tabs there's no left strip, and no space is kept: everything is full width, as now. With every tab set to Left (All included), the top strip is empty but keeps its height, as it holds the Settings cog.
+- **The left strip's tabs:**
+  - At most 48px wide, the tabs stacked from the top, each about 40px high, with a small gap between them.
+  - Each name is on one line, in slightly smaller text, cut short with "…" when it doesn't fit. The full name shows on hover (its title).
+  - The selected tab looks joined to the note list on its right-hand edge, the way the top tabs join the list below them. Only one tab is selected at a time, whichever strip it's in.
+  - If there are more than fit, the strip scrolls by itself (it has no "…" menu; that stays for the top strip only).
+- **Everything else is the same** whichever strip a tab is in: its filters, the filter row and its counts, search, edit order, multi-select, and adding notes to it.
+- **While a note is being edited,** Left tabs are greyed out and can't be switched to, like Top tabs.
+- **The long-form editor** covers the left strip too, as it covers the filter row and the note list.
+- **Tests:** a new `left-tabs.spec.ts`: setting a tab (and "All") to Left moves it into the left strip, in order; switching tabs from the left strip; long names are cut short on one line; the filter row starts beside the strip; with no Left tabs there's no strip; going back in the History undoes a placement change.

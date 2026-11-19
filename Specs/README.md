@@ -8,7 +8,7 @@ requirements first, then the "Agreed technical decisions" for that area.
 | [overview.md](overview.md) | What the app is, code and tooling, login, appearance, the header and settings page |
 | [notes.md](notes.md) | Notes and the main screen, the new-note area, columns, editing, note ordering, adding at the top |
 | [tags.md](tags.md) | Categories and tags, tag order, colours, full-tag-list mode, multi-select |
-| [tabs.md](tabs.md) | Tabs, tab editing, additional tab filters, search |
+| [tabs.md](tabs.md) | Tabs (along the top or down the left), tab editing, additional tab filters, search |
 | [long-form.md](long-form.md) | Long-form notes and their child notes |
 | [stylus.md](stylus.md) | Stylus mode, the eraser, pen thickness |
 | [formatting.md](formatting.md) | Text formatting (bold, underline, italic) |
