@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faAlarmClock, faCircle } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faCircle, faFileLines } from "@fortawesome/free-regular-svg-icons";
 import {
   faAnglesDown,
   faAnglesUp,
@@ -23,7 +23,6 @@ import {
   faCircleUp,
   faClipboardCheck,
   faDeleteLeft,
-  faFileLines,
   faGripVertical,
   faHourglass,
   faListCheck,
