@@ -37,7 +37,7 @@ Tabs can appear down the left-hand side of the main screen as well as along the 
 Each Tab has a new setting, "Top" or "Left". When editing a Tab, there is a toggle-switch to switch between these 2 settings. The All tab can also be set to Left.
 Tabs set to "Left" appear down the left-hand side of the notes list screen, ordered from top to bottom.
 Layout: the top tab strip stays at the top. The left tab strip runs down the side, from under the top tab strip all the way to the top of the new-note section. The dynamic tab filter dropdowns (the second header row) stay where they are, but the row is no longer full-width: it loses a bit on the left for the left tab strip.
-The left tab strip is narrow: at most 48 pixels wide. Long tab names are truncated (on one line) rather than wrapping to a second line.
+The left tab strip is narrow: at most 48 pixels wide. The names of tabs on the left strip are in vertical text, reading from bottom to top. Long tab names are truncated (on one line) rather than wrapping to a second line.
 
 ### Additional Tab filters
 
@@ -140,8 +140,9 @@ If any text is typed into the search box, the list of notes shown in the main ar
   - The new-note area at the bottom stays full width.
   - With no Left tabs there's no left strip, and no space is kept: everything is full width, as now. With every tab set to Left (All included), the top strip is empty but keeps its height, as it holds the Settings cog.
 - **The left strip's tabs:**
-  - At most 48px wide, the tabs stacked from the top, each about 40px high, with a small gap between them.
-  - Each name is on one line, in slightly smaller text, cut short with "…" when it doesn't fit. The full name shows on hover (its title).
+  - At most 48px wide (36px in practice: one line of text plus padding), the tabs stacked from the top, with a small gap between them.
+  - Each name is vertical text reading from bottom to top (turned a quarter anticlockwise, as on a book's spine), on one line. A tab is as tall as its name, from 48px up to at most 160px; a longer name is cut short with "…" at its top end. The full name shows on hover (its title).
+  - It's drawn with `writing-mode: vertical-rl` turned half a turn (`transform: rotate(180deg)`), which every current browser supports.
   - The selected tab looks joined to the note list on its right-hand edge, the way the top tabs join the list below them. Only one tab is selected at a time, whichever strip it's in.
   - If there are more than fit, the strip scrolls by itself (it has no "…" menu; that stays for the top strip only).
 - **Everything else is the same** whichever strip a tab is in: its filters, the filter row and its counts, search, edit order, multi-select, and adding notes to it.
