@@ -14,6 +14,9 @@ A set of dropdowns for setting tags.  These appear underneath the title textbox.
 A large textarea (multiline text accepted) or canvas for entering the details of this note (canvas if in stylus-mode, textarea otherwise).
 A "Finish" icon button at the right-hand end of the strip below the textarea/canvas.  The textarea/canvas should occupy all the vertical space between the dropdowns and that strip.
 
+### Exporting handwritten details
+When creating or editing a long-form note whose details are handwritten, there is an export button in the bottom strip. It exports the handwriting (not the title) as an image, using the device's share options (so it can be saved or sent to another app).
+
 ### Eraser
 When creating/editing a long-form note in stylus mode, alongside the Finish button (and maybe Cancel button), right at the left-hand edge of the page, there should be an icon button with icon fa-eraser.
 This button can be in 2 states: unselected (default), and selected.  Pressing the button toggles between the states.  In selected state, the button colours should be inverted.
@@ -110,7 +113,7 @@ When these regular notes are shown in the notes-list: after any pills for their 
 - **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish", "Cancel" and the eraser button are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas; the eraser is used instead (see below). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
 - **Eraser:**
   - **When it shows:** whenever a long-form note's details are a canvas, whatever the stylus-mode setting. Handwritten details stay a canvas even with stylus mode off.
-  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row, followed by the three pen-thickness buttons (see [stylus.md](stylus.md)), with Cancel and Finish at the far right.
+  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row, followed by the three pen-thickness buttons (see [stylus.md](stylus.md)) and the export button (see Export below), with Cancel and Finish at the far right.
     - Tapping it toggles it between unselected and selected. When selected its colours are inverted (accent background, light icon) and it's marked as pressed for screen readers.
     - It starts unselected each time the editor opens, and stays selected across strokes until tapped again.
     - It's greyed out while the details are locked, i.e. while the title is being edited.
@@ -122,4 +125,10 @@ When these regular notes are shown in the notes-list: after any pills for their 
     - While erasing, a thin circle outline the size of the eraser follows the pointer, and while hovering if the pen reports hover.
   - **The pen's eraser end:** if the browser reports the stylus's eraser end or eraser button (`buttons` bit 32), that always erases, whether or not the button is selected. Whether a given tablet reports it can only be checked on the device.
   - **Saving:** erasing counts as a change and is autosaved like drawing. When each erase stroke ends, the remaining ink is re-measured, so the saved image is cropped tightly again. A fully erased canvas counts as empty, so Cancel closes without asking.
+- **Export:**
+  - **Button:** an `fa-share-from-square` icon button (40px, like the others) in the bottom row, after the pen-thickness buttons with the same 16px gap. Tooltip and accessible label: "Export as image". It shows whenever the details are a canvas, like the eraser.
+  - **Greyed out** while there's no ink, and while the details are locked (the title being edited). In stylus mode, finger taps on it are ignored.
+  - **The image:** what's on the canvas at that moment, including strokes not yet autosaved, cropped to the ink with the usual margin, as a PNG of black ink on a white background (the stored image is transparent, which some apps show as black). Only the handwriting: no title.
+  - **File name:** the note's title and the date, e.g. `Garden plan 2026-11-19.png`, with characters not allowed in file names taken out (just the date if nothing is left).
+  - **How it's handed over:** the device's share sheet (`navigator.share` with the file) where the browser can share files, as on Android, so it can be saved to Photos or Files or sent to another app. Elsewhere (most PC browsers) the file is downloaded instead. Closing the share sheet without choosing anything does nothing.
 - **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters, in the same amber. Long-form notes get the usual buttons (edit, waiting, archive and so on).
