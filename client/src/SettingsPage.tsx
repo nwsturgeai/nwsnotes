@@ -260,26 +260,37 @@ export function SettingsPage({
         <p className="device-note">These settings are remembered on this device only.</p>
       </section>
 
+      {/* Only in stylus mode, which is when there's writing to do. */}
+      {stylusMode && (
+        <section>
+          <h2 id="pen-label">Pen</h2>
+          <div className="pen-widths" role="radiogroup" aria-labelledby="pen-label">
+            {PEN_WIDTHS.map((width) => (
+              <button
+                key={width}
+                type="button"
+                role="radio"
+                aria-checked={penWidth === width}
+                aria-label={`Pen thickness ${width}px`}
+                className={penWidth === width ? "pen-width chosen" : "pen-width"}
+                onClick={() => setPenWidth(width)}
+              >
+                {/* A sample line at this thickness. */}
+                <span className="pen-sample" style={{ height: width }} />
+                <span className="pen-size">{width}px</span>
+              </button>
+            ))}
+          </div>
+          <p>The thickness of lines drawn with the stylus. Remembered on this device only.</p>
+        </section>
+      )}
+
       <section>
-        <h2 id="pen-label">Pen</h2>
-        <div className="pen-widths" role="radiogroup" aria-labelledby="pen-label">
-          {PEN_WIDTHS.map((width) => (
-            <button
-              key={width}
-              type="button"
-              role="radio"
-              aria-checked={penWidth === width}
-              aria-label={`Pen thickness ${width}px`}
-              className={penWidth === width ? "pen-width chosen" : "pen-width"}
-              onClick={() => setPenWidth(width)}
-            >
-              {/* A sample line at this thickness. */}
-              <span className="pen-sample" style={{ height: width }} />
-              <span className="pen-size">{width}px</span>
-            </button>
-          ))}
-        </div>
-        <p>The thickness of lines drawn with the stylus. Remembered on this device only.</p>
+        <h2>History</h2>
+        <p>See the changes from the last 30 days, and go back to how things were after any of them.</p>
+        <a className="button" href={pathFor({ name: "history" })} onClick={(event) => go(event, { name: "history" })}>
+          History
+        </a>
       </section>
 
       <section>
@@ -463,14 +474,6 @@ export function SettingsPage({
       </section>
 
       <Reminders />
-
-      <section>
-        <h2>History</h2>
-        <p>See the changes from the last 30 days, and go back to how things were after any of them.</p>
-        <a className="button" href={pathFor({ name: "history" })} onClick={(event) => go(event, { name: "history" })}>
-          History
-        </a>
-      </section>
 
       <section>
         <h2>Backup</h2>

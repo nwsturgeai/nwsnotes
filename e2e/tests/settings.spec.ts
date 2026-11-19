@@ -181,6 +181,21 @@ test.describe("tabs", () => {
   });
 });
 
+test("the Pen section shows only in stylus mode, and History comes just before Lifetime", async ({ page }) => {
+  const headings = page.locator(".settings-page h2");
+  await expect(page.getByRole("heading", { name: "Pen" })).toHaveCount(0);
+  await expect(headings.first()).toHaveText("History");
+  await expect(headings.nth(1)).toHaveText("Lifetime");
+
+  await page.locator("label.switch").filter({ hasText: "Stylus mode" }).click();
+  await expect(headings.first()).toHaveText("Pen");
+  await expect(headings.nth(1)).toHaveText("History");
+  await expect(headings.nth(2)).toHaveText("Lifetime");
+
+  await page.locator("label.switch").filter({ hasText: "Stylus mode" }).click();
+  await expect(page.getByRole("heading", { name: "Pen" })).toHaveCount(0);
+});
+
 test("stylus mode and columns are remembered on this device", async ({ page }) => {
   await page.getByRole("radiogroup", { name: "Columns" }).getByRole("radio", { name: "2" }).click();
   await expect(page.getByRole("radiogroup", { name: "Columns" }).getByRole("radio", { name: "2" })).toHaveAttribute("aria-checked", "true");

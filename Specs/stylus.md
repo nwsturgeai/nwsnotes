@@ -17,7 +17,7 @@ Considering the "Add" and "Clear" buttons, and all of the new note tag dropdowns
 
 ### Pen thickness
 
-In the settings page, underneath the Stylus-mode/Columns section, and before the Lifetime section, add a new section for Pen controls.
+In the settings page, underneath the Stylus-mode/Columns section, and before the History section, add a new section for Pen controls. The Pen section is only shown while stylus mode is on.
 For now the only control is for Pen thickness.  There are 3 possible pen thicknesses: 1.5px, 2.5px, 4.5px.  Show a set of buttons for these, with exactly one selected (colour inverted) at any time.  Clicking on one of the buttons selects that thickness.
 The selected thickness should be remembered in browser local storage so that it persists on this device.
 When creating/editing a canvas-based note, also when creating/editing the details of a canvas-based long-form note: when the pen is in writing mode (i.e. not eraser mode), then touching down with the pen should cause a line to be drawn on the canvas with a width given by the current pen thickness setting.
@@ -30,7 +30,7 @@ When creating/editing a canvas-based note, also when creating/editing the detail
 - **What draws:** only a stylus (`pointerType` "pen") and, for testing on a computer, a mouse. Fingers and palms touching the canvas are ignored. The page doesn't scroll while writing on the canvas (`touch-action: none`).
 - **Ink:** black, with rounded ends and joins, in the width chosen by the Pen thickness setting (1.5, 2.5 or 4.5 CSS pixels; default 2.5). No pressure sensitivity.
 - **Pen thickness:**
-  - **Settings:** a "Pen" section on the settings page, between Stylus mode/Columns and Lifetime. It's shown even when stylus mode is off, since handwritten notes can be edited without it.
+  - **Settings:** a "Pen" section on the settings page, between Stylus mode/Columns and History. It's only shown while stylus mode is on: turning stylus mode on or off shows or hides it straight away. The chosen thickness is kept while it's hidden, and still used when a handwritten note is edited outside stylus mode.
   - **Buttons:** three buttons in a row, one per thickness. Each shows a short sample line drawn at that thickness, with its size in small text ("1.5px", "2.5px", "4.5px").
     - Exactly one is selected, shown with its colours inverted (accent background, light line and text) and marked as pressed for screen readers. Clicking one selects it.
   - **Remembered:** the choice is kept on this device in local storage (default 2.5px). An unknown stored value counts as 2.5.
