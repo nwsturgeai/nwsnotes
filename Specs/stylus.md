@@ -21,6 +21,7 @@ In the settings page, underneath the Stylus-mode/Columns section, and before the
 For now the only control is for Pen thickness.  There are 3 possible pen thicknesses: 1.5px, 2.5px, 4.5px.  Show a set of buttons for these, with exactly one selected (colour inverted) at any time.  Clicking on one of the buttons selects that thickness.
 The selected thickness should be remembered in browser local storage so that it persists on this device.
 When creating/editing a canvas-based note, also when creating/editing the details of a canvas-based long-form note: when the pen is in writing mode (i.e. not eraser mode), then touching down with the pen should cause a line to be drawn on the canvas with a width given by the current pen thickness setting.
+While creating or editing a long-form note with handwritten details, there are also 3 pen-thickness buttons in the editor, to the right of the eraser button, with a slightly larger than usual gap between the eraser and them. They change the same setting.
 
 ## Agreed technical decisions
 
@@ -33,6 +34,11 @@ When creating/editing a canvas-based note, also when creating/editing the detail
   - **Settings:** a "Pen" section on the settings page, between Stylus mode/Columns and History. It's only shown while stylus mode is on: turning stylus mode on or off shows or hides it straight away. The chosen thickness is kept while it's hidden, and still used when a handwritten note is edited outside stylus mode.
   - **Buttons:** three buttons in a row, one per thickness. Each shows a short sample line drawn at that thickness, with its size in small text ("1.5px", "2.5px", "4.5px").
     - Exactly one is selected, shown with its colours inverted (accent background, light line and text) and marked as pressed for screen readers. Clicking one selects it.
+  - **In the long-form editor:** the same three thicknesses as 40px square buttons, in the bottom row to the right of the eraser, with a 16px gap after the eraser and the usual 4px between them. They show whenever the eraser does (see [long-form.md](long-form.md)).
+    - Each shows only a short sample line at its thickness (no text); its tooltip and accessible label are "Pen thickness 1.5px" and so on. They're a radio group, like the settings buttons, with the chosen one's colours inverted.
+    - They change the same device setting as the Pen section, so a choice made in either place shows in both.
+    - Choosing one also turns the eraser off, as a pen is wanted for writing.
+    - They're greyed out while the details are locked, like the eraser, and in stylus mode finger taps on them are ignored.
   - **Remembered:** the choice is kept on this device in local storage (default 2.5px). An unknown stored value counts as 2.5.
   - **What it affects:** new strokes on every canvas, drawn with a stylus or mouse: the new-note canvas, editing a handwritten note, and long-form details. It doesn't change ink already drawn, or the eraser's size.
   - **Saved images:** cropping allows for the thickest pen, so thick lines aren't clipped at the edge.

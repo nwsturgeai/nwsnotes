@@ -110,7 +110,7 @@ When these regular notes are shown in the notes-list: after any pills for their 
 - **Stylus mode:** fingers don't draw on the details canvas, and finger taps on "Finish", "Cancel" and the eraser button are ignored (a stylus or mouse works). The editor's other buttons respond to touch. There's no Clear button for the details canvas; the eraser is used instead (see below). If the canvas changes size (e.g. the device is rotated), the current drawing (including anything not yet saved) is kept at the top-left, cut off if it no longer fits; the next save stores what's visible.
 - **Eraser:**
   - **When it shows:** whenever a long-form note's details are a canvas, whatever the stylus-mode setting. Handwritten details stay a canvas even with stylus mode off.
-  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row, with Cancel and Finish at the far right.
+  - **Button:** an `fa-eraser` icon button (the same 40px icon style as the editor's other buttons). It sits at the far left of the row, followed by the three pen-thickness buttons (see [stylus.md](stylus.md)), with Cancel and Finish at the far right.
     - Tapping it toggles it between unselected and selected. When selected its colours are inverted (accent background, light icon) and it's marked as pressed for screen readers.
     - It starts unselected each time the editor opens, and stays selected across strokes until tapped again.
     - It's greyed out while the details are locked, i.e. while the title is being edited.
