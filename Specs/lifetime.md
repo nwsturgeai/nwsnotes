@@ -55,7 +55,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
 - **Resetting New from the list:** the New pill on a note is a button (hover text "Reset the New tags"). It opens the app's own pop-up, "Do you want to reset the New tags?", with Yes (accent colour, focused) and No (Escape also counts as No). Yes does the same as the settings page's "Reset New" (every New note becomes Active, in one save) and reloads the list, with no other message. If it fails, the error shows as a notice over the list.
 - **Tabs:** tab definitions and the additional tab filters can include Lifetime, as a check-list like any category.
 - **Bin is hidden by default:** Bin notes are hidden in every tab, "All" included, unless the tab's filter or the additional filters tick Bin.
-- **Creation date:** under each note's buttons, right-aligned, its creation date and time in the device's local time as "dd/MM HH:mm" (24-hour, e.g. "26/10 14:05"), in small grey text, the same grey on every row (it's deliberately hard to read on the dark Archived and Bin rows). Hovering shows the full date. It's labelled "Cr. ", and a note with a due date shows that instead (see "Due dates").
+- **Creation date:** under each note's buttons, right-aligned, its creation date and time in the device's local time as "dd/MM HH:mm" (24-hour, e.g. "26/10 14:05"), in small grey text, the same grey on every row (it's deliberately hard to read on the dark Archived and Bin rows). Hovering shows the full date. It's labelled "Cr. ", and a note with a due date shows that instead (see "Due dates" in [due-dates.md](due-dates.md)).
 - **Note buttons:** right-aligned at the right of each note, all 16px icons in 24px tap areas; they don't need to line up between notes. Left to right:
   - New and Active: edit, waiting (`fa-hourglass`), archive (`fa-box-archive`).
   - Waiting: edit, reinstate (`fa-rotate-left`), archive.
@@ -69,7 +69,7 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
   - "Empty Bin" first asks "Permanently delete 4 notes in the bin?".
   - Each button ends with the number of notes it would change, in brackets: "Reset New (3)", "Archived to Bin (5)", "Empty Bin (4)". The counts come from the notes the page has loaded, so they update after each change, made here or on another page. A count of 0 shows as "(0)".
   - The confirmations are the app's own pop-up windows (not the browser's), with the count. If there's nothing to change, the button says so (e.g. "There are no archived notes.") instead of asking.
-  - Emptied notes are gone from the app, but can be brought back from the History page for 30 days (see "History and revert").
+  - Emptied notes are gone from the app, but can be brought back from the History page for 30 days (see "History and revert" in [data.md](data.md)).
 - **Note ids are never reused:** the save-file stores `lastNoteId`, the highest id ever given, and new notes get `lastNoteId + 1`. Files without it start from the highest id present.
 - **Live updates:** every lifetime change reloads other open pages, as for other changes.
 - **Live updates:** if another page changes the note being edited, the last Update wins; the open edit isn't changed by live updates.

@@ -188,10 +188,10 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
   - It opens downwards if the whole list fits there. Otherwise it opens towards the side of the button with more room, which is upwards from the new-note area at the bottom.
   - It's never taller than the room on that side, leaving 8px to the window's edge, so in a short window it shows fewer rows and scrolls.
 - After a note is added, the dropdowns keep their selections until the page is reloaded. A category added on another page appears as a new dropdown with no tag chosen.
-- If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area).
+- If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area in [notes.md](notes.md)).
 - The text in the new-note dropdowns (their buttons and the lists they open) can't be selected, so a drag or long press doesn't highlight it.
 - The buttons (Add/Update, Cancel, Clear, long-form) have their own column at the right of the area. The text box or canvas, any message, and the dropdowns (or the pills in full-tag-list mode) share the column to its left, so the dropdowns and pills start straight under the title rather than below the last button. The title text box is 40px high, the same as the Add button beside it.
-- Changing tab resets every dropdown (see "Tabs on the notes page"); adding a note still keeps the selections.
+- Changing tab resets every dropdown (see "Tabs on the notes page" in [tabs.md](tabs.md)); adding a note still keeps the selections.
 
 ### Full-tag-list mode
 - **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode.
@@ -205,7 +205,7 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
 - **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
 
 ### Multi-select (bulk tag editing)
-- **The list-check button** (`fa-list-check`) appears only in full-tag-list mode. It's in the right-hand button column, below the long-form button. It's hidden while a note is being edited, where the "Convert to long-form note" button takes its place (see Long-form notes).
+- **The list-check button** (`fa-list-check`) appears only in full-tag-list mode. It's in the right-hand button column, below the long-form button. It's hidden while a note is being edited, where the "Convert to long-form note" button takes its place (see [long-form.md](long-form.md)).
   - **When it can be turned on:** only while the new-note title box is empty or the canvas has no ink, no note or long-form note is being edited, and edit-order mode is off. Otherwise it's greyed out, with a hint saying why.
   - **Two modes never overlap:** while list-check is on, the Edit order button is greyed out too.
   - **While it's on:** its colours are inverted (accent background, light icon) and it's marked as pressed. The title box or canvas, and the Add, Clear and long-form buttons, are hidden, so it's the only button in the column until Accept appears.

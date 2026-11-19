@@ -37,7 +37,7 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 
 ### Code and tooling
 - One repository with npm workspaces: `client/` (React + TypeScript, built with Vite), `server/` (Express + TypeScript) and `shared/` (TypeScript types used by both, e.g. `Note`).
-- Node.js 24 (LTS). End-to-end tests with Playwright (see "Automated tests").
+- Node.js 24 (LTS). End-to-end tests with Playwright (see [testing.md](testing.md)).
 - Icons: Font Awesome Free (solid icons), installed from npm (`@fortawesome/fontawesome-svg-core`, `@fortawesome/free-solid-svg-icons`, `@fortawesome/react-fontawesome`) and bundled into the app, not loaded from a CDN, so the security headers and offline start-up keep working. All the app's icons use it, including the settings cog (`fa-gear`).
 
 ### Login
@@ -49,11 +49,11 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 ### Appearance
 - Always light: dark text on light backgrounds, whatever the device's dark-mode setting (`color-scheme: light`, no dark-mode colours).
 - **Font:** Atkinson Hyperlegible Next everywhere, shipped with the app from `@fontsource-variable/atkinson-hyperlegible-next` (every weight in one file, upright only, Latin and Latin Extended). It's cached by the service worker like the app's other files, so it works offline. The device's own font is the fallback while it loads.
-  - The italic version isn't included, so wherever italic is used the browser slants the upright letters. Their widths stay the same, which the long-form formatting relies on (see "Text formatting").
+  - The italic version isn't included, so wherever italic is used the browser slants the upright letters. Their widths stay the same, which the long-form formatting relies on (see [formatting.md](formatting.md)).
 - **Width:** the app is at most 1280px wide. On a wider window it's centred, with the extra space split equally either side; the side areas are a slightly darker shade, with a thin line at the app's edges. The long-form editor stays within the same 1280px column.
 
 ### Header and settings page
 - The header strip has a fixed height and the same background colour as the new-note area. Below it, the note list fills the page above the fixed 150px new-note area.
 - No app title is shown at the left of the header; on the notes page that space holds the tabs. The "← Notes" and "← Settings" links on the settings pages stay, and the browser tab is still titled "nwsnotes".
 - The cog icon at the right of the header opens the settings page at its own address, `/settings`, so the browser's and Android's back button returns to the notes. The header on the settings page has a "← Notes" link.
-- The settings page has, in order: Stylus mode and Columns (side by side), Pen, Lifetime, Categories, Tabs, Backup ("Download backup"), App version (see "App updates") and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.
+- The settings page has, in order: Stylus mode and Columns (side by side), Pen, Lifetime, Categories, Tabs, Backup ("Download backup"), App version (see "App updates" in [offline-and-updates.md](offline-and-updates.md)) and Account ("Log out"). "Download backup" is a plain link to `GET /api/notes/download`; the session cookie is sent with it automatically.

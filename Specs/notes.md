@@ -63,7 +63,7 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible. (The box is made read-only, not disabled, while saving, since disabling it would take the focus away.)
 - When the page loads, the list starts scrolled to the bottom.
 - **Keeping the scroll position:** the list only jumps to the bottom when the page opens, when a note is added (here or on another device), or when the tab, the filter row or the search changes. When a note leaves the list (archived, waiting or moved to the bin where the tab hides it, or changed on another device), the list stays where it was. The browser's scroll anchoring keeps the notes in view from moving.
-- In stylus mode the text box is replaced by the writing canvas (see Stylus mode).
+- In stylus mode the text box is replaced by the writing canvas (see Stylus mode in [stylus.md](stylus.md)).
 
 ### Columns
 - **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as four small buttons labelled 1 to 4 (default 1). It's remembered on this device in local storage. A device that saved 5 (allowed before) is treated as 4.
