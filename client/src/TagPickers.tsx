@@ -206,8 +206,13 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
+    // A scroll elsewhere only closes the list if it moved the button (the list is placed next to it).
+    // Scrolls that don't, such as the note list jumping to the bottom when a filter is ticked, leave it open.
+    const opened = buttonRef.current?.getBoundingClientRect();
     const onScroll = (event: Event) => {
-      if (!rootRef.current?.contains(event.target as Node)) close();
+      if (rootRef.current?.contains(event.target as Node)) return;
+      const now = buttonRef.current?.getBoundingClientRect();
+      if (!opened || !now || Math.abs(now.top - opened.top) > 1 || Math.abs(now.left - opened.left) > 1) close();
     };
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);

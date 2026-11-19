@@ -60,6 +60,21 @@ test("ticking filters narrows the list, and Reset filters clears them", async ({
   await expect(filterRow(page)).toHaveCSS("background-color", "rgb(255, 255, 255)");
 });
 
+test("a filter dropdown stays open while tags are ticked in it", async ({ page }) => {
+  // A short window, so the note list scrolls (it jumps to the bottom when the filters change).
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: 520 });
+  await page.locator(".note-list").evaluate((list) => (list.scrollTop = 0));
+  const area = await openFilter(page, "Area");
+  await area.getByRole("checkbox", { name: /^Work/ }).check();
+  await expectTitles(page, ["Plan the team meeting", "Read the quarterly report", "Old invoice"]);
+  await expect(area).toBeVisible();
+  await area.getByRole("checkbox", { name: /^Home/ }).check();
+  await expect(area).toBeVisible();
+  await area.getByRole("checkbox", { name: /^Work/ }).uncheck();
+  await expect(area).toBeVisible();
+  await expectTitles(page, ["Buy milk", "", "Holiday plans", "Book flights", "Garden ideas"]);
+});
+
 test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
   const topic = await openFilter(page, "Topic");
   const selectAll = topic.getByRole("button", { name: "select all" });
