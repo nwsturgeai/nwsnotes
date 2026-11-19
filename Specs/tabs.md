@@ -37,7 +37,7 @@ Tabs can appear down the left-hand side of the main screen as well as along the 
 Each Tab has a new setting, "Top" or "Left". When editing a Tab, there is a toggle-switch to switch between these 2 settings. The All tab can also be set to Left.
 Tabs set to "Left" appear down the left-hand side of the notes list screen, ordered from top to bottom.
 Layout: the top tab strip stays at the top. The left tab strip runs down the side, from under the top tab strip all the way to the top of the new-note section. The dynamic tab filter dropdowns (the second header row) stay where they are, but the row is no longer full-width: it loses a bit on the left for the left tab strip.
-The left tab strip is narrow: at most 48 pixels wide. The names of tabs on the left strip are in vertical text, reading from bottom to top: the same as regular text rotated 90 degrees to the left. Long tab names are truncated (on one line) rather than wrapping to a second line.
+The left tab strip is narrow: 40 pixels wide, the same as the height of the top tabs bar. The names of tabs on the left strip are in vertical text, reading from bottom to top: the same as regular text rotated 90 degrees to the left. Long tab names are truncated (on one line) rather than wrapping to a second line.
 
 ### Additional Tab filters
 
@@ -77,6 +77,7 @@ If any text is typed into the search box, the list of notes shown in the main ar
 
 ### Tabs on the notes page
 - The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it. Each tab has 0.3rem of padding at its left and right.
+- **Size:** the header is 40px tall (on the settings pages too). The tabs are 36px tall, with a 4px gap above them, and their names are 0.9rem. The Settings cog and stylus icon stay 40px squares, filling the header's height.
 - **Too many to fit:** all tabs shrink equally so they fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
 - **Tabs menu:** no tab is narrower than 55px. When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
   - How many fit is worked out from the tab strip's actual width (measured whenever it changes), with no breakpoints.
@@ -140,7 +141,7 @@ If any text is typed into the search box, the list of notes shown in the main ar
   - The new-note area at the bottom stays full width.
   - With no Left tabs there's no left strip, and no space is kept: everything is full width, as now. With every tab set to Left (All included), the top strip is empty but keeps its height, as it holds the Settings cog.
 - **The left strip's tabs:**
-  - At most 48px wide (36px in practice: one line of text plus padding), the tabs stacked from the top, with a small gap between them.
+  - 40px wide, the same as the header's height. The tabs are 36px wide with a 4px gap on their left, matching the gap above the top tabs, and stacked from the top with a small gap between them. Names are 0.9rem, as at the top.
   - Each name is vertical text reading from bottom to top: the same as normal text rotated 90 degrees to the left (anticlockwise), on one line. The letters are the usual ones, just turned, not stacked one above another. A tab is as tall as its name, from 48px up to at most 160px; a longer name is cut short with "…" at its top end. The full name shows on hover (its title).
   - It's drawn with `writing-mode: vertical-rl` turned half a turn (`transform: rotate(180deg)`), which every current browser supports.
   - The selected tab looks joined to the note list on its right-hand edge, the way the top tabs join the list below them. Only one tab is selected at a time, whichever strip it's in.
