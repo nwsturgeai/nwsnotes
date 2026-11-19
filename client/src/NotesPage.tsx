@@ -9,12 +9,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircle } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faCircle } from "@fortawesome/free-regular-svg-icons";
 import {
-  faAlarmClock,
   faArrowDownWideShort,
   faBoxArchive,
-  faChartDiagram,
   faCheck,
   faChevronDown,
   faChevronUp,
@@ -24,6 +22,7 @@ import {
   faCircleUp,
   faClipboardCheck,
   faDeleteLeft,
+  faFileLines,
   faGripVertical,
   faHourglass,
   faListCheck,
@@ -1268,7 +1267,7 @@ export function NotesPage({
                   disabled={saving}
                   onClick={() => openLongForm(undefined)}
                 >
-                  <FontAwesomeIcon icon={faChartDiagram} />
+                  <FontAwesomeIcon icon={faFileLines} />
                 </button>
               )}
               {/* In the expanded area while editing: turn the note into a long-form note. */}

@@ -5,7 +5,7 @@
 In the notes list, underneath each note's three right-hand buttons, the creation date-time should be displayed in small grey text, preceded by the text-label "Cr. ".
 
 When editing a regular note with the create/edit note section expanded:
-There should be an additional "due date" icon button underneath the other buttons to the right, icon fa-alarm-clock .
+There should be an additional "due date" icon button underneath the other buttons to the right, icon fa-alarm-clock, in its outline style (Font Awesome "regular").
 Clicking this button should bring up a modal dialog where a date and time can be picked.
 If this note doesn't already have a dueDateTime set, then default to time 8pm and date today (if local time is before 8pm) otherwise tomorrow's date.
 If this note does already have a dueDateTime set, then the date and time pickers should show the selected value.
@@ -35,7 +35,7 @@ A note is due
   - Converting a note to long-form removes its due date. The convert button's tooltip says so when the note has one.
   - Lifetime changes and bulk tag updates keep it. It doesn't count as a tag change.
   - It works offline like the rest of the note.
-- **The due-date button:** `fa-alarm-clock`, in the expanded new-note area, below the other buttons. It's there when adding a new regular note and when editing one, child notes included. It isn't shown in multi-select, or for long-form notes, which are edited in their own editor.
+- **The due-date button:** `fa-alarm-clock`, the outline ("regular") version, in the expanded new-note area, below the other buttons. It's there when adding a new regular note and when editing one, child notes included. It isn't shown in multi-select, or for long-form notes, which are edited in their own editor.
   - While the note being added or edited has a due date, the button is filled in green, like an active button. Its tooltip then says e.g. "Due 12/11 20:00"; otherwise "Set due date".
 - **The dialog:** the app's own pop-up, titled "Due date", with a date box and a time box (the device's own pickers).
   - With no due date yet, it starts at 20:00 today, or tomorrow if it's already 20:00 or later.
