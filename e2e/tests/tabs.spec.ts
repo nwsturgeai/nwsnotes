@@ -38,7 +38,11 @@ test("the filter row's dropdowns count the notes each tag would list, and the TO
 });
 
 test("ticking filters narrows the list, and Reset filters clears them", async ({ page }) => {
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
   await setFilter(page, "Area", "Work", true);
+  // The row turns bright yellow while it's filtering.
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
+  await expect(filterRow(page)).toHaveCSS("background-color", "rgb(255, 233, 77)");
   await expectTitles(page, ["Plan the team meeting", "Read the quarterly report", "Old invoice"]);
   // The other dropdowns' counts follow the filter.
   const topic = await openFilter(page, "Topic");
@@ -53,6 +57,42 @@ test("ticking filters narrows the list, and Reset filters clears them", async ({
   await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
   await expectTitles(page, ALL);
   await expect(filterRow(page).getByRole("button", { name: "Reset filters" })).toHaveCount(0);
+  await expect(filterRow(page)).toHaveCSS("background-color", "rgb(255, 255, 255)");
+});
+
+test("a filter dropdown stays open while tags are ticked in it", async ({ page }) => {
+  // A short window, so the note list scrolls (it jumps to the bottom when the filters change).
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: 520 });
+  await page.locator(".note-list").evaluate((list) => (list.scrollTop = 0));
+  const area = await openFilter(page, "Area");
+  await area.getByRole("checkbox", { name: /^Work/ }).check();
+  await expectTitles(page, ["Plan the team meeting", "Read the quarterly report", "Old invoice"]);
+  await expect(area).toBeVisible();
+  await area.getByRole("checkbox", { name: /^Home/ }).check();
+  await expect(area).toBeVisible();
+  await area.getByRole("checkbox", { name: /^Work/ }).uncheck();
+  await expect(area).toBeVisible();
+  await expectTitles(page, ["Buy milk", "", "Holiday plans", "Book flights", "Garden ideas"]);
+});
+
+test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
+  const topic = await openFilter(page, "Topic");
+  const selectAll = topic.getByRole("button", { name: "select all" });
+  await expect(selectAll).toBeEnabled();
+  await selectAll.click();
+  for (const box of await topic.getByRole("checkbox").all()) await expect(box).toBeChecked();
+  // Every tag is ticked now, so the link is greyed out.
+  await expect(selectAll).toBeDisabled();
+  // Notes with no Topic tag are hidden.
+  await expectTitles(page, ["Buy milk", "Read the quarterly report", "Garden ideas"]);
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
+  await page.keyboard.press("Escape");
+
+  // For Lifetime, every tag includes Bin, so notes in the bin show too.
+  await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
+  const lifetime = await openFilter(page, "Lifetime");
+  await lifetime.getByRole("button", { name: "select all" }).click();
+  await expectTitles(page, [...ALL.slice(0, 4), "Broken lamp", ...ALL.slice(4)]);
 });
 
 test("each tab remembers its own filters", async ({ page }) => {
@@ -76,9 +116,12 @@ test("search narrows the list by title and long-form text", async ({ page }) => 
   await filterRow(page).getByRole("button", { name: "Search" }).click();
   const search = page.getByRole("searchbox", { name: "Search notes" });
   await expect(search).toBeFocused();
+  // An empty search doesn't narrow the list, so the row isn't yellow yet.
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
 
   await search.fill("MILK");
   await expectTitles(page, ["Buy milk"]);
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
   // Long-form notes' text is searched too, and every word must match.
   await search.fill("hotel");
   await expectTitles(page, ["Holiday plans"]);
@@ -90,6 +133,7 @@ test("search narrows the list by title and long-form text", async ({ page }) => 
   // Escape closes the search and shows every note again.
   await search.press("Escape");
   await expect(search).toHaveCount(0);
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
   await expectTitles(page, ALL);
 });
 

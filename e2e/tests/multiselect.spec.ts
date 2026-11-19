@@ -44,6 +44,30 @@ test("selected notes all get a tag", async ({ page }) => {
   await expect(pills(noteRow(page, "Buy milk"))).toHaveText(["Home", "Shopping", "New"]);
 });
 
+test("holding the multi-select button starts with every listed note selected", async ({ page }) => {
+  await selectTab(page, "Work");
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  const button = addArea(page).getByRole("button", { name: "Select notes to change their tags" });
+
+  await button.hover();
+  await page.mouse.down();
+  // The same signals as holding Add: a ring fills, then rings burst out.
+  await expect(page.locator(".hold-ring .hold-progress")).toBeVisible();
+  await expect(button).toHaveClass(/\bheld\b/, { timeout: 2_000 });
+  await expect(page.locator(".hold-ring .hold-burst").first()).toBeVisible();
+  await page.mouse.up();
+
+  await expect(addArea(page).getByRole("button", { name: "Stop selecting notes" })).toBeVisible();
+  await expect(selectedRows(page)).toHaveCount(3);
+  await expect(page.locator(".hold-ring")).toHaveCount(0);
+
+  // A short click turns it off, and another turns it on with nothing selected.
+  await addArea(page).getByRole("button", { name: "Stop selecting notes" }).click();
+  await addArea(page).getByRole("button", { name: "Select notes to change their tags" }).click();
+  await expect(addArea(page).getByRole("button", { name: "Stop selecting notes" })).toBeVisible();
+  await expect(selectedRows(page)).toHaveCount(0);
+});
+
 test("All and None select every listed note or none, until a pill is clicked", async ({ page }) => {
   await selectTab(page, "Work");
   await startSelecting(page);

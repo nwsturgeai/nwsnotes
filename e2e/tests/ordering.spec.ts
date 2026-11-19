@@ -45,6 +45,34 @@ test("dragging a note in edit-order mode changes the tab's order", async ({ page
   await expect.poll(async () => (await page.locator(".note-list li[data-note-id]").first().textContent()) ?? "").toContain("Plan the team meeting");
 });
 
+test("in edit-order mode, notes have Move to top and Move to bottom instead of their usual buttons", async ({ page }) => {
+  await filterRow(page).getByRole("button", { name: "Edit order" }).click();
+  const invoice = noteRow(page, "Old invoice");
+  await expect(invoice.locator(".note-actions").getByRole("button")).toHaveCount(2);
+  await expect(page.locator(".note-list").getByRole("button", { name: "Edit note" })).toHaveCount(0);
+  await expect(page.locator(".note-list").getByRole("button", { name: "Archive" })).toHaveCount(0);
+  // Already at the top or bottom: that button is greyed out.
+  await expect(noteRow(page, "Plan the team meeting").getByRole("button", { name: "Move to top" })).toBeDisabled();
+  await expect(invoice.getByRole("button", { name: "Move to bottom" })).toBeDisabled();
+
+  const saved = () => page.waitForResponse((response) => /\/api\/tabs\/1\/order$/.test(response.url()) && response.ok());
+  let save = saved();
+  await invoice.getByRole("button", { name: "Move to top" }).click();
+  await save;
+  await expectTitles(page, ["Old invoice", "Plan the team meeting", "Read the quarterly report"]);
+  save = saved();
+  await noteRow(page, "Plan the team meeting").getByRole("button", { name: "Move to bottom" }).click();
+  await save;
+  await expectTitles(page, ["Old invoice", "Read the quarterly report", "Plan the team meeting"]);
+
+  // Finishing brings the usual buttons back; the order is saved for the tab.
+  await filterRow(page).getByRole("button", { name: "Finish ordering" }).click();
+  await expect(invoice.getByRole("button", { name: "Edit note" })).toBeVisible();
+  await page.reload();
+  await selectTab(page, "Work");
+  await expectTitles(page, ["Old invoice", "Read the quarterly report", "Plan the team meeting"]);
+});
+
 test("edit-order mode is only on tabs, and not while a note is being edited", async ({ page }) => {
   await noteRow(page, "Old invoice").getByRole("button", { name: "Edit note" }).click();
   await expect(filterRow(page).getByRole("button", { name: "Finish or cancel the edit first" }).last()).toBeDisabled();

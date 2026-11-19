@@ -6,15 +6,14 @@ import {
   useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCircle } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faCircle, faFileLines } from "@fortawesome/free-regular-svg-icons";
 import {
-  faAlarmClock,
+  faAnglesDown,
+  faAnglesUp,
   faArrowDownWideShort,
   faBoxArchive,
-  faChartDiagram,
   faCheck,
   faChevronDown,
   faChevronUp,
@@ -63,6 +62,7 @@ import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
 import { useExtraFilters } from "./extraFilters";
 import { LongFormEditor } from "./LongFormEditor";
+import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
 import { useFullTagList } from "./stylusMode";
 
@@ -132,7 +132,6 @@ function selectionFor(note: Note, categories: Category[]): TagSelection {
 
 const NOTICE_MS = 4000;
 /** Holding Add this long adds the note at the top of the tab. */
-const LONG_PRESS_MS = 1000;
 
 export function NotesPage({
   notes,
@@ -365,6 +364,13 @@ export function NotesPage({
       onNotesChanged();
     }
   }
+  /** Edit-order mode's buttons: moves a note to the top or the bottom of the listed notes, and saves the order. */
+  function moveToEnd(noteId: number, end: "top" | "bottom") {
+    // Not a drag, so the order is worked out from the list as it is now.
+    dragList.current = undefined;
+    void dropNote(noteId, end === "top" ? 0 : visibleNotes.length - 1);
+  }
+
   /** What the filters require of new notes, so they always match and stay visible. */
   const constraints = useMemo(() => constraintsFor(allFilters), [allFilters]);
   /** While a long-form note is open, its child notes can have any tags, so nothing is locked. */
@@ -420,50 +426,8 @@ export function NotesPage({
 
   /** A long press on Add puts the note at the top: only for new notes, on a tab, online. */
   const canAddAtTop = !editingNote && !onAll && !offline;
-  /** The Add button has been held long enough: letting go adds the note at the top. */
-  const [heldLong, setHeldLong] = useState(false);
-  const heldLongRef = useRef(false);
-  const pressing = useRef(false);
-  const holdTimer = useRef<number>(undefined);
-
-  function endHold() {
-    window.clearTimeout(holdTimer.current);
-    pressing.current = false;
-  }
-
-  function setHeld(held: boolean) {
-    heldLongRef.current = held;
-    setHeldLong(held);
-  }
-
-  /** The Add button's long-press handlers. Refs, not state, decide the click: the pointer events come first. */
-  const longPress = {
-    onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
-      endHold();
-      setHeld(false);
-      if (event.button !== 0 || !canAddAtTop) return;
-      pressing.current = true;
-      holdTimer.current = window.setTimeout(() => setHeld(true), LONG_PRESS_MS);
-    },
-    onPointerUp: endHold,
-    // Sliding off the button before letting go adds nothing, so the long press is forgotten.
-    onPointerLeave: () => {
-      if (pressing.current) setHeld(false);
-      endHold();
-    },
-    onPointerCancel: () => {
-      setHeld(false);
-      endHold();
-    },
-    // Android's long-press menu would otherwise open over the button.
-    onContextMenu: (event: ReactMouseEvent) => event.preventDefault(),
-    // Enter in the title box also "clicks" Add (with no pointer: detail 0), which is never a long press.
-    onClick: (event: ReactMouseEvent) => {
-      addAtTop.current = heldLongRef.current && event.detail > 0;
-      setHeld(false);
-    },
-  };
-  useEffect(() => () => window.clearTimeout(holdTimer.current), []);
+  /** Add's long press: letting go after holding it for a second adds the note at the top. */
+  const addHold = useLongPress(canAddAtTop);
 
   // Notices disappear by themselves.
   useEffect(() => {
@@ -719,16 +683,20 @@ export function NotesPage({
   }, [syncNotice]);
 
   /** The list-check button: on starts with nothing selected; off discards any selections and pill clicks. */
-  function toggleBulk() {
+  /** Turns multi-select on (a long press starts with every listed note selected) or off. */
+  function toggleBulk(selectAll = false) {
     if (bulk) {
       setBulk(undefined);
       setSaveError(undefined);
     } else if (!listCheckHint) {
-      setBulk({ noteIds: [], changes: new Map() });
+      setBulk({ noteIds: selectAll ? visibleNotes.map((note) => note.id) : [], changes: new Map() });
       setSaveError(undefined);
       setPadInked(false);
     }
   }
+
+  /** Multi-select's long press: holding the button for a second turns it on with every listed note selected. */
+  const bulkHold = useLongPress(!bulk && listCheckHint === undefined && !saving);
 
   /** Selects or unselects a note, until a pill has been clicked. */
   function toggleBulkNote(noteId: number) {
@@ -838,7 +806,11 @@ export function NotesPage({
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
-      <div className="filter-row" aria-label="More filters for this tab">
+      {/* Yellow while any of its dropdowns has a tag ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
+      <div
+        className={extraFilters.length > 0 || searchWords.length > 0 ? "filter-row filtered" : "filter-row"}
+        aria-label="More filters for this tab"
+      >
         {bulk ? (
           // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
           <div className="bulk-select-all" role="group" aria-label="Select notes">
@@ -871,6 +843,7 @@ export function NotesPage({
                 disabled={rowBlocked}
                 checkLists
                 counts={filterCounts}
+                selectAll
               />
             )}
             {/* Only while a tag is ticked; otherwise it takes no space. */}
@@ -1009,6 +982,24 @@ export function NotesPage({
                   {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
                   <div className="note-side">
                   <div className="note-actions">
+                    {ordering ? (
+                      // Edit-order mode: instead of the usual buttons, move the note to the top or bottom of the tab.
+                      <>
+                        <IconButton
+                          icon={faAnglesUp}
+                          label="Move to top"
+                          disabled={drag !== undefined || listedNotes[0]?.id === note.id}
+                          onClick={() => moveToEnd(note.id, "top")}
+                        />
+                        <IconButton
+                          icon={faAnglesDown}
+                          label="Move to bottom"
+                          disabled={drag !== undefined || listedNotes.at(-1)?.id === note.id}
+                          onClick={() => moveToEnd(note.id, "bottom")}
+                        />
+                      </>
+                    ) : (
+                      <>
                     <IconButton
                       icon={faPen}
                       label={note.id === editingNote?.id ? "Editing this note" : (hint ?? "Edit note")}
@@ -1048,6 +1039,8 @@ export function NotesPage({
                           onClick={() => void changeLifetime(note, "Archived")}
                         />
                       )
+                    )}
+                      </>
                     )}
                   </div>
                   {/* The due date if the note has one, otherwise when it was created. */}
@@ -1213,7 +1206,7 @@ export function NotesPage({
               {!bulk && (
                 <button
                   type="submit"
-                  className={heldLong ? "icon-button primary add-button held" : "icon-button primary add-button"}
+                  className={addHold.held ? "icon-button primary add-button held" : "icon-button primary add-button"}
                   aria-label={editingNote ? "Update" : "Add"}
                   title={
                     editingNote
@@ -1225,11 +1218,18 @@ export function NotesPage({
                           : "Add"
                   }
                   disabled={saving || addBlocked}
-                  {...longPress}
+                  {...addHold.handlers}
+                  // Enter in the title box also "clicks" Add (with no pointer), which is never a long press.
+                  onClick={(event) => {
+                    addAtTop.current = addHold.takeLongPress(event);
+                  }}
                 >
-                  <FontAwesomeIcon icon={editingNote ? faCircleCheck : heldLong ? faCircleUp : faCirclePlus} />
+                  <FontAwesomeIcon icon={editingNote ? faCircleCheck : addHold.held ? faCircleUp : faCirclePlus} />
                 </button>
               )}
+              {/* Drawn on the screen rather than in the add area, so they aren't cut off at its edges. */}
+              {addHold.rings}
+              {bulkHold.rings}
               {editingNote && (
                 <button
                   type="button"
@@ -1268,7 +1268,7 @@ export function NotesPage({
                   disabled={saving}
                   onClick={() => openLongForm(undefined)}
                 >
-                  <FontAwesomeIcon icon={faChartDiagram} />
+                  <FontAwesomeIcon icon={faFileLines} />
                 </button>
               )}
               {/* In the expanded area while editing: turn the note into a long-form note. */}
@@ -1288,12 +1288,17 @@ export function NotesPage({
               {fullTagList && !editingNote && (
                 <button
                   type="button"
-                  className={bulk ? "icon-button primary" : "icon-button"}
+                  className={bulk ? "icon-button primary" : bulkHold.held ? "icon-button held" : "icon-button"}
                   aria-label={bulk ? "Stop selecting notes" : "Select notes to change their tags"}
                   aria-pressed={bulkActive}
-                  title={bulk ? "Stop selecting notes (no changes)" : (listCheckHint ?? "Select notes to change their tags")}
+                  title={
+                    bulk
+                      ? "Stop selecting notes (no changes)"
+                      : (listCheckHint ?? "Select notes to change their tags (hold to select them all)")
+                  }
                   disabled={saving || (!bulk && listCheckHint !== undefined)}
-                  onClick={toggleBulk}
+                  {...bulkHold.handlers}
+                  onClick={(event) => toggleBulk(bulkHold.takeLongPress(event))}
                 >
                   <FontAwesomeIcon icon={faListCheck} />
                 </button>

@@ -65,12 +65,29 @@ test("holding Add for a second adds the note at the top, and shows it's been hel
   await page.getByRole("textbox", { name: "New note" }).fill("Held down");
   const orderSaved = page.waitForResponse((response) => /\/api\/tabs\/1\/order$/.test(response.url()) && response.ok());
 
+  // Records the buzz at 1 second.
+  await page.evaluate(() => {
+    const recorded = window as unknown as { buzzes: VibratePattern[] };
+    recorded.buzzes = [];
+    navigator.vibrate = ((pattern: VibratePattern) => {
+      recorded.buzzes.push(pattern);
+      return true;
+    }) as Navigator["vibrate"];
+  });
+
   await add.hover();
   await page.mouse.down();
+  // While holding, a ring fills round the button.
+  await expect(page.locator(".hold-ring .hold-progress")).toBeVisible();
   await page.waitForTimeout(500);
   await expect(add).not.toHaveClass(/\bheld\b/);
   await expect(add).toHaveClass(/\bheld\b/, { timeout: 2_000 });
+  // Then rings burst out beyond the button, with a buzz.
+  await expect(page.locator(".hold-ring .hold-burst").first()).toBeVisible();
+  await expect(page.locator(".hold-progress")).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { buzzes: VibratePattern[] }).buzzes)).toEqual([40]);
   await page.mouse.up();
+  await expect(page.locator(".hold-ring")).toHaveCount(0);
 
   await expect(noteRow(page, "Held down")).toBeVisible();
   await expect.poll(async () => (await noteTitles(page))[0]).toBe("Held down");
@@ -80,9 +97,10 @@ test("holding Add for a second adds the note at the top, and shows it's been hel
   await selectTab(page, "Work");
   await expect.poll(async () => (await noteTitles(page))[0]).toBe("Held down");
 
-  // A short click adds at the bottom.
+  // A short click adds at the bottom, and leaves no rings.
   await page.getByRole("textbox", { name: "New note" }).fill("Clicked");
   await add.click();
+  await expect(page.locator(".hold-ring")).toHaveCount(0);
   await expect(noteRow(page, "Clicked")).toBeVisible();
   await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe("Clicked");
 });
