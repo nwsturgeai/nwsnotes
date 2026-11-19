@@ -163,6 +163,17 @@ test.describe("with the page loaded", () => {
   });
 });
 
+test("with a typed long-form note open, the add area can still be collapsed and expanded", async ({ page }) => {
+  await openNotes(page);
+  await startLongForm(page, "Toggle while open");
+  const toggle = page.getByRole("button", { name: "Show tag dropdowns" });
+  await expect(toggle).toBeEnabled();
+  await toggle.click();
+  await expect(addArea(page)).not.toHaveClass(/\bfull\b/);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await expect(addArea(page)).toHaveClass(/\bfull\b/);
+});
+
 test("details are saved by themselves after 30 seconds", async ({ page }) => {
   await page.clock.install();
   await openNotes(page);

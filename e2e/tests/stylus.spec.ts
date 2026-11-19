@@ -144,6 +144,25 @@ test("the long-form editor has pen-thickness buttons beside the eraser, sharing 
   await expect(page.getByRole("radio", { name: "Pen thickness 1.5px" })).toHaveAttribute("aria-checked", "true");
 });
 
+test("with a handwritten long-form note open, the add area is collapsed and can't be expanded", async ({ page }) => {
+  await turnOnStylusMode(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await expect(addArea(page)).not.toHaveClass(/\bfull\b/);
+  await expect(page.getByRole("button", { name: "Show all tags" })).toBeDisabled();
+  // The editor reaches down to the collapsed area, giving the canvas more room.
+  const editorBox = (await editor.boundingBox())!;
+  const areaBox = (await addArea(page).boundingBox())!;
+  expect(Math.abs(editorBox.y + editorBox.height - areaBox.y)).toBeLessThan(2);
+  expect(areaBox.height).toBe(150);
+
+  // Closing it brings back the expanded area, as it was.
+  await editor.getByRole("button", { name: "Cancel" }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(addArea(page)).toHaveClass(/\bfull\b/);
+});
+
 test("the pen thickness setting draws thicker or thinner lines", async ({ page }) => {
   await turnOnStylusMode(page);
   const pad = addArea(page).getByRole("img", { name: "Writing area for a new note" });

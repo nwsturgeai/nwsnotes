@@ -107,6 +107,13 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   );
 
   // Multi-select: add and remove tags on several notes at once. (Before "/:id", which would match it.)
+  // The shared note order (moving notes in edit-order mode, or adding at the top). Before "/:id".
+  notesRouter.put("/order", async (req, res) => {
+    const noteOrder = await store.setNoteOrder(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json({ noteOrder });
+  });
+
   notesRouter.put("/bulk-tags", async (req, res) => {
     const notes = await store.bulkTags(req.body);
     live.notifyChanged(req.get(CONNECTION_ID_HEADER));
@@ -248,17 +255,6 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
     res.json(tab);
   });
 
-  // A tab's note order (set by dragging notes in edit-order mode).
-  tabsRouter.put("/:id/order", async (req: Request<{ id: string }>, res) => {
-    const id = Number(req.params.id);
-    if (!Number.isInteger(id)) {
-      res.status(404).json({ error: `There is no tab with id ${req.params.id}.` });
-      return;
-    }
-    const tab = await store.setTabOrder(id, req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
-    res.json(tab);
-  });
 
   tabsRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {
     const id = Number(req.params.id);

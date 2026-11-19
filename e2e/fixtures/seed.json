@@ -22,10 +22,11 @@
       ]
     }
   ],
+  "noteOrder": [],
   "tabs": [
-    { "id": 1, "name": "Work", "categories": [{ "categoryId": 1, "tagIds": [1] }], "noteOrder": [] },
-    { "id": 2, "name": "Home", "categories": [{ "categoryId": 1, "tagIds": [2] }], "noteOrder": [] },
-    { "id": 3, "name": "On hold", "categories": [{ "categoryId": -1, "tagIds": [-5] }], "noteOrder": [] }
+    { "id": 1, "name": "Work", "categories": [{ "categoryId": 1, "tagIds": [1] }] },
+    { "id": 2, "name": "Home", "categories": [{ "categoryId": 1, "tagIds": [2] }] },
+    { "id": 3, "name": "On hold", "categories": [{ "categoryId": -1, "tagIds": [-5] }] }
   ],
   "notes": [
     {

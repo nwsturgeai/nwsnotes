@@ -58,7 +58,7 @@ In its place there should be a new "Convert to long-form note" button, icon fa-m
 
 ### Matching the tab's tags in the long-form editor
 In the long-form note editor's tag dropdowns bar (just under the title), there is no "Tags" text label.
-On the far right of this bar there is an icon button (the same size as the single-note edit button), with icon fa-rectangle-list.  Clicking this button causes the tag dropdown selections to be updated to match the current Tab: within this Tab, any filters that have single values cause that Tag to be selected within the corresponding Category dropdown.
+On the far right of this bar there is an icon button (the same size as the single-note edit button), with icon fa-tags.  Clicking this button causes the tag dropdown selections to be updated to match the current Tab: within this Tab, any filters that have single values cause that Tag to be selected within the corresponding Category dropdown.
 
 ### Regular notes whilst creating / editing a long-form note
 Whilst a long-form note is being created / edited, after the long-form-note title has been set for the first time, then new regular notes can be created, using the standard new note area at the bottom of the screen.
@@ -91,7 +91,7 @@ When these regular notes are shown in the notes-list: after any pills for their 
   - The band has the header's background colour and a thin line above and below. It has no text label (it's labelled "Tags" for screen readers).
   - Its dropdown buttons have a 2px border: dark grey when no tag is chosen, and accent green, with dark text, once one is.
   - This is only in the long-form editor; the new-note area's dropdowns are unchanged.
-- **Match the tab:** at the far right of the tags band, an `fa-rectangle-list` icon button, the same 24px size as the note buttons.
+- **Match the tab:** at the far right of the tags band, an `fa-tags` icon button, the same 24px size as the note buttons.
   - Clicking it chooses every tag that the selected tab's filters (and the additional filters) fix to a single value. These are the same tags the new-note area locks in.
   - In a single-select category the tag replaces whatever was chosen. In a multi-select category it's added to the tags already chosen.
   - Other categories, and filters that allow several tags, are left alone.

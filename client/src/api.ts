@@ -13,7 +13,7 @@ import {
   type Note,
   type NotesData,
   type Tab,
-  type TabOrderRequest,
+  type NoteOrderRequest,
   type TabRequest,
 } from "@nwsnotes/shared";
 import { connectionId } from "./live";
@@ -131,7 +131,7 @@ export const api = {
   addTab: (body: TabRequest) => request<Tab>("POST", "/api/tabs", body, changeHeaders()),
   updateTab: (id: number, body: TabRequest) => request<Tab>("PUT", `/api/tabs/${id}`, body, changeHeaders()),
   setAllTabPlacement: (body: AllTabRequest) => request<AllTabRequest>("PUT", "/api/tabs/all", body, changeHeaders()),
-  setTabOrder: (id: number, body: TabOrderRequest) => request<Tab>("PUT", `/api/tabs/${id}/order`, body, changeHeaders()),
+  setNoteOrder: (body: NoteOrderRequest) => request<NoteOrderRequest>("PUT", "/api/notes/order", body, changeHeaders()),
   deleteTab: (id: number) => request<{ ok: true }>("DELETE", `/api/tabs/${id}`, undefined, changeHeaders()),
   /** Reminders: the server's public push key, and registering or forgetting this device. */
   history: (before?: number) => request<HistoryPage>("GET", `/api/history${before === undefined ? "" : `?before=${before}`}`),

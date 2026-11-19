@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faCircleCheck, faEraser, faPen, faRectangleList, faShareFromSquare, faX } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faCircleCheck, faEraser, faPen, faShareFromSquare, faTags, faX } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -425,7 +425,7 @@ export function LongFormEditor({
           disabled={busy || tabTags.size === 0}
           onClick={matchTab}
         >
-          <FontAwesomeIcon icon={faRectangleList} />
+          <FontAwesomeIcon icon={faTags} />
         </button>
       </div>
 

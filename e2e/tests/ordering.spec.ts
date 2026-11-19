@@ -1,5 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
-import { addArea, expect, expectTitles, filterRow, noteRow, openNotes, selectTab, test } from "./fixtures";
+import { addArea, expect, expectTitles, filterRow, noteRow, noteTitles, openNotes, selectTab, test } from "./fixtures";
+
+/** Waits for the shared note order to be saved. */
+const savedOrder = (page: Page) => page.waitForResponse((response) => /\/api\/notes\/order$/.test(response.url()) && response.ok());
 
 const WORK = ["Plan the team meeting", "Read the quarterly report", "Old invoice"];
 
@@ -29,7 +32,7 @@ test("dragging a note in edit-order mode changes the tab's order", async ({ page
   await dragAbove(page, noteRow(page, "Old invoice"), noteRow(page, "Plan the team meeting"), true);
   await expectTitles(page, WORK);
 
-  const saved = page.waitForResponse((response) => /\/api\/tabs\/1\/order$/.test(response.url()) && response.ok());
+  const saved = page.waitForResponse((response) => /\/api\/notes\/order$/.test(response.url()) && response.ok());
   await dragAbove(page, noteRow(page, "Old invoice"), noteRow(page, "Plan the team meeting"));
   await saved;
   await expectTitles(page, ["Old invoice", "Plan the team meeting", "Read the quarterly report"]);
@@ -37,12 +40,12 @@ test("dragging a note in edit-order mode changes the tab's order", async ({ page
   await filterRow(page).getByRole("button", { name: "Finish ordering" }).click();
   await expect(page.getByTitle("Drag to reorder")).toHaveCount(0);
 
-  // Saved for the tab, which a reload shows; All stays in creation order.
+  // Saved, which a reload shows; All follows the same shared order.
   await page.reload();
   await selectTab(page, "Work");
   await expectTitles(page, ["Old invoice", "Plan the team meeting", "Read the quarterly report"]);
   await selectTab(page, "All");
-  await expect.poll(async () => (await page.locator(".note-list li[data-note-id]").first().textContent()) ?? "").toContain("Plan the team meeting");
+  await expect.poll(async () => (await noteTitles(page)).slice(0, 2)).toEqual(["Old invoice", "Plan the team meeting"]);
 });
 
 test("in edit-order mode, notes have Move to top and Move to bottom instead of their usual buttons", async ({ page }) => {
@@ -55,7 +58,7 @@ test("in edit-order mode, notes have Move to top and Move to bottom instead of t
   await expect(noteRow(page, "Plan the team meeting").getByRole("button", { name: "Move to top" })).toBeDisabled();
   await expect(invoice.getByRole("button", { name: "Move to bottom" })).toBeDisabled();
 
-  const saved = () => page.waitForResponse((response) => /\/api\/tabs\/1\/order$/.test(response.url()) && response.ok());
+  const saved = () => page.waitForResponse((response) => /\/api\/notes\/order$/.test(response.url()) && response.ok());
   let save = saved();
   await invoice.getByRole("button", { name: "Move to top" }).click();
   await save;
@@ -73,12 +76,49 @@ test("in edit-order mode, notes have Move to top and Move to bottom instead of t
   await expectTitles(page, ["Old invoice", "Read the quarterly report", "Plan the team meeting"]);
 });
 
-test("edit-order mode is only on tabs, and not while a note is being edited", async ({ page }) => {
+test("edit-order mode isn't available while a note is being edited", async ({ page }) => {
   await noteRow(page, "Old invoice").getByRole("button", { name: "Edit note" }).click();
   await expect(filterRow(page).getByRole("button", { name: "Finish or cancel the edit first" }).last()).toBeDisabled();
   await addArea(page).getByRole("button", { name: "Cancel", exact: true }).click();
-
   await expect(filterRow(page).getByRole("button", { name: "Edit order" })).toBeEnabled();
+});
+
+test("every tab shares one order: a note keeps its place relative to the others on every tab, All included", async ({ page }) => {
+  // Moving a note on Work moves it on All too, among the notes it was near.
+  await filterRow(page).getByRole("button", { name: "Edit order" }).click();
+  let save = savedOrder(page);
+  await noteRow(page, "Old invoice").getByRole("button", { name: "Move to top" }).click();
+  await save;
   await selectTab(page, "All");
-  await expect(filterRow(page).getByRole("button", { name: "Edit order" })).toHaveCount(0);
+  await expect.poll(async () => (await noteTitles(page)).slice(0, 3)).toEqual(["Old invoice", "Plan the team meeting", "Buy milk"]);
+
+  // All can be ordered too, and that shows on the other tabs.
+  await expect(filterRow(page).getByRole("button", { name: "Finish ordering" })).toBeVisible();
+  save = savedOrder(page);
+  await noteRow(page, "Garden ideas").getByRole("button", { name: "Move to top" }).click();
+  await save;
+  await expect.poll(async () => (await noteTitles(page))[0]).toBe("Garden ideas");
+  await selectTab(page, "Home");
+  await expect.poll(async () => (await noteTitles(page))[0]).toBe("Garden ideas");
+  // Work doesn't show it, so its order is as it was.
+  await selectTab(page, "Work");
+  await expectTitles(page, ["Old invoice", "Plan the team meeting", "Read the quarterly report"]);
+
+  // Each move is a change in the History.
+  await filterRow(page).getByRole("button", { name: "Finish ordering" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await expect(page.locator(".history-list .history-summary").first()).toHaveText("Changed the order of the notes");
+});
+
+test("on All, Ctrl+Enter adds the note at the top", async ({ page }) => {
+  await selectTab(page, "All");
+  const title = page.getByRole("textbox", { name: "New note" });
+  await title.fill("Top of everything");
+  const save = savedOrder(page);
+  await title.press("Control+Enter");
+  await save;
+  await expect.poll(async () => (await noteTitles(page))[0]).toBe("Top of everything");
+  await page.reload();
+  await expect.poll(async () => (await noteTitles(page))[0]).toBe("Top of everything");
 });

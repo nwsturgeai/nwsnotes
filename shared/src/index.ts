@@ -123,17 +123,12 @@ export interface Tab {
   id: number;
   name: string;
   categories: TabFilter[];
-  /**
-   * Note ids in the order this tab lists them; notes not in it follow, in creation order. Set with
-   * PUT /api/tabs/:id/order (not by the tab editor). Empty for tabs saved before ordering existed.
-   */
-  noteOrder: number[];
   /** "left": shown in the left strip. Missing: along the top (the usual place). */
   placement?: TabPlacement;
 }
 
-/** Body of PUT /api/tabs/:id/order. */
-export interface TabOrderRequest {
+/** Body of PUT /api/notes/order: the shared order of the notes, for every tab. */
+export interface NoteOrderRequest {
   noteOrder: number[];
 }
 
@@ -144,7 +139,7 @@ export interface BulkTagsRequest {
   removeTagIds: number[];
 }
 
-/** Notes in a tab's order: those in `noteOrder` first (in that order), then the rest as given. */
+/** Notes in the shared order: those in `noteOrder` first (in that order), then the rest as given (creation order). */
 export function orderNotes<T extends { id: number }>(notes: T[], noteOrder: number[]): T[] {
   const position = new Map(noteOrder.map((id, index) => [id, index]));
   const listed = notes.filter((note) => position.has(note.id));
@@ -175,6 +170,32 @@ export interface NotesData {
   tabs: Tab[];
   /** Where the built-in "All" tab shows. */
   allTabPlacement: TabPlacement;
+  /** The shared order of the notes, used by every tab ("All" included); notes not in it follow, oldest first. */
+  noteOrder: number[];
+}
+
+/**
+ * Makes one shared note order from tabs' own orders (as they were kept before the order was shared),
+ * taking the tabs in their order: each tab's order is kept wherever it doesn't conflict with a tab above.
+ * Each note not yet placed goes straight after the nearest note before it in that tab's order that is
+ * already placed, or, if none is, straight before the first one after it that is (else at the end).
+ */
+export function mergeNoteOrders(orders: number[][]): number[] {
+  const merged: number[] = [];
+  const placed = new Set<number>();
+  for (const order of orders) {
+    const ids = [...new Set(order)];
+    ids.forEach((id, index) => {
+      if (placed.has(id)) return;
+      const before = ids.slice(0, index).findLast((other) => placed.has(other));
+      const after = ids.slice(index + 1).find((other) => placed.has(other));
+      if (before !== undefined) merged.splice(merged.indexOf(before) + 1, 0, id);
+      else if (after !== undefined) merged.splice(merged.indexOf(after), 0, id);
+      else merged.push(id);
+      placed.add(id);
+    });
+  }
+  return merged;
 }
 
 /** A new note's title: typed text or a handwritten image. */
