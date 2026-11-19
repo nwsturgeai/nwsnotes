@@ -31,6 +31,8 @@ test("with no tabs set to Left there's no left strip", async ({ page }) => {
   await expect(topTabs(page)).toHaveText(["All", "Work", "Home", "On hold"]);
   // The filter row starts at the screen's edge.
   expect((await page.locator(".filter-row").boundingBox())!.x).toBeLessThan(2);
+  // The top tabs start 12px in, as before.
+  expect((await topTabs(page).first().boundingBox())!.x).toBe(12);
 });
 
 test("tabs set to Left show in the left strip, in order, and can be chosen there", async ({ page }) => {
@@ -53,7 +55,17 @@ test("tabs set to Left show in the left strip, in order, and can be chosen there
   const strip = (await leftStrip(page).boundingBox())!;
   const row = (await page.locator(".filter-row").boundingBox())!;
   const addArea = (await page.locator(".new-note").boundingBox())!;
-  expect(strip.width).toBeLessThanOrEqual(48);
+  // 40px, the same as the top bar's height, with the top tabs starting at its dividing line.
+  const header = (await page.getByRole("banner").boundingBox())!;
+  expect(strip.width).toBe(40);
+  expect(header.height).toBe(40);
+  const firstTop = (await topTabs(page).first().boundingBox())!;
+  expect(firstTop.x).toBe(strip.x + strip.width - 1);
+  expect(firstTop.height).toBe(36);
+  expect((await leftTabs(page).first().boundingBox())!.width).toBe(36);
+  // Nothing to the right of the cog.
+  const cog = (await page.getByRole("link", { name: "Settings" }).boundingBox())!;
+  expect(cog.x + cog.width).toBe(page.viewportSize()!.width);
   expect(row.x).toBeGreaterThanOrEqual(strip.x + strip.width - 1);
   expect(Math.abs(strip.y - row.y)).toBeLessThan(2);
   expect(Math.abs(strip.y + strip.height - addArea.y)).toBeLessThan(2);

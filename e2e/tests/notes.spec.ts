@@ -1,4 +1,4 @@
-import { addArea, chooseTag, expect, noteRow, noteTitles, openNotes, pills, selectTab, test, tickTag } from "./fixtures";
+import { addArea, chooseTag, expect, fingerHoldWithoutClick, noteRow, noteTitles, openNotes, pills, selectTab, test, tickTag } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await openNotes(page);
@@ -92,6 +92,9 @@ test("holding Add for a second adds the note at the top, and shows it's been hel
   await expect(noteRow(page, "Held down")).toBeVisible();
   await expect.poll(async () => (await noteTitles(page))[0]).toBe("Held down");
   await expect(add).not.toHaveClass(/\bheld\b/);
+  // It acted on letting go; the click that followed was ignored, so it's only added once.
+  await page.waitForTimeout(500);
+  await expect(noteRow(page, "Held down")).toHaveCount(1);
   await orderSaved;
   await page.reload();
   await selectTab(page, "Work");
@@ -103,6 +106,24 @@ test("holding Add for a second adds the note at the top, and shows it's been hel
   await expect(page.locator(".hold-ring")).toHaveCount(0);
   await expect(noteRow(page, "Clicked")).toBeVisible();
   await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe("Clicked");
+});
+
+test("a finger held on Add adds the note at the top even with no click after it, as on an Android phone", async ({ page }) => {
+  await selectTab(page, "Work");
+  const box = page.getByRole("textbox", { name: "New note" });
+  await box.fill("From the phone");
+  await fingerHoldWithoutClick(page, addArea(page).getByRole("button", { name: "Add" }));
+
+  await expect.poll(async () => (await noteTitles(page))[0]).toBe("From the phone");
+  await expect(noteRow(page, "From the phone")).toHaveCount(1);
+  // The title box is ready for the next note, so the keyboard comes back.
+  await expect(box).toHaveValue("");
+  await expect(box).toBeFocused();
+
+  // The next tap is a normal add, not swallowed as part of the long press.
+  await box.fill("Tapped next");
+  await addArea(page).getByRole("button", { name: "Add" }).click();
+  await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe("Tapped next");
 });
 
 test("a note that the tab doesn't show is still added, with a notice", async ({ page }) => {

@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faEraser, faPen, faRectangleList } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faCircleCheck, faEraser, faPen, faRectangleList, faX } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -20,6 +20,7 @@ import { offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FormattedText } from "./FormattedText";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
+import { PEN_WIDTHS, usePenWidth } from "./stylusMode";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
 /** Details and tag changes are sent at most this often (and once this long after the first change). */
@@ -107,6 +108,8 @@ export function LongFormEditor({
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   /** The eraser button (handwritten details only): selected, a stylus or mouse erases. */
   const [erasing, setErasing] = useState(false);
+  /** The device's pen thickness, also chosen with the buttons beside the eraser. */
+  const [penWidth, setPenWidth] = usePenWidth();
 
   // The latest values, for saves that run from a timer.
   const latest = useRef({ selection, detailsText });
@@ -270,6 +273,13 @@ export function LongFormEditor({
   function onEraserClick(event: ReactMouseEvent) {
     if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
     setErasing(!erasing);
+  }
+
+  /** A pen-thickness button: chooses it (for every canvas on this device) and turns the eraser off. */
+  function onPenWidthClick(event: ReactMouseEvent, width: number) {
+    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    setPenWidth(width);
+    setErasing(false);
   }
 
   /** Cancel (new notes only): straight away if there are no details, otherwise after asking. */
@@ -444,8 +454,9 @@ export function LongFormEditor({
       )}
 
       <div className="lf-finish">
-        {/* At the far left; Cancel and Finish stay centred. Colours inverted while selected. */}
+        {/* At the far left, then the pen thicknesses; Cancel and Finish are at the far right. */}
         {kind === "image" && (
+          <>
           <button
             type="button"
             className={erasing ? "icon-button primary lf-eraser" : "icon-button lf-eraser"}
@@ -457,28 +468,50 @@ export function LongFormEditor({
           >
             <FontAwesomeIcon icon={faEraser} />
           </button>
+          <div className="lf-pen-widths" role="radiogroup" aria-label="Pen thickness">
+            {PEN_WIDTHS.map((width) => (
+              <button
+                key={width}
+                type="button"
+                role="radio"
+                aria-checked={penWidth === width}
+                aria-label={`Pen thickness ${width}px`}
+                title={`Pen thickness ${width}px`}
+                className={penWidth === width ? "icon-button primary" : "icon-button"}
+                disabled={busy || !detailsEditable}
+                onClick={(event) => onPenWidthClick(event, width)}
+              >
+                <span className="lf-pen-sample" style={{ height: width }} />
+              </button>
+            ))}
+          </div>
+          </>
         )}
+        <div className="lf-finish-end">
         {isNew && (
           <button
             type="button"
-            className="button"
+            className="icon-button"
+            aria-label="Cancel"
             // A note already on the server (positive id) can't be deleted offline.
             disabled={busy || (offline && noteId !== undefined && noteId > 0)}
-            title={offline && noteId !== undefined && noteId > 0 ? "Not available offline" : undefined}
+            title={offline && noteId !== undefined && noteId > 0 ? "Not available offline" : "Cancel"}
             onClick={onCancelClick}
           >
-            Cancel
+            <FontAwesomeIcon icon={faX} />
           </button>
         )}
         <button
           type="button"
-          className="button"
+          className="icon-button primary"
+          aria-label="Finish"
           disabled={busy}
-          title={stylusMode ? undefined : "Finish (Ctrl+Enter)"}
+          title={stylusMode ? "Finish" : "Finish (Ctrl+Enter)"}
           onClick={onFinishClick}
         >
-          Finish
+          <FontAwesomeIcon icon={faCircleCheck} />
         </button>
+        </div>
       </div>
 
       {confirmingCancel && (

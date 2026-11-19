@@ -104,3 +104,15 @@ export async function expectTitles(page: Page, titles: string[]) {
 export function pills(row: Locator): Locator {
   return row.locator(".note-body li");
 }
+
+/**
+ * Holds a button with a finger for over a second and lifts it, as Chrome on Android does: the pointer
+ * events arrive, but no click follows them.
+ */
+export async function fingerHoldWithoutClick(page: Page, button: Locator) {
+  const box = (await button.boundingBox())!;
+  const at = { clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, pointerType: "touch", isPrimary: true, pointerId: 7 };
+  await button.dispatchEvent("pointerdown", { ...at, button: 0, buttons: 1 });
+  await expect(button).toHaveClass(/(^| )held( |$)/, { timeout: 2_000 });
+  await button.dispatchEvent("pointerup", { ...at, button: 0, buttons: 0 });
+}

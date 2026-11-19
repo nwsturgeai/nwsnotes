@@ -269,6 +269,7 @@ export function App() {
             stylusMode={stylusMode}
             tabs={tabs.filter((tab) => tab.placement !== "left")}
             allOnTop={!allOnLeft}
+            leftStrip={allOnLeft || tabs.some((tab) => tab.placement === "left")}
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
             editing={editingNote !== undefined || bulkActive}

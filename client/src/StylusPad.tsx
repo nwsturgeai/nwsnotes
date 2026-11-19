@@ -58,7 +58,7 @@ function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
  * fingers and palms are ignored.
  */
 export function StylusPad({ ref, disabled, onInk, erasing, initialImage, fill, label = "Writing area for a new note" }: Props) {
-  /** The Pen thickness setting, for new strokes (read when the pad opens; it's changed on the settings page). */
+  /** The Pen thickness setting, for new strokes (changed in Settings, or by the long-form editor's pen buttons). */
   const [penWidth] = usePenWidth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** The eraser's outline, following the pointer while erasing. */

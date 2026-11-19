@@ -12,6 +12,8 @@ interface Props {
   tabs: Tab[];
   /** Whether the built-in "All" tab is along the top (rather than in the left strip). */
   allOnTop: boolean;
+  /** Whether the notes page has a left strip (some tab is set to Left): the top tabs then line up with it. */
+  leftStrip: boolean;
   /** The selected tab's id, or undefined for the built-in "All" tab. */
   selectedTabId: number | undefined;
   onSelectTab: (id: number | undefined) => void;
@@ -39,6 +41,7 @@ export function Header({
   stylusMode,
   tabs,
   allOnTop,
+  leftStrip,
   selectedTabId,
   onSelectTab,
   editing,
@@ -66,7 +69,7 @@ export function Header({
 
   return (
     <>
-      <header className="app-header">
+      <header className={page.name === "notes" && leftStrip ? "app-header with-left-tabs" : "app-header"}>
         {page.name === "notes" && (
           <TabStrip tabs={tabs} allOnTop={allOnTop} selectedTabId={selectedTabId} onSelectTab={onSelectTab} editing={editing} />
         )}
@@ -194,6 +197,7 @@ function splitTabs(all: TabEntry[], selectedId: number | undefined, width: numbe
 function TabStrip({
   tabs,
   allOnTop,
+  leftStrip,
   selectedTabId,
   onSelectTab,
   editing,

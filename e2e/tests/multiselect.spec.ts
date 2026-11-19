@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { addArea, expect, noteRow, openNotes, pills, selectTab, test } from "./fixtures";
+import { addArea, expect, fingerHoldWithoutClick, noteRow, openNotes, pills, selectTab, test } from "./fixtures";
 
 /** Turns on multi-select (its button is in the expanded add area). */
 async function startSelecting(page: Page) {
@@ -66,6 +66,14 @@ test("holding the multi-select button starts with every listed note selected", a
   await addArea(page).getByRole("button", { name: "Select notes to change their tags" }).click();
   await expect(addArea(page).getByRole("button", { name: "Stop selecting notes" })).toBeVisible();
   await expect(selectedRows(page)).toHaveCount(0);
+});
+
+test("a finger held on the multi-select button works with no click after it, as on an Android phone", async ({ page }) => {
+  await selectTab(page, "Work");
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await fingerHoldWithoutClick(page, addArea(page).getByRole("button", { name: "Select notes to change their tags" }));
+  await expect(addArea(page).getByRole("button", { name: "Stop selecting notes" })).toBeVisible();
+  await expect(selectedRows(page)).toHaveCount(3);
 });
 
 test("All and None select every listed note or none, until a pill is clicked", async ({ page }) => {

@@ -140,8 +140,9 @@ body:has(.app) {
   flex: none;
   align-items: center;
   justify-content: space-between;
-  height: 3rem;
-  padding: 0 0.75rem 0 1.5rem;
+  /* The same as the left strip's width. No padding on the right, so the cog reaches the edge. */
+  height: 40px;
+  padding: 0 0 0 1.5rem;
   border-bottom: 1px solid var(--line);
   /* Same as the new-note area at the bottom of the page. */
   background: var(--bg);
@@ -166,13 +167,22 @@ body:has(.app) {
 }
 
 /*
+ * With a left strip, the first tab starts at the strip's dividing line (its last pixel, 39px in), so a
+ * selected tab's left border carries that line on up and its white area joins the note list.
+ */
+.app-header.with-left-tabs .tab-strip {
+  margin-left: calc(39px - 1.5rem);
+}
+
+/*
  * Every tab has the same width and shrinks equally when space runs out, down to 55px; tabs that
  * would be narrower go into the "…" menu (Header.tsx works out which).
  */
 .tab {
   flex: 0 1 9rem;
   min-width: 55px;
-  height: 2.3rem;
+  /* 4px below the top of the 40px header. */
+  height: 36px;
   padding: 0 0.3rem;
   border: 1px solid transparent;
   border-bottom: none;
@@ -379,8 +389,10 @@ a:focus-visible {
   flex: none;
   flex-direction: column;
   gap: 0.15rem;
-  width: 36px;
+  /* The same as the header's height: 36px tabs with a 4px gap on their left, as above the top tabs. */
+  width: 40px;
   padding-top: 0.35rem;
+  padding-left: 4px;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -404,7 +416,7 @@ a:focus-visible {
   background: none;
   color: var(--muted);
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   cursor: pointer;
 }
 
@@ -1048,9 +1060,12 @@ body:has(.note-list li.dragging) {
   gap: 2px;
 }
 
-/* In the expanded area there's room for more buttons underneath (create long-form note, list-check). */
+/*
+ * In the expanded area there's room for five underneath one another (208px of about 230px): with
+ * Clear in stylus mode, or editing a handwritten note, there are five, never more.
+ */
 .new-note.full .new-note-buttons {
-  grid-template-rows: repeat(4, auto);
+  grid-template-rows: repeat(5, auto);
 }
 
 .lf-add-hint {
@@ -1250,18 +1265,33 @@ body:has(.note-list li.dragging) {
   pointer-events: none;
 }
 
+/* The editor's bottom row: the eraser and pen thicknesses at the left, Cancel and Finish at the right. */
 .lf-finish {
-  position: relative;
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 0.75rem;
+  gap: 4px;
 }
 
-/* At the far left of the row, so Cancel and Finish stay centred. */
-.lf-eraser {
-  position: absolute;
-  left: 0;
+/* A wider gap between the eraser and the pen thicknesses. */
+.lf-pen-widths {
+  display: flex;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+/* A short line at the button's thickness, in the icon's colour (light when chosen). */
+.lf-pen-sample {
+  display: block;
+  width: 22px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+/* Cancel (when shown) and Finish, at the right-hand end. */
+.lf-finish-end {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
 }
 
 /* The eraser's size and position under the pointer while erasing (moved by script). */
@@ -1276,10 +1306,6 @@ body:has(.note-list li.dragging) {
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7);
   pointer-events: none;
-}
-
-.lf-finish .button {
-  min-width: 8rem;
 }
 
 .area-toggle:disabled {

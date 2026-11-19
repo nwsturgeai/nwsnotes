@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type P
 const LONG_PRESS_MS = 1000;
 /** The buzz when a long press is reached. */
 const HOLD_BUZZ_MS = 40;
+/** A click this soon after a long press acted is the browser's click for that same press. */
+const FOLLOWING_CLICK_MS = 700;
 
 /**
  * A button that does something different when held for a second (a long press) rather than clicked:
@@ -13,10 +15,15 @@ const HOLD_BUZZ_MS = 40;
  * from it, beyond the finger, and the device buzzes where it can. The rings are drawn on the screen,
  * centred on the button, so the area it's in can't cut them off.
  *
- * Spread `handlers` on the button, call `takeLongPress` from its click handler (it says whether that
- * click ends a long press), and render `rings` anywhere. With `enabled` false, presses are just clicks.
+ * The long press acts when the button is let go (`onLongPress`), not on the click: Chrome on Android
+ * sends no click when a finger is lifted after a long hold. Where a click does follow (mouse, stylus),
+ * `isLongPressClick` says so, and the button's click handler ignores it.
+ *
+ * Spread `handlers` on the button, start its click handler with `isLongPressClick`, and render `rings`
+ * anywhere. With `enabled` false, presses are just clicks; with `ignoreTouch`, so are finger presses
+ * (which the page ignores anyway, in stylus mode).
  */
-export function useLongPress(enabled: boolean) {
+export function useLongPress(enabled: boolean, onLongPress: () => void, ignoreTouch = false) {
   /** The button has been held long enough: letting go is a long press. */
   const [held, setHeldState] = useState(false);
   const heldRef = useRef(false);
@@ -24,6 +31,10 @@ export function useLongPress(enabled: boolean) {
   const timer = useRef<number>(undefined);
   /** While pressed (and enabled): the button's centre and size on the screen, where the rings are drawn. */
   const [ring, setRing] = useState<{ x: number; y: number; size: number }>();
+  /** When the last long press acted, so the click that may follow it can be ignored. */
+  const actedAt = useRef(0);
+  const act = useRef(onLongPress);
+  act.current = onLongPress;
 
   function setHeld(next: boolean) {
     heldRef.current = next;
@@ -43,7 +54,9 @@ export function useLongPress(enabled: boolean) {
     onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => {
       endHold();
       setHeld(false);
-      if (event.button !== 0 || !enabled) return;
+      // A new press: any click from now on is its own, not the last long press's.
+      actedAt.current = 0;
+      if (event.button !== 0 || !enabled || (ignoreTouch && event.pointerType === "touch")) return;
       pressing.current = true;
       const rect = event.currentTarget.getBoundingClientRect();
       setRing({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, size: rect.width });
@@ -53,7 +66,18 @@ export function useLongPress(enabled: boolean) {
         if ("vibrate" in navigator) navigator.vibrate(HOLD_BUZZ_MS);
       }, LONG_PRESS_MS);
     },
-    onPointerUp: endHold,
+    onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const onButton =
+        event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+      const long = pressing.current && heldRef.current && onButton;
+      endHold();
+      setHeld(false);
+      if (long) {
+        actedAt.current = Date.now();
+        act.current();
+      }
+    },
     // Sliding off the button before letting go does nothing, so the long press is forgotten.
     onPointerLeave: () => {
       if (pressing.current) setHeld(false);
@@ -68,13 +92,13 @@ export function useLongPress(enabled: boolean) {
   };
 
   /**
-   * For the button's click handler: whether this click ends a long press. Enter or Space (with no
-   * pointer: detail 0) is never a long press.
+   * For the button's click handler: whether this click is the browser's click for a long press that has
+   * already acted, so should be ignored. Enter or Space (with no pointer: detail 0) never is.
    */
-  function takeLongPress(event: ReactMouseEvent): boolean {
-    const long = heldRef.current && event.detail > 0;
-    setHeld(false);
-    return long;
+  function isLongPressClick(event: ReactMouseEvent): boolean {
+    const following = event.detail > 0 && Date.now() - actedAt.current < FOLLOWING_CLICK_MS;
+    actedAt.current = 0;
+    return following;
   }
 
   const rings = ring && (
@@ -96,5 +120,5 @@ export function useLongPress(enabled: boolean) {
     </span>
   );
 
-  return { held, handlers, takeLongPress, rings };
+  return { held, handlers, isLongPressClick, rings };
 }
