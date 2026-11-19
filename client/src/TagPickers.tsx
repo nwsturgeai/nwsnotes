@@ -95,10 +95,12 @@ interface Props {
   checkLists?: boolean;
   /** The filter row: how many notes each tag would show (tag id -> count), and how many are shown now. */
   counts?: { byTag: ReadonlyMap<number, number>; total: number };
+  /** The filter row: each check-list starts with a small "select all" link that ticks every tag. */
+  selectAll?: boolean;
 }
 
 /** One dropdown per category. They have no titles: an unset one shows its category name. */
-export function TagPickers({ categories, selection, onChange, disabled, constraints, tabName, checkLists, counts }: Props) {
+export function TagPickers({ categories, selection, onChange, disabled, constraints, tabName, checkLists, counts, selectAll }: Props) {
   if (categories.length === 0) return null;
 
   return (
@@ -114,6 +116,7 @@ export function TagPickers({ categories, selection, onChange, disabled, constrai
           disabled={disabled}
           onChange={(tagIds) => onChange({ ...selection, [category.id]: tagIds })}
           counts={counts}
+          selectAll={selectAll}
         />
       ))}
     </div>
@@ -128,6 +131,7 @@ function TagCount({ count }: { count: number | undefined }) {
 
 interface DropdownProps {
   counts?: Props["counts"];
+  selectAll?: boolean;
   category: Category;
   chosen: number[];
   /** The selected tab's tags for this category, if the tab filters on it. */
@@ -151,7 +155,7 @@ const LIST_MARGIN_PX = 8;
  * Built by the app rather than using the browser's own dropdown, so both kinds look and behave alike
  * and the app decides which inputs they respond to (see NotesPage's stylus-mode touch handling).
  */
-function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled, onChange, counts }: DropdownProps) {
+function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled, onChange, counts, selectAll }: DropdownProps) {
   /** Where the open list sits. It is positioned on the window, so a scrolling area can't clip it. */
   const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; room: number }>();
   const open = position !== undefined;
@@ -181,7 +185,8 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
     }
     // Opens downwards when the whole list fits (e.g. in Settings); otherwise towards the side with more
     // room (upwards from the new-note area at the bottom). It's limited to the room there, and scrolls.
-    const rows = (checkList ? category.tags.length : options.length + (tabTagIds ? 0 : 1)) + (counts ? 1 : 0);
+    const rows =
+      (checkList ? category.tags.length + (selectAll ? 1 : 0) : options.length + (tabTagIds ? 0 : 1)) + (counts ? 1 : 0);
     const needed = Math.min(rows, LIST_MAX_ROWS) * LIST_ROW_PX + LIST_PADDING_PX;
     const spaceBelow = window.innerHeight - rect.bottom - 4 - LIST_MARGIN_PX;
     const spaceAbove = rect.top - 4 - LIST_MARGIN_PX;
@@ -254,6 +259,17 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
           aria-label={category.name}
           style={{ left: position.left, top: position.top, bottom: position.bottom, "--list-room": `${position.room}px` } as CSSProperties}
         >
+          {/* Ticks every tag in the list (greyed out once they all are). */}
+          {checkList && selectAll && (
+            <button
+              type="button"
+              className="tag-dropdown-select-all"
+              disabled={category.tags.every((tag) => chosen.includes(tag.id))}
+              onClick={() => onChange(category.tags.map((tag) => tag.id))}
+            >
+              select all
+            </button>
+          )}
           {checkList ? (
             category.tags.map((tag) => {
               const locked = tag.id === lockedTagId;

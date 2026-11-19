@@ -60,6 +60,26 @@ test("ticking filters narrows the list, and Reset filters clears them", async ({
   await expect(filterRow(page)).toHaveCSS("background-color", "rgb(255, 255, 255)");
 });
 
+test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
+  const topic = await openFilter(page, "Topic");
+  const selectAll = topic.getByRole("button", { name: "select all" });
+  await expect(selectAll).toBeEnabled();
+  await selectAll.click();
+  for (const box of await topic.getByRole("checkbox").all()) await expect(box).toBeChecked();
+  // Every tag is ticked now, so the link is greyed out.
+  await expect(selectAll).toBeDisabled();
+  // Notes with no Topic tag are hidden.
+  await expectTitles(page, ["Buy milk", "Read the quarterly report", "Garden ideas"]);
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
+  await page.keyboard.press("Escape");
+
+  // For Lifetime, every tag includes Bin, so notes in the bin show too.
+  await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
+  const lifetime = await openFilter(page, "Lifetime");
+  await lifetime.getByRole("button", { name: "select all" }).click();
+  await expectTitles(page, [...ALL.slice(0, 4), "Broken lamp", ...ALL.slice(4)]);
+});
+
 test("each tab remembers its own filters", async ({ page }) => {
   await setFilter(page, "Topic", "Ideas", true);
   await expectTitles(page, ["Garden ideas"]);

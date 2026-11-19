@@ -898,6 +898,7 @@ export function NotesPage({
                 disabled={rowBlocked}
                 checkLists
                 counts={filterCounts}
+                selectAll
               />
             )}
             {/* Only while a tag is ticked; otherwise it takes no space. */}

@@ -1678,6 +1678,26 @@ body:has(.note-list li.dragging) {
   color: var(--muted);
 }
 
+/* The filter row's "select all": small text, like a link, at the top of each list. */
+.tag-dropdown-select-all {
+  display: block;
+  margin: 0;
+  padding: 0.3rem 0.6rem 0.35rem;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tag-dropdown-select-all:disabled {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: default;
+}
+
 .tag-dropdown-total {
   margin-top: 0.25rem;
   padding: 0.45rem 0.6rem 0.2rem;
