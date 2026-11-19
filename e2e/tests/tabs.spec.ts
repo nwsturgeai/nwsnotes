@@ -81,9 +81,12 @@ test("search narrows the list by title and long-form text", async ({ page }) => 
   await filterRow(page).getByRole("button", { name: "Search" }).click();
   const search = page.getByRole("searchbox", { name: "Search notes" });
   await expect(search).toBeFocused();
+  // An empty search doesn't narrow the list, so the row isn't yellow yet.
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
 
   await search.fill("MILK");
   await expectTitles(page, ["Buy milk"]);
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
   // Long-form notes' text is searched too, and every word must match.
   await search.fill("hotel");
   await expectTitles(page, ["Holiday plans"]);
@@ -95,6 +98,7 @@ test("search narrows the list by title and long-form text", async ({ page }) => 
   // Escape closes the search and shows every note again.
   await search.press("Escape");
   await expect(search).toHaveCount(0);
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
   await expectTitles(page, ALL);
 });
 

@@ -861,8 +861,11 @@ export function NotesPage({
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
-      {/* Yellow while any of its dropdowns has a tag ticked, so it's clear the tab's list is narrowed. */}
-      <div className={extraFilters.length > 0 ? "filter-row filtered" : "filter-row"} aria-label="More filters for this tab">
+      {/* Yellow while any of its dropdowns has a tag ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
+      <div
+        className={extraFilters.length > 0 || searchWords.length > 0 ? "filter-row filtered" : "filter-row"}
+        aria-label="More filters for this tab"
+      >
         {bulk ? (
           // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
           <div className="bulk-select-all" role="group" aria-label="Select notes">
