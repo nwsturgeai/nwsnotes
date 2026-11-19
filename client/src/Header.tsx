@@ -197,7 +197,6 @@ function splitTabs(all: TabEntry[], selectedId: number | undefined, width: numbe
 function TabStrip({
   tabs,
   allOnTop,
-  leftStrip,
   selectedTabId,
   onSelectTab,
   editing,
