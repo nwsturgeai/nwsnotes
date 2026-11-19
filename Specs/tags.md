@@ -192,6 +192,7 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
 - If there are more dropdowns than fit, the new-note area scrolls inside itself (see New-note area in [notes.md](notes.md)).
 - The text in the new-note dropdowns (their buttons and the lists they open) can't be selected, so a drag or long press doesn't highlight it.
 - The buttons (Add/Update, Cancel, Clear, long-form) have their own column at the right of the area. The text box or canvas, any message, and the dropdowns (or the pills in full-tag-list mode) share the column to its left, so the dropdowns and pills start straight under the title rather than below the last button. The title text box is 40px high, the same as the Add button beside it.
+- **How the buttons stack:** in the collapsed area, two high (Clear under Add), with a third starting a second column. In the expanded area, up to five high in one column, as there's room for five (208px of about 230px). Five is the most there can be: stylus mode adds Clear to Add, long-form, list-check and due date, and editing a handwritten note shows Update, Cancel, Clear, Convert to long-form note and due date.
 - Changing tab resets every dropdown (see "Tabs on the notes page" in [tabs.md](tabs.md)); adding a note still keeps the selections.
 
 ### Full-tag-list mode
