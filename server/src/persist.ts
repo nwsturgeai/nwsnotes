@@ -1,4 +1,4 @@
-import type { Category, HistoryChange, Note, Tab } from "@nwsnotes/shared";
+import type { Category, HistoryChange, Note, Tab, TabPlacement } from "@nwsnotes/shared";
 import type { Db, Query } from "./db.js";
 
 /*
@@ -14,12 +14,18 @@ export interface Snapshot {
   categories: Category[];
   tabs: Tab[];
   lastNoteId: number;
+  /** Where the built-in "All" tab shows. */
+  allTabPlacement: TabPlacement;
 }
 
-type Kind = "note" | "category" | "tab";
+/** "setting": a small setting such as the All tab's placement (item id 1), kept in `meta`. */
+type Kind = "note" | "category" | "tab" | "setting";
+
+/** The settings kept in `meta` that the history covers, with their item ids. */
+const ALL_TAB_PLACEMENT_ID = 1;
 
 /** An item as stored in the history: a note's JSON, or a category's or tab's position and JSON. */
-type Copy = Note | { position: number; data: Category | Tab };
+type Copy = Note | { position: number; data: Category | Tab } | { value: unknown };
 
 /** One history entry, as the API sends it. */
 export type ChangeSummary = HistoryChange;
@@ -64,6 +70,7 @@ export async function ensureSchema(db: Db): Promise<void> {
 export async function loadSnapshot(db: Db): Promise<Snapshot | undefined> {
   const meta = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'lastNoteId'");
   if (meta.length === 0) return undefined;
+  const [placement] = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'allTabPlacement'");
   const notes = await db.query<{ data: Note }>("SELECT data FROM nwsnotes.notes ORDER BY id");
   const categories = await db.query<{ data: Category }>("SELECT data FROM nwsnotes.categories ORDER BY position, id");
   const tabs = await db.query<{ data: Tab }>("SELECT data FROM nwsnotes.tabs ORDER BY position, id");
@@ -72,6 +79,7 @@ export async function loadSnapshot(db: Db): Promise<Snapshot | undefined> {
     categories: categories.map((row) => row.data),
     tabs: tabs.map((row) => row.data),
     lastNoteId: Number(meta[0]!.value),
+    allTabPlacement: placement?.value === "left" ? "left" : "top",
   };
 }
 
@@ -128,6 +136,8 @@ export async function writeChange(
     tabs: diff("tab", before.tabs, after.tabs, true),
   };
   const befores = Object.values(tables).flatMap((table) => table.befores);
+  const placementChanged = before.allTabPlacement !== after.allTabPlacement;
+  if (placementChanged) befores.push({ kind: "setting", id: ALL_TAB_PLACEMENT_ID, before: { value: before.allTabPlacement } });
   if (befores.length === 0 && before.lastNoteId === after.lastNoteId) return joinChangeId;
 
   return db.transaction(async (query) => {
@@ -160,6 +170,14 @@ export async function writeChange(
         `INSERT INTO nwsnotes.meta (name, value) VALUES ('lastNoteId', $1::jsonb)
          ON CONFLICT (name) DO UPDATE SET value = excluded.value`,
         [JSON.stringify(after.lastNoteId)],
+      );
+    }
+
+    if (placementChanged) {
+      await query(
+        `INSERT INTO nwsnotes.meta (name, value) VALUES ('allTabPlacement', $1::jsonb)
+         ON CONFLICT (name) DO UPDATE SET value = excluded.value`,
+        [JSON.stringify(after.allTabPlacement)],
       );
     }
 
@@ -228,9 +246,12 @@ export async function revertedSnapshot(db: Db, toId: number, current: Snapshot):
     category: new Map(current.categories.map((item, position) => [item.id, { position, data: item as Category | Tab }])),
     tab: new Map(current.tabs.map((item, position) => [item.id, { position, data: item as Category | Tab }])),
   };
+  let allTabPlacement = current.allTabPlacement;
   for (const item of items) {
     const id = Number(item.item_id);
-    if (item.kind === "note") {
+    if (item.kind === "setting") {
+      if (id === ALL_TAB_PLACEMENT_ID) allTabPlacement = (item.before as { value: unknown } | null)?.value === "left" ? "left" : "top";
+    } else if (item.kind === "note") {
       if (item.before === null) notes.delete(id);
       else notes.set(id, item.before as Note);
     } else {
@@ -250,6 +271,7 @@ export async function revertedSnapshot(db: Db, toId: number, current: Snapshot):
       tabs: ordered(positioned.tab) as Tab[],
       // Ids are never reused, so this isn't taken back.
       lastNoteId: current.lastNoteId,
+      allTabPlacement,
     },
   };
 }

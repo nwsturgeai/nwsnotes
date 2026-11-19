@@ -355,6 +355,81 @@ a:focus-visible {
   min-height: 0;
 }
 
+/* The left tab strip (when any tabs are set to "Left"), then the filter row and the list to its right. */
+.notes-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.notes-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * Tabs set to "Left": narrow, stacked from the top, names reading from bottom to top (normal text
+ * turned 90 degrees to the left). Like the top tabs, the selected one joins the list, on its right.
+ */
+.left-tabs {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 36px;
+  padding-top: 0.35rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The line between the strip and the list, drawn inside it, so the selected tab can cover it. */
+  box-shadow: inset -1px 0 0 var(--line);
+  background: var(--bg);
+}
+
+.left-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  max-height: 160px;
+  padding: 0.5rem 0;
+  border: 1px solid transparent;
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.left-tab-name {
+  max-height: 144px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.left-tab.selected {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Greyed out like the top tabs while a note is being edited. */
+.left-tab[aria-disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .note-list {
   flex: 1;
   overflow-y: auto;
@@ -1371,6 +1446,19 @@ body:has(.note-list li.dragging) {
   max-width: 100%;
   height: auto;
   border-radius: 4px;
+}
+
+/* The tab editor's Top / Left switch, under the name. */
+.placement-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0.9rem 0 0.4rem;
+}
+
+.placement-heading {
+  font-weight: 600;
 }
 
 .switch {

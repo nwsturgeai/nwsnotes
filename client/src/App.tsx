@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Category, Note, NotesData, Tab } from "@nwsnotes/shared";
+import { ALL_TAB_NAME, type Category, type Note, type NotesData, type Tab } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { useUpdateReady } from "./appUpdate";
 import { CategoryEditPage } from "./CategoryEditPage";
@@ -229,6 +229,8 @@ export function App() {
   }, []);
 
   const tabs = state.screen === "notes" ? state.data.tabs : [];
+  /** Whether the built-in "All" tab is in the left strip (data saved offline before this existed counts as top). */
+  const allOnLeft = state.screen === "notes" && state.data.allTabPlacement === "left";
   const selectedTab = tabs.find((tab) => tab.id === selectedTabId);
   // If the selected tab is deleted (here or on another page), go back to "All".
   useEffect(() => {
@@ -265,7 +267,8 @@ export function App() {
           <Header
             page={page}
             stylusMode={stylusMode}
-            tabs={tabs}
+            tabs={tabs.filter((tab) => tab.placement !== "left")}
+            allOnTop={!allOnLeft}
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
             editing={editingNote !== undefined || bulkActive}
@@ -297,6 +300,7 @@ export function App() {
               notes={state.data.notes}
               categories={state.data.categories}
               tabs={tabs}
+              allTabPlacement={state.data.allTabPlacement ?? "top"}
               stylusMode={stylusMode}
               onStylusModeChange={setStylusMode}
               columns={columns}
@@ -327,6 +331,8 @@ export function App() {
             <TabEditPage
               id={page.id}
               tabs={tabs}
+              allTabPlacement={state.data.allTabPlacement ?? "top"}
+              onAllTabPlacementSaved={(placement) => applySaved((data) => ({ ...data, allTabPlacement: placement }))}
               categories={state.data.categories}
               onSaved={saveTab}
               onDeleted={deleteTab}
@@ -338,6 +344,12 @@ export function App() {
               notes={state.data.notes}
               categories={state.data.categories}
               selectedTab={selectedTab}
+              leftTabs={[
+                ...(allOnLeft ? [{ id: undefined, name: ALL_TAB_NAME }] : []),
+                ...tabs.filter((tab) => tab.placement === "left"),
+              ]}
+              onSelectTab={selectTab}
+              tabsBlocked={editingNote !== undefined || bulkActive}
               stylusMode={stylusMode}
               columns={columns}
               tagSelection={tagSelection}

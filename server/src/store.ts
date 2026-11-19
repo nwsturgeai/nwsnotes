@@ -25,6 +25,7 @@ import {
   type NoteDetails,
   type NoteTitle,
   type Tab,
+  type TabPlacement,
   withoutMarkers,
 } from "@nwsnotes/shared";
 import { databaseUnreachable, type Db } from "./db.js";
@@ -55,6 +56,8 @@ interface SaveFile {
   tabs?: Tab[];
   /** The highest note id ever given, so ids are never reused. Missing in older files. */
   lastNoteId?: number;
+  /** Where the built-in "All" tab shows. Missing in older files (and then "top"). */
+  allTabPlacement?: TabPlacement;
 }
 
 /** The data the store keeps and saves. */
@@ -175,6 +178,7 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
       categories: [],
       tabs: [],
       lastNoteId: Math.max(0, ...content.notes.map((n) => n.id)),
+      allTabPlacement: "top",
     };
   }
   if (content.version !== 2 || !Array.isArray(content.categories)) {
@@ -190,6 +194,7 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
     })),
     // Files saved before notes could be deleted have no "lastNoteId"; the highest id present is right for them.
     lastNoteId: typeof content.lastNoteId === "number" ? content.lastNoteId : Math.max(0, ...content.notes.map((n) => n.id)),
+    allTabPlacement: content.allTabPlacement === "left" ? "left" : "top",
   };
 }
 
@@ -206,6 +211,7 @@ function snapshotOf(content: Required<SaveFile>): Snapshot {
     categories: content.categories,
     tabs: content.tabs,
     lastNoteId: content.lastNoteId,
+    allTabPlacement: content.allTabPlacement,
   };
 }
 
@@ -231,6 +237,8 @@ export class NoteStore {
   private tabs: Tab[] = [];
   /** The highest note id ever given; new notes get the next one, so ids are never reused. */
   private lastNoteId = 0;
+  /** Where the built-in "All" tab shows. */
+  private allTabPlacement: TabPlacement = "top";
   private lastSaveMs = 0;
   /** False until the data has been loaded from the database; until then the API answers 503. */
   private ready = false;
@@ -275,7 +283,7 @@ export class NoteStore {
     } else {
       // The first start with this database: bring across the latest save-file, if there is one.
       const latest = (await this.listSaveFiles()).at(-1);
-      const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0 };
+      const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0, allTabPlacement: "top" };
       if (latest) {
         const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
         await writeChange(this.db, empty, snapshotOf(content), this.nextSaveTime(), { summary: `Imported from ${latest.name}` });
@@ -291,7 +299,13 @@ export class NoteStore {
   }
 
   private snapshot(): Snapshot {
-    return { notes: this.notes, categories: this.categories, tabs: this.tabs, lastNoteId: this.lastNoteId };
+    return {
+      notes: this.notes,
+      categories: this.categories,
+      tabs: this.tabs,
+      lastNoteId: this.lastNoteId,
+      allTabPlacement: this.allTabPlacement,
+    };
   }
 
   private apply(snapshot: Snapshot) {
@@ -299,11 +313,12 @@ export class NoteStore {
     this.categories = snapshot.categories;
     this.tabs = snapshot.tabs;
     this.lastNoteId = snapshot.lastNoteId;
+    this.allTabPlacement = snapshot.allTabPlacement;
   }
 
   getAll(): NotesData {
     if (!this.ready) throw databaseUnreachable();
-    return { notes: this.notes, categories: this.allCategories(), tabs: this.tabs };
+    return { notes: this.notes, categories: this.allCategories(), tabs: this.tabs, allTabPlacement: this.allTabPlacement };
   }
 
   /** User categories plus the built-in Lifetime category (which tabs can filter on). */
@@ -321,6 +336,7 @@ export class NoteStore {
       categories: this.categories,
       tabs: this.tabs,
       lastNoteId: this.lastNoteId,
+      allTabPlacement: this.allTabPlacement,
     };
     return { name: fileNameFor(now), content: JSON.stringify(content, null, 2) };
   }
@@ -836,6 +852,18 @@ export class NoteStore {
     });
   }
 
+  /** Where the built-in "All" tab shows (PUT /api/tabs/all), then saves. */
+  setAllTabPlacement(raw: unknown): Promise<TabPlacement> {
+    return this.enqueue(async () => {
+      const placement = (raw as { placement?: unknown } | undefined)?.placement;
+      if (placement !== "top" && placement !== "left") throw new RequestError(400, '"placement" must be "top" or "left".');
+      await this.save(this.nextSaveTime(), { allTabPlacement: placement }, {
+        record: { summary: `Moved the All tab to the ${placement}` },
+      });
+      return placement;
+    });
+  }
+
   /** Checks and adds a new tab, then saves. */
   addTab(raw: unknown): Promise<Tab> {
     return this.enqueue(async () => {
@@ -938,7 +966,7 @@ export class NoteStore {
     return this.enqueue(async () => {
       const seed = snapshotOf(parseSaveFile("seed", seedText));
       await this.db.transaction(emptyAll);
-      this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1 });
+      this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1, allTabPlacement: "top" });
       this.lastLongFormUpdate = undefined;
       await this.save(this.nextSaveTime(), seed, { record: { summary: "Imported the test data" } });
     });

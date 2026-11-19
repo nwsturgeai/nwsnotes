@@ -1,5 +1,6 @@
 import {
   CONNECTION_ID_HEADER,
+  type AllTabRequest,
   type ApiErrorBody,
   type BulkTagsRequest,
   type Category,
@@ -129,6 +130,7 @@ export const api = {
   reorderTabs: (ids: number[]) => request<Tab[]>("PUT", "/api/tabs/order", { ids }, changeHeaders()),
   addTab: (body: TabRequest) => request<Tab>("POST", "/api/tabs", body, changeHeaders()),
   updateTab: (id: number, body: TabRequest) => request<Tab>("PUT", `/api/tabs/${id}`, body, changeHeaders()),
+  setAllTabPlacement: (body: AllTabRequest) => request<AllTabRequest>("PUT", "/api/tabs/all", body, changeHeaders()),
   setTabOrder: (id: number, body: TabOrderRequest) => request<Tab>("PUT", `/api/tabs/${id}/order`, body, changeHeaders()),
   deleteTab: (id: number) => request<{ ok: true }>("DELETE", `/api/tabs/${id}`, undefined, changeHeaders()),
   /** Reminders: the server's public push key, and registering or forgetting this device. */

@@ -8,7 +8,10 @@ import { pathFor, type Page } from "./route";
 interface Props {
   page: Page;
   stylusMode: boolean;
+  /** The tabs along the top (Left tabs are in the notes page's left strip). */
   tabs: Tab[];
+  /** Whether the built-in "All" tab is along the top (rather than in the left strip). */
+  allOnTop: boolean;
   /** The selected tab's id, or undefined for the built-in "All" tab. */
   selectedTabId: number | undefined;
   onSelectTab: (id: number | undefined) => void;
@@ -35,6 +38,7 @@ export function Header({
   page,
   stylusMode,
   tabs,
+  allOnTop,
   selectedTabId,
   onSelectTab,
   editing,
@@ -64,7 +68,7 @@ export function Header({
     <>
       <header className="app-header">
         {page.name === "notes" && (
-          <TabStrip tabs={tabs} selectedTabId={selectedTabId} onSelectTab={onSelectTab} editing={editing} />
+          <TabStrip tabs={tabs} allOnTop={allOnTop} selectedTabId={selectedTabId} onSelectTab={onSelectTab} editing={editing} />
         )}
         {back && (
           <a href={pathFor(back.page)} className="header-link" onClick={(event) => go(event, back.page)}>
@@ -126,7 +130,47 @@ const TAB_MIN_PX = 55;
 const TAB_GAP_PX = 2.4;
 const MORE_BUTTON_PX = 36;
 
-type TabEntry = { id: number | undefined; name: string };
+export type TabEntry = { id: number | undefined; name: string };
+
+/**
+ * The tabs set to "Left": a narrow strip down the left of the filter row and note list, the names
+ * reading from bottom to top (turned 90 degrees to the left). It scrolls when they don't all fit.
+ */
+export function LeftTabStrip({
+  tabs,
+  selectedTabId,
+  onSelectTab,
+  editing,
+}: {
+  tabs: TabEntry[];
+  selectedTabId: number | undefined;
+  onSelectTab: (id: number | undefined) => void;
+  editing: boolean;
+}) {
+  return (
+    <div className="left-tabs" role="tablist" aria-label="Left tabs" aria-orientation="vertical">
+      {tabs.map((tab) => {
+        const selected = tab.id === selectedTabId;
+        return (
+          <button
+            key={tab.id ?? "all"}
+            type="button"
+            role="tab"
+            className={selected ? "left-tab selected" : "left-tab"}
+            aria-selected={selected}
+            aria-disabled={(editing && !selected) || undefined}
+            title={editing && !selected ? `${tab.name}: ${BLOCKED_HINT.toLowerCase()}` : tab.name}
+            onClick={() => {
+              if (!editing) onSelectTab(tab.id);
+            }}
+          >
+            <span className="left-tab-name">{tab.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * Which tabs fit in `width`, each at least TAB_MIN_PX wide. If they don't all fit, the first ones that
@@ -149,11 +193,12 @@ function splitTabs(all: TabEntry[], selectedId: number | undefined, width: numbe
  */
 function TabStrip({
   tabs,
+  allOnTop,
   selectedTabId,
   onSelectTab,
   editing,
-}: Pick<Props, "tabs" | "selectedTabId" | "onSelectTab" | "editing">) {
-  const all: TabEntry[] = [{ id: undefined, name: ALL_TAB_NAME }, ...tabs];
+}: Pick<Props, "tabs" | "allOnTop" | "selectedTabId" | "onSelectTab" | "editing">) {
+  const all: TabEntry[] = [...(allOnTop ? [{ id: undefined, name: ALL_TAB_NAME }] : []), ...tabs];
   const stripRef = useRef<HTMLDivElement>(null);
   /** The strip's width: the room the header leaves it (it doesn't depend on the tabs inside). */
   const [width, setWidth] = useState(Number.POSITIVE_INFINITY);

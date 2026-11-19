@@ -55,7 +55,7 @@ export async function noteTitles(page: Page): Promise<string[]> {
 
 /** Opens a tab by name. */
 export async function selectTab(page: Page, name: string) {
-  await page.getByRole("tablist", { name: "Tabs" }).getByRole("tab", { name, exact: true }).click();
+  await page.getByRole("tablist", { name: "Tabs", exact: true }).getByRole("tab", { name, exact: true }).click();
 }
 
 /** The add area at the bottom of the notes page. */

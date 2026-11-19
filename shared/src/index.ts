@@ -128,6 +128,8 @@ export interface Tab {
    * PUT /api/tabs/:id/order (not by the tab editor). Empty for tabs saved before ordering existed.
    */
   noteOrder: number[];
+  /** "left": shown in the left strip. Missing: along the top (the usual place). */
+  placement?: TabPlacement;
 }
 
 /** Body of PUT /api/tabs/:id/order. */
@@ -154,6 +156,16 @@ export function orderNotes<T extends { id: number }>(notes: T[], noteOrder: numb
 export interface TabRequest {
   name: string;
   categories: TabFilter[];
+  /** Where the tab shows: "left" for the left strip; missing means the top strip. */
+  placement?: TabPlacement;
+}
+
+/** Where a tab shows on the notes page: along the top, or down the left-hand side. */
+export type TabPlacement = "top" | "left";
+
+/** Body of PUT /api/tabs/all: where the built-in "All" tab shows. */
+export interface AllTabRequest {
+  placement: TabPlacement;
 }
 
 /** Response of GET /api/notes. */
@@ -161,6 +173,8 @@ export interface NotesData {
   notes: Note[];
   categories: Category[];
   tabs: Tab[];
+  /** Where the built-in "All" tab shows. */
+  allTabPlacement: TabPlacement;
 }
 
 /** A new note's title: typed text or a handwritten image. */
@@ -533,7 +547,11 @@ export function validateTab(
   }
   filters.sort((a, b) => a.categoryId - b.categoryId);
 
-  return { ok: true, tab: { name: name.value, categories: filters } };
+  if (input.placement !== undefined && input.placement !== "top" && input.placement !== "left") {
+    return { ok: false, error: '"placement" must be "top" or "left".' };
+  }
+  // Top is the usual place, so only "left" is stored.
+  return { ok: true, tab: { name: name.value, categories: filters, ...(input.placement === "left" && { placement: "left" }) } };
 }
 
 // ---- Text formatting -------------------------------------------------------

@@ -223,6 +223,13 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
     res.status(201).json(tab);
   });
 
+  // Where the built-in "All" tab shows. Before "/:id", which would match it.
+  tabsRouter.put("/all", async (req, res) => {
+    const placement = await store.setAllTabPlacement(req.body);
+    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    res.json({ placement });
+  });
+
   // The tabs' order (the settings page's up and down buttons). Before "/:id", which would match it.
   tabsRouter.put("/order", async (req, res) => {
     const tabs = await store.reorderTabs(req.body);
