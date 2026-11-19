@@ -435,8 +435,18 @@ export function NotesPage({
 
   /** A long press on Add puts the note at the top: only for new notes, on a tab, online. */
   const canAddAtTop = !editingNote && !onAll && !offline;
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   /** Add's long press: letting go after holding it for a second adds the note at the top. */
-  const addHold = useLongPress(canAddAtTop);
+  const addHold = useLongPress(
+    canAddAtTop,
+    () => {
+      const button = addButtonRef.current;
+      if (!button?.form) return;
+      addAtTop.current = true;
+      button.form.requestSubmit(button);
+    },
+    showCanvas,
+  );
 
   // Notices disappear by themselves.
   useEffect(() => {
@@ -705,7 +715,7 @@ export function NotesPage({
   }
 
   /** Multi-select's long press: holding the button for a second turns it on with every listed note selected. */
-  const bulkHold = useLongPress(!bulk && listCheckHint === undefined && !saving);
+  const bulkHold = useLongPress(!bulk && listCheckHint === undefined && !saving, () => toggleBulk(true), showCanvas);
 
   /** Selects or unselects a note, until a pill has been clicked. */
   function toggleBulkNote(noteId: number) {
@@ -1235,10 +1245,12 @@ export function NotesPage({
                           : "Add"
                   }
                   disabled={saving || addBlocked}
+                  ref={addButtonRef}
                   {...addHold.handlers}
-                  // Enter in the title box also "clicks" Add (with no pointer), which is never a long press.
+                  // A long press has already added the note when it was let go; its click (if any) is ignored.
                   onClick={(event) => {
-                    addAtTop.current = addHold.takeLongPress(event);
+                    if (addHold.isLongPressClick(event)) event.preventDefault();
+                    else addAtTop.current = false;
                   }}
                 >
                   <FontAwesomeIcon icon={editingNote ? faCircleCheck : addHold.held ? faCircleUp : faCirclePlus} />
@@ -1315,7 +1327,9 @@ export function NotesPage({
                   }
                   disabled={saving || (!bulk && listCheckHint !== undefined)}
                   {...bulkHold.handlers}
-                  onClick={(event) => toggleBulk(bulkHold.takeLongPress(event))}
+                  onClick={(event) => {
+                    if (!bulkHold.isLongPressClick(event)) toggleBulk();
+                  }}
                 >
                   <FontAwesomeIcon icon={faListCheck} />
                 </button>

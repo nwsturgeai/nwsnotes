@@ -43,6 +43,7 @@ The note ordering should be saved as an integer-array attribute on each Tab.  An
 ### Adding a note at the top
 When adding a new regular note, adding it with Ctrl+Enter puts it at the top of the list in the current tab, instead of at the bottom as usual.
 A long press on the Add button (instead of a normal short click) does the same. Once the press has lasted long enough, the button changes so it's clear that the long press has been detected. This must be easy to see while a finger covers the button: an animation spreads out beyond it.
+The long press must work with a finger on an Android phone too, with the keyboard open: letting go adds the note at the top, and the keyboard is ready for the next note.
 
 ## Editing Notes
 
@@ -106,6 +107,8 @@ Tag selections for a note can be updated in edit mode to have any new tag values
   - Sliding off the button or letting go removes the rings straight away.
   - Letting go sooner is a normal add. Sliding off the button before letting go adds nothing, as with any button.
   - The browser's own long-press menu and text selection are suppressed on the button.
+  - **Added on letting go, not on the click:** Chrome on Android sends no click when a finger is lifted after a long hold, so the long press acts when the finger (or mouse or stylus) is let go on the button. If a click follows anyway (mouse, stylus, some tablets), it's ignored, so the note is never added twice. Quick taps, clicks and Enter still add through the click as before.
+  - **The keyboard comes back:** after a typed note is added, by a tap or a long press, the title box gets focus again, ready for the next note. Chrome closes the keyboard during a long hold and the app can't stop that, so it may close and then reopen.
 - **Where it applies:** only when adding a new note on a tab other than "All", while online. Otherwise Ctrl+Enter and a long press do a normal add, and a long press shows no change on the button:
   - "All" always lists notes in creation order, so the note goes at the bottom there.
   - Offline, note ordering isn't available. The note is added at the bottom, with the notice "Added at the bottom: adding at the top isn't available offline."

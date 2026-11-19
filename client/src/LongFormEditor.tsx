@@ -6,7 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faEraser, faPen, faRectangleList } from "@fortawesome/free-solid-svg-icons";
+import { faCheck, faCircleCheck, faEraser, faPen, faRectangleList, faShareFromSquare, faX } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   TITLE_MAX_LENGTH,
@@ -20,6 +20,7 @@ import { offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FormattedText } from "./FormattedText";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
+import { PEN_WIDTHS, usePenWidth } from "./stylusMode";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
 /** Details and tag changes are sent at most this often (and once this long after the first change). */
@@ -107,6 +108,10 @@ export function LongFormEditor({
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   /** The eraser button (handwritten details only): selected, a stylus or mouse erases. */
   const [erasing, setErasing] = useState(false);
+  /** The device's pen thickness, also chosen with the buttons beside the eraser. */
+  const [penWidth, setPenWidth] = usePenWidth();
+  /** Whether the details canvas has any ink, for the export button. */
+  const [padHasInk, setPadHasInk] = useState(false);
 
   // The latest values, for saves that run from a timer.
   const latest = useRef({ selection, detailsText });
@@ -272,6 +277,37 @@ export function LongFormEditor({
     setErasing(!erasing);
   }
 
+  /** A pen-thickness button: chooses it (for every canvas on this device) and turns the eraser off. */
+  function onPenWidthClick(event: ReactMouseEvent, width: number) {
+    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    setPenWidth(width);
+    setErasing(false);
+  }
+
+  /**
+   * Exports the handwritten details as a PNG (black on white, cropped to the ink): through the device's
+   * share sheet where the browser can share files (Android), otherwise as a download.
+   */
+  function onExportClick(event: ReactMouseEvent) {
+    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    const pad = padRef.current;
+    if (!pad?.hasInk()) return;
+    const dataUrl = pad.toImage("#fff");
+    const file = new File([dataUrlToBlob(dataUrl)], exportFileName(title), { type: "image/png" });
+    // Shared straight away (no waiting first), as sharing needs the tap that asked for it.
+    if (navigator.canShare?.({ files: [file] })) {
+      navigator.share({ files: [file] }).catch((err: unknown) => {
+        // Closing the share sheet without choosing anything isn't an error.
+        if (!(err instanceof DOMException && err.name === "AbortError")) setError(`The image couldn't be shared: ${err instanceof Error ? err.message : String(err)}`);
+      });
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = file.name;
+    link.click();
+  }
+
   /** Cancel (new notes only): straight away if there are no details, otherwise after asking. */
   function onCancelClick(event: ReactMouseEvent) {
     if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
@@ -430,6 +466,7 @@ export function LongFormEditor({
             erasing={erasing}
             initialImage={note?.detailsImage || undefined}
             onInk={schedule}
+            onInkChange={setPadHasInk}
           />
         )}
         {!detailsEditable && kind === "image" && (
@@ -444,8 +481,9 @@ export function LongFormEditor({
       )}
 
       <div className="lf-finish">
-        {/* At the far left; Cancel and Finish stay centred. Colours inverted while selected. */}
+        {/* At the far left, then the pen thicknesses; Cancel and Finish are at the far right. */}
         {kind === "image" && (
+          <>
           <button
             type="button"
             className={erasing ? "icon-button primary lf-eraser" : "icon-button lf-eraser"}
@@ -457,28 +495,60 @@ export function LongFormEditor({
           >
             <FontAwesomeIcon icon={faEraser} />
           </button>
+          <div className="lf-pen-widths" role="radiogroup" aria-label="Pen thickness">
+            {PEN_WIDTHS.map((width) => (
+              <button
+                key={width}
+                type="button"
+                role="radio"
+                aria-checked={penWidth === width}
+                aria-label={`Pen thickness ${width}px`}
+                title={`Pen thickness ${width}px`}
+                className={penWidth === width ? "icon-button primary" : "icon-button"}
+                disabled={busy || !detailsEditable}
+                onClick={(event) => onPenWidthClick(event, width)}
+              >
+                <span className="lf-pen-sample" style={{ height: width }} />
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="icon-button lf-export"
+            aria-label="Export as image"
+            title="Export as image"
+            disabled={busy || !detailsEditable || !padHasInk}
+            onClick={onExportClick}
+          >
+            <FontAwesomeIcon icon={faShareFromSquare} />
+          </button>
+          </>
         )}
+        <div className="lf-finish-end">
         {isNew && (
           <button
             type="button"
-            className="button"
+            className="icon-button"
+            aria-label="Cancel"
             // A note already on the server (positive id) can't be deleted offline.
             disabled={busy || (offline && noteId !== undefined && noteId > 0)}
-            title={offline && noteId !== undefined && noteId > 0 ? "Not available offline" : undefined}
+            title={offline && noteId !== undefined && noteId > 0 ? "Not available offline" : "Cancel"}
             onClick={onCancelClick}
           >
-            Cancel
+            <FontAwesomeIcon icon={faX} />
           </button>
         )}
         <button
           type="button"
-          className="button"
+          className="icon-button primary"
+          aria-label="Finish"
           disabled={busy}
-          title={stylusMode ? undefined : "Finish (Ctrl+Enter)"}
+          title={stylusMode ? "Finish" : "Finish (Ctrl+Enter)"}
           onClick={onFinishClick}
         >
-          Finish
+          <FontAwesomeIcon icon={faCircleCheck} />
         </button>
+        </div>
       </div>
 
       {confirmingCancel && (
@@ -492,4 +562,19 @@ export function LongFormEditor({
       )}
     </div>
   );
+}
+
+/** A data URL's contents, as a Blob. */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, data] = dataUrl.split(",", 2) as [string, string];
+  const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+  return new Blob([bytes], { type: header.slice(5).split(";")[0] });
+}
+
+/** An exported image's file name: the note's title and today's date, e.g. "Garden plan 2026-11-19.png". */
+function exportFileName(title: string, now = new Date()): string {
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  // Characters that file names can't have (on Windows, the strictest), and control characters.
+  const safe = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 80).trim();
+  return `${safe ? `${safe} ` : ""}${date}.png`;
 }

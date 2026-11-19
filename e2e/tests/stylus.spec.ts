@@ -65,6 +65,15 @@ test("in stylus mode, a handwritten note is drawn and added", async ({ page, isM
   await expect(handwritten(page)).toHaveCount(2);
 });
 
+test("in stylus mode, the expanded add area's five buttons are in one column", async ({ page }) => {
+  await turnOnStylusMode(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  const buttons = addArea(page).locator(".new-note-buttons > button");
+  await expect(buttons).toHaveCount(5);
+  const boxes = await buttons.evaluateAll((all) => all.map((button) => button.getBoundingClientRect().left));
+  expect(new Set(boxes).size).toBe(1);
+});
+
 test("the eraser removes ink from handwritten long-form details", async ({ page }) => {
   await turnOnStylusMode(page);
   await page.getByRole("button", { name: "Show all tags" }).click();
@@ -90,6 +99,51 @@ test("the eraser removes ink from handwritten long-form details", async ({ page 
   await expect(eraser).toHaveAttribute("aria-pressed", "false");
 });
 
+test("the long-form editor has pen-thickness buttons beside the eraser, sharing the setting", async ({ page }) => {
+  await turnOnStylusMode(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Thick and thin");
+  await editor.getByRole("button", { name: "Accept title" }).click();
+
+  const pens = editor.getByRole("radiogroup", { name: "Pen thickness" }).getByRole("radio");
+  await expect(pens).toHaveCount(3);
+  await expect(editor.getByRole("radio", { name: "Pen thickness 2.5px" })).toHaveAttribute("aria-checked", "true");
+
+  // Right of the eraser with a wider gap, and Cancel then Finish at the far right of the row.
+  const eraser = editor.getByRole("button", { name: "Eraser" });
+  const eraserBox = (await eraser.boundingBox())!;
+  const firstPen = (await pens.first().boundingBox())!;
+  const secondPen = (await pens.nth(1).boundingBox())!;
+  expect(Math.round(firstPen.x - (eraserBox.x + eraserBox.width))).toBe(16);
+  expect(Math.round(secondPen.x - (firstPen.x + firstPen.width))).toBe(4);
+  const cancel = (await editor.getByRole("button", { name: "Cancel" }).boundingBox())!;
+  const finish = (await editor.getByRole("button", { name: "Finish" }).boundingBox())!;
+  const row = (await page.locator(".lf-finish").boundingBox())!;
+  expect(Math.round(row.x + row.width - (finish.x + finish.width))).toBe(0);
+  expect(cancel.x).toBeLessThan(finish.x);
+  expect(finish.width).toBe(40);
+
+  // Choosing a thickness turns the eraser off, and draws at it.
+  await eraser.click();
+  await expect(eraser).toHaveAttribute("aria-pressed", "true");
+  await editor.getByRole("radio", { name: "Pen thickness 4.5px" }).click();
+  await expect(eraser).toHaveAttribute("aria-pressed", "false");
+  await expect(editor.getByRole("radio", { name: "Pen thickness 4.5px" })).toHaveAttribute("aria-checked", "true");
+  const details = editor.getByRole("img", { name: "Details of the long-form note" });
+  await draw(page, details, 0.2, 0.4);
+  const thick = await inkPixels(details);
+  await editor.getByRole("radio", { name: "Pen thickness 1.5px" }).click();
+  await draw(page, details, 0.5, 0.7);
+  expect((await inkPixels(details)) - thick).toBeLessThan(thick / 2);
+
+  // It's the same setting as in Settings.
+  await editor.getByRole("button", { name: "Finish" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("radio", { name: "Pen thickness 1.5px" })).toHaveAttribute("aria-checked", "true");
+});
+
 test("the pen thickness setting draws thicker or thinner lines", async ({ page }) => {
   await turnOnStylusMode(page);
   const pad = addArea(page).getByRole("img", { name: "Writing area for a new note" });
@@ -110,3 +164,56 @@ test("the pen thickness setting draws thicker or thinner lines", async ({ page }
   const thick = await lineAt("4.5px");
   expect(thick).toBeGreaterThan(thin * 2);
 });
+
+test("handwritten long-form details can be exported as an image, shared or downloaded", async ({ page }) => {
+  await turnOnStylusMode(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Garden: plan?");
+  await editor.getByRole("button", { name: "Accept title" }).click();
+  const exportButton = editor.getByRole("button", { name: "Export as image" });
+  // Nothing written yet.
+  await expect(exportButton).toBeDisabled();
+  await draw(page, editor.getByRole("img", { name: "Details of the long-form note" }), 0.2, 0.6);
+  await expect(exportButton).toBeEnabled();
+
+  const today = await page.evaluate(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  });
+
+  // Where files can be shared (Android), the share sheet gets the image.
+  await page.evaluate(() => {
+    const shared = window as unknown as { shared?: { name: string; type: string; corner: number[]; inked: boolean } };
+    navigator.canShare = () => true;
+    navigator.share = async (data?: ShareData) => {
+      const file = data!.files![0]!;
+      const image = await createImageBitmap(file);
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      const context = canvas.getContext("2d")!;
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, image.width, image.height).data;
+      let inked = false;
+      for (let i = 0; i < pixels.length; i += 4) if (pixels[i]! < 100 && pixels[i + 3] === 255) inked = true;
+      shared.shared = { name: file.name, type: file.type, corner: Array.from(pixels.slice(0, 4)), inked };
+    };
+  });
+  await exportButton.click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { shared?: unknown }).shared)).toEqual({
+    name: `Garden plan ${today}.png`,
+    type: "image/png",
+    // Black ink on white, not on a transparent background.
+    corner: [255, 255, 255, 255],
+    inked: true,
+  });
+
+  // Elsewhere, it's downloaded.
+  await page.evaluate(() => {
+    (navigator as { canShare?: unknown }).canShare = undefined;
+  });
+  const download = page.waitForEvent("download");
+  await exportButton.click();
+  expect((await download).suggestedFilename()).toBe(`Garden plan ${today}.png`);
+});
+

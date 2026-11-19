@@ -1,9 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /*
  * Settings remembered on this device in local storage (each device has its own), such as stylus mode.
  * Storage can be unavailable (e.g. blocked site data); a setting then lasts until the page is reloaded.
+ * Every place using a setting sees a change made in another straight away (e.g. the pen thickness,
+ * chosen in the long-form editor while its canvas is drawing).
  */
+
+/** Sent on the window when a device setting changes: its key and new stored value. */
+const SETTING_CHANGED = "nwsnotes-setting-changed";
 
 function useDeviceSetting<T>(key: string, read: (stored: string | null) => T, write: (value: T) => string): [T, (value: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -14,14 +19,25 @@ function useDeviceSetting<T>(key: string, read: (stored: string | null) => T, wr
     }
   });
 
+  useEffect(() => {
+    function changed(event: Event) {
+      const { key: changedKey, stored } = (event as CustomEvent<{ key: string; stored: string }>).detail;
+      if (changedKey === key) setValue(read(stored));
+    }
+    window.addEventListener(SETTING_CHANGED, changed);
+    return () => window.removeEventListener(SETTING_CHANGED, changed);
+    // `read` is a fresh function each render, but always reads the same way for a key.
+  }, [key]);
+
   const set = useCallback(
     (next: T) => {
-      setValue(next);
+      const stored = write(next);
       try {
-        window.localStorage.setItem(key, write(next));
+        window.localStorage.setItem(key, stored);
       } catch {
         // See above.
       }
+      window.dispatchEvent(new CustomEvent(SETTING_CHANGED, { detail: { key, stored } }));
     },
     [key, write],
   );
