@@ -2,7 +2,12 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import webpush, { WebPushError, type PushSubscription } from "web-push";
 import { withoutMarkers } from "@nwsnotes/shared";
-import { RequestError, type NoteStore } from "./store.js";
+import type { Notebooks } from "./notebooks.js";
+import { RequestError } from "./store.js";
+import { ADMIN_ID } from "./users.js";
+
+/** A device's subscription, and the user whose device it is. */
+type Device = PushSubscription & { userId: number };
 
 /** How often the server looks for notes that have fallen due. */
 const CHECK_EVERY_MS = 60 * 1000;
@@ -16,17 +21,18 @@ interface PushMessage {
 /**
  * Due-date reminders as Web Push notifications. The server's keys (VAPID) are made on first start and
  * kept in the data folder, as are the devices' subscriptions (not in the save-files: they belong to
- * each device). Every minute it sends a reminder for each note that has just fallen due.
+ * each device, and each to the user who registered it). Every minute it sends a reminder for each note
+ * that has just fallen due, to that note's user's devices only.
  */
 export class PushReminders {
-  private subscriptions: PushSubscription[] = [];
+  private subscriptions: Device[] = [];
   private keys = { publicKey: "", privateKey: "" };
   private checking = false;
 
   constructor(
     private readonly dataDir: string,
     private readonly contact: string,
-    private readonly store: NoteStore,
+    private readonly notebooks: Notebooks,
   ) {}
 
   private get keysFile() {
@@ -48,7 +54,10 @@ export class PushReminders {
       console.log(`Made new push keys in ${this.keysFile}`);
     }
     webpush.setVapidDetails(this.contact, this.keys.publicKey, this.keys.privateKey);
-    this.subscriptions = (await readJson<PushSubscription[]>(this.subscriptionsFile)) ?? [];
+    const stored = (await readJson<(PushSubscription & { userId?: number })[]>(this.subscriptionsFile)) ?? [];
+    // Devices registered before there were users are the admin's.
+    this.subscriptions = stored.map((device) => ({ ...device, userId: device.userId ?? ADMIN_ID }));
+    if (stored.some((device) => device.userId === undefined)) await writeJson(this.subscriptionsFile, this.subscriptions);
     console.log(`Reminders go to ${this.subscriptions.length} device(s).`);
 
     // Straight away (to catch reminders missed while the server was down), then every minute.
@@ -60,18 +69,19 @@ export class PushReminders {
     return this.keys.publicKey;
   }
 
-  /** Adds a device's subscription, or updates it if the device sends it again. */
-  async subscribe(raw: unknown): Promise<void> {
+  /** Adds a device's subscription for this user, or updates it if the device sends it again (perhaps for another user). */
+  async subscribe(userId: number, raw: unknown): Promise<void> {
     const subscription = validSubscription(raw);
-    this.subscriptions = [...this.subscriptions.filter((s) => s.endpoint !== subscription.endpoint), subscription];
+    this.subscriptions = [...this.subscriptions.filter((s) => s.endpoint !== subscription.endpoint), { ...subscription, userId }];
     await writeJson(this.subscriptionsFile, this.subscriptions);
   }
 
   /** Forgets a device (reminders turned off, or logging out). */
-  async unsubscribe(raw: unknown): Promise<void> {
+  async unsubscribe(userId: number, raw: unknown): Promise<void> {
     const endpoint = (raw as { endpoint?: unknown } | undefined)?.endpoint;
     if (typeof endpoint !== "string") throw new RequestError(400, `"endpoint" must be the subscription's endpoint.`);
-    await this.remove([endpoint]);
+    // Only this user's own device.
+    if (this.subscriptions.some((s) => s.endpoint === endpoint && s.userId === userId)) await this.remove([endpoint]);
   }
 
   /** End-to-end tests only: forgets every device, so each test starts with none. */
@@ -80,18 +90,18 @@ export class PushReminders {
     await writeJson(this.subscriptionsFile, this.subscriptions);
   }
 
-  /** "Send test": returns how many devices it reached. */
-  sendTest(): Promise<number> {
-    return this.sendToAll({ title: "Test reminder", tag: "test" });
+  /** "Send test": returns how many of this user's devices it reached. */
+  sendTest(userId: number): Promise<number> {
+    return this.sendToUser(userId, { title: "Test reminder", tag: "test" });
   }
 
-  /** Sends to every device; devices the push service says are gone are forgotten. Returns how many it reached. */
-  private async sendToAll(message: PushMessage): Promise<number> {
+  /** Sends to every device of the user; devices the push service says are gone are forgotten. Returns how many it reached. */
+  private async sendToUser(userId: number, message: PushMessage): Promise<number> {
     const payload = JSON.stringify(message);
     const gone: string[] = [];
     let reached = 0;
     await Promise.all(
-      this.subscriptions.map(async (subscription) => {
+      this.subscriptions.filter((device) => device.userId === userId).map(async ({ userId: _user, ...subscription }) => {
         try {
           await webpush.sendNotification(subscription, payload);
           reached++;
@@ -115,21 +125,36 @@ export class PushReminders {
     await writeJson(this.subscriptionsFile, this.subscriptions);
   }
 
-  /** Sends a reminder for each note that has fallen due, then records that it was sent. */
+  /**
+   * Sends a reminder for each note that has fallen due, then records that it was sent. Every user with
+   * a device is checked (their notebook is loaded if it isn't yet), and every notebook already loaded.
+   */
   private async checkDue(): Promise<void> {
     if (this.checking) return;
     this.checking = true;
     try {
-      const due = this.store.dueForReminder(new Date());
-      if (due.length === 0) return;
-      for (const note of due) {
-        await this.sendToAll({
-          title: note.titleText !== undefined ? `Due: ${withoutMarkers(note.titleText)}` : "A note is due",
-          tag: `note-${note.id}`,
-        });
+      const users = this.notebooks.users;
+      if (!users.isReady()) return;
+      const ids = new Set([...this.subscriptions.map((device) => device.userId), ...(await this.notebooks.loaded()).map((store) => store.userId)]);
+      for (const userId of ids) {
+        const user = users.byId(userId);
+        if (!user || user.disabled) continue;
+        try {
+          const store = await this.notebooks.for(userId);
+          const due = store.dueForReminder(new Date());
+          if (due.length === 0) continue;
+          for (const note of due) {
+            await this.sendToUser(userId, {
+              title: note.titleText !== undefined ? `Due: ${withoutMarkers(note.titleText)}` : "A note is due",
+              tag: `note-${note.id}`,
+            });
+          }
+          // Recorded even if no device was reached, so a reminder is never sent late to a device added later.
+          await store.markReminded(due);
+        } catch (error) {
+          console.error(`Couldn't send user ${userId}'s reminders:`, error);
+        }
       }
-      // Recorded even if no device was reached, so a reminder is never sent late to a device added later.
-      await this.store.markReminded(due);
     } catch (error) {
       console.error("Couldn't send reminders:", error);
     } finally {

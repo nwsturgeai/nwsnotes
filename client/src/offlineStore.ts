@@ -56,3 +56,20 @@ export async function idbSet(key: string, value: unknown): Promise<void> {
     }
   });
 }
+
+/** Removes the value stored under `key`; resolves once it's gone (or at once, if there's no IndexedDB). */
+export async function idbDelete(key: string): Promise<void> {
+  const db = await open();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const transaction = db.transaction(STORE, "readwrite");
+      transaction.objectStore(STORE).delete(key);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+      transaction.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}

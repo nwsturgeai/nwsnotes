@@ -32,12 +32,10 @@ import {
 import { databaseUnreachable, type Db } from "./db.js";
 import { RequestError } from "./errors.js";
 import {
-  ensureSchema,
-  emptyAll,
+  emptyNotebook,
   listChanges,
   loadSnapshot,
   oldTabOrders,
-  pruneHistory,
   revertedSnapshot,
   withoutNoteOrder,
   writeChange,
@@ -47,6 +45,9 @@ import {
 } from "./persist.js";
 
 export { RequestError };
+
+/** The daily backup files' names. */
+export const DAILY_BACKUP_PATTERN = /^notes-\d{4}-\d{2}-\d{2}\.json$/;
 
 /** Contents of each save-file. */
 interface SaveFile {
@@ -128,13 +129,10 @@ function offlineTime(raw: unknown, now: Date): string | undefined {
   return ms <= now.getTime() ? new Date(ms).toISOString() : undefined;
 }
 
-const FILE_PATTERN =/^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
+const FILE_PATTERN = /^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
 
 /** How long the history is kept. */
-const HISTORY_DAYS = 30;
-/** How many daily backup files are kept. */
-const BACKUPS_KEPT = 7;
-const BACKUP_PATTERN = /^notes-\d{4}-\d{2}-\d{2}\.json$/;
+export const HISTORY_DAYS = 30;
 
 /** A note as history summaries name it: its title in quotes (shortened), or "a handwritten note". */
 function label(note: Note): string {
@@ -225,9 +223,6 @@ function snapshotOf(content: Required<SaveFile>): Snapshot {
   };
 }
 
-/** How long to wait before trying the database again, when it couldn't be reached at start-up. */
-const RETRY_START_MS = 30_000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Options for saving a change. */
 interface SaveOptions {
@@ -238,8 +233,9 @@ interface SaveOptions {
 }
 
 /**
- * Keeps all notes, categories and tabs in memory, and saves each change to the database (Supabase's
- * Postgres, or PGlite in development and the tests) with its history, so earlier states can be gone back to.
+ * One user's notebook: keeps all their notes, categories and tabs in memory, and saves each change to the
+ * database (Supabase's Postgres, or PGlite in development and the tests) with its history, so earlier
+ * states can be gone back to. Every user has their own, with its own queue of changes (see notebooks.ts).
  */
 export class NoteStore {
   private notes: Note[] = [];
@@ -264,51 +260,37 @@ export class NoteStore {
 
   constructor(
     private readonly db: Db,
+    /** Holds the save-files from before the database (only user 1's notebook imports them). */
     private readonly dataDir: string,
+    readonly userId: number,
   ) {}
 
-  /**
-   * Loads the data from the database (setting it up the first time, and importing the latest save-file
-   * if the database has no data). If the database can't be reached, it tries again every 30 seconds,
-   * and the API answers 503 meanwhile. Then starts the daily jobs.
-   */
-  async init(): Promise<void> {
-    await mkdir(this.dataDir, { recursive: true });
-    try {
-      await this.load();
-    } catch (error) {
-      if (!(error instanceof RequestError && error.status === 503)) throw error;
-      console.warn(`The database can't be reached; trying again in ${RETRY_START_MS / 1000} seconds.`);
-      setTimeout(() => void this.init().catch((e: unknown) => console.error("Couldn't load the data:", e)), RETRY_START_MS).unref();
-      return;
-    }
-    void this.daily();
-    setInterval(() => void this.daily(), DAY_MS).unref();
-  }
-
-  private async load(): Promise<void> {
-    await ensureSchema(this.db);
-    const loaded = await loadSnapshot(this.db);
+  /** Loads the notebook from the database (setting it up the first time). */
+  async load(): Promise<void> {
+    const loaded = await loadSnapshot(this.db, this.userId);
     if (loaded) {
       // Data from before the order was shared: the order made from the tabs' own is saved (not in the history).
       if (loaded.stored) {
-        await writeChange(this.db, loaded.stored, loaded.snapshot, this.nextSaveTime(), undefined);
-        console.log("Made the shared note order from the tabs' own orders.");
+        await writeChange(this.db, this.userId, loaded.stored, loaded.snapshot, this.nextSaveTime(), undefined);
+        console.log(`Made user ${this.userId}'s shared note order from the tabs' own orders.`);
       }
       this.apply(loaded.snapshot);
-      console.log(`Loaded ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from the database.`);
+      console.log(
+        `Loaded user ${this.userId}'s ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from the database.`,
+      );
     } else {
-      // The first start with this database: bring across the latest save-file, if there is one.
-      const latest = (await this.listSaveFiles()).at(-1);
+      // The first start with this database: bring across the latest save-file (from before the database,
+      // when there was one notebook, so only into the admin's), if there is one.
+      const latest = this.userId === 1 ? (await this.listSaveFiles()).at(-1) : undefined;
       const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0, allTabPlacement: "top", noteOrder: [] };
       if (latest) {
         const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
-        await writeChange(this.db, empty, snapshotOf(content), this.nextSaveTime(), { summary: `Imported from ${latest.name}` });
+        await writeChange(this.db, this.userId, empty, snapshotOf(content), this.nextSaveTime(), { summary: `Imported from ${latest.name}` });
         this.apply(snapshotOf(content));
         console.log(`Imported ${this.notes.length} notes from ${latest.name} into the database.`);
       } else {
         // Marks the database as set up (lastNoteId is stored), so a later start doesn't import anything.
-        await writeChange(this.db, { ...empty, lastNoteId: -1 }, empty, this.nextSaveTime(), undefined);
+        await writeChange(this.db, this.userId, { ...empty, lastNoteId: -1 }, empty, this.nextSaveTime(), undefined);
         console.log("No data or save-files yet; starting with no notes.");
       }
     }
@@ -374,7 +356,7 @@ export class NoteStore {
     if (before !== undefined && !Number.isInteger(before)) throw new RequestError(400, '"before" must be a change id.');
     const limit = rawLimit === undefined ? 50 : Number(rawLimit);
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new RequestError(400, '"limit" must be from 1 to 200.');
-    return listChanges(this.db, before, limit);
+    return listChanges(this.db, this.userId, before, limit);
   }
 
   /** Goes back to how everything was just after change `toChangeId`. Returns how many changes were undone. */
@@ -382,7 +364,7 @@ export class NoteStore {
     return this.enqueue(async () => {
       const toChangeId = (raw as { toChangeId?: unknown } | undefined)?.toChangeId;
       if (!Number.isInteger(toChangeId)) throw new RequestError(400, '"toChangeId" must be a change id.');
-      const result = await revertedSnapshot(this.db, toChangeId as number, this.snapshot());
+      const result = await revertedSnapshot(this.db, this.userId, toChangeId as number, this.snapshot());
       if (!result) throw new RequestError(404, `There is no change ${String(toChangeId)} in the history (it may be over ${HISTORY_DAYS} days old).`);
       if (result.undone === 0) throw new RequestError(400, "That's the latest change, so there's nothing to undo.");
       // A reminder already sent for a note's due date isn't sent again because the note came back.
@@ -416,38 +398,13 @@ export class NoteStore {
     });
   }
 
-  /**
-   * Once a day: a small query, so Supabase sees the database as in use (free projects are paused after a
-   * week without activity); a backup file in `backups/`, keeping the last seven; and history older than
-   * 30 days deleted. Failures are logged, and tried again the next day.
-   */
-  async daily(): Promise<void> {
-    try {
-      await this.db.query("SELECT 1");
-    } catch (error) {
-      console.warn("Daily database check failed:", error instanceof Error ? error.message : error);
-    }
-    try {
-      const dir = path.join(this.dataDir, "backups");
-      await mkdir(dir, { recursive: true });
-      const now = new Date();
-      await writeFile(path.join(dir, `notes-${now.toISOString().slice(0, 10)}.json`), this.backup(now).content, "utf8");
-      const old = (await readdir(dir)).filter((name) => BACKUP_PATTERN.test(name)).sort().slice(0, -BACKUPS_KEPT);
-      for (const name of old) await unlink(path.join(dir, name));
-    } catch (error) {
-      console.error("Couldn't write the daily backup file:", error);
-    }
-    try {
-      const pruned = await pruneHistory(this.db, HISTORY_DAYS);
-      if (pruned > 0) console.log(`Deleted ${plural(pruned, "change")} older than ${HISTORY_DAYS} days from the history.`);
-    } catch (error) {
-      console.warn("Couldn't tidy the history:", error instanceof Error ? error.message : error);
-    }
-  }
-
-  /** Whether the data has been loaded from the database. */
-  isReady(): boolean {
-    return this.ready;
+  /** The daily backup: a file in `dir` (the user's own backup folder), keeping the last `kept`. */
+  async writeDailyBackup(dir: string, kept: number): Promise<void> {
+    await mkdir(dir, { recursive: true });
+    const now = new Date();
+    await writeFile(path.join(dir, `notes-${now.toISOString().slice(0, 10)}.json`), this.backup(now).content, "utf8");
+    const old = (await readdir(dir)).filter((name) => DAILY_BACKUP_PATTERN.test(name)).sort().slice(0, -kept);
+    for (const name of old) await unlink(path.join(dir, name));
   }
 
   /** End-to-end tests only: forgets what's in memory and loads it again from the database, as a restart would. */
@@ -468,7 +425,7 @@ export class NoteStore {
       const file = path.join(this.dataDir, name);
       await writeFile(file, saveFileText, "utf8");
       try {
-        await this.db.transaction(emptyAll);
+        await this.db.transaction((query) => emptyNotebook(query, this.userId));
         this.lastLongFormUpdate = undefined;
         await this.load();
       } finally {
@@ -983,7 +940,7 @@ export class NoteStore {
   resetTo(seedText: string): Promise<void> {
     return this.enqueue(async () => {
       const seed = snapshotOf(parseSaveFile("seed", seedText));
-      await this.db.transaction(emptyAll);
+      await this.db.transaction((query) => emptyNotebook(query, this.userId));
       this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1, allTabPlacement: "top", noteOrder: [] });
       this.lastLongFormUpdate = undefined;
       await this.save(this.nextSaveTime(), seed, { record: { summary: "Imported the test data" } });
@@ -1008,7 +965,7 @@ export class NoteStore {
       options.longFormUpdateId !== undefined && this.lastLongFormUpdate?.noteId === options.longFormUpdateId
         ? this.lastLongFormUpdate.changeId
         : undefined;
-    const changeId = await writeChange(this.db, before, after, now, options.record, join);
+    const changeId = await writeChange(this.db, this.userId, before, after, now, options.record, join);
     this.apply(after);
     this.lastSaveMs = now.getTime();
     this.lastLongFormUpdate =

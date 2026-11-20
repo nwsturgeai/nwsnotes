@@ -12,7 +12,7 @@ const offlineIcon = (page: Page) => page.getByRole("banner").getByRole("img", { 
 /** The clock on a note whose change is waiting to be sent. */
 const pendingIcon = (page: Page, title: string) => noteRow(page, title).locator(".note-pending");
 
-/** Whether the app has stored its offline copy of the data (in IndexedDB), with this many notes. */
+/** Whether the app has stored its offline copy of the data (in IndexedDB, under the admin's user id), with this many notes. */
 function offlineCopyNotes(page: Page): Promise<number> {
   return page.evaluate(
     () =>
@@ -21,7 +21,7 @@ function offlineCopyNotes(page: Page): Promise<number> {
         open.onerror = () => resolve(0);
         open.onsuccess = () => {
           try {
-            const get = open.result.transaction("kv").objectStore("kv").get("data");
+            const get = open.result.transaction("kv").objectStore("kv").get("data:1");
             get.onsuccess = () => resolve((get.result as { notes?: unknown[] } | undefined)?.notes?.length ?? 0);
             get.onerror = () => resolve(0);
           } catch {

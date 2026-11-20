@@ -6,6 +6,10 @@ export type Page =
   | { name: "settings" }
   /** The history of changes, where earlier states can be gone back to. */
   | { name: "history" }
+  /** Changing your own password. */
+  | { name: "password" }
+  /** The admin's users page. */
+  | { name: "users" }
   /** Adding (id "new") or editing a category. */
   | { name: "category"; id: number | "new" }
   /** Adding (id "new") or editing a tab; "all" is the built-in tab, whose only setting is where it shows. */
@@ -19,6 +23,10 @@ export function pathFor(page: Page): string {
       return "/settings";
     case "history":
       return "/history";
+    case "password":
+      return "/settings/password";
+    case "users":
+      return "/settings/users";
     case "category":
       return `/settings/categories/${page.id}`;
     case "tab":
@@ -29,6 +37,8 @@ export function pathFor(page: Page): string {
 function pageFromPath(pathname: string): Page {
   if (pathname === "/settings") return { name: "settings" };
   if (pathname === "/history") return { name: "history" };
+  if (pathname === "/settings/password") return { name: "password" };
+  if (pathname === "/settings/users") return { name: "users" };
   if (pathname === "/settings/tabs/all") return { name: "tab", id: "all" };
   const match = /^\/settings\/(categories|tabs)\/(new|\d+)$/.exec(pathname);
   if (match) {

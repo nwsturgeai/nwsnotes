@@ -8,6 +8,7 @@ import {
   LIFETIME_BIN,
   LIFETIME_NEW,
   type Category,
+  type Me,
   type Note,
   type Tab,
   type TabPlacement,
@@ -40,6 +41,12 @@ interface Props {
   onTabsReordered: (tabs: Tab[]) => void;
   onSessionExpired: () => void;
   onLogout: () => void;
+  /** Who is logged in. */
+  me: Me;
+  /** Changes made offline and not yet sent: logging out would lose them, so it asks first. */
+  pendingCount: number;
+  /** A message to show at the top (e.g. after changing the password). */
+  notice?: string;
 }
 
 /** Up and down buttons, in the space at the right of a category's or tab's row. */
@@ -115,7 +122,11 @@ export function SettingsPage({
   onTabsReordered,
   onSessionExpired,
   onLogout,
+  me,
+  pendingCount,
+  notice,
 }: Props) {
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [confirming, setConfirming] = useState<{ action: BulkAction; message: string; label: string }>();
   /** A failed reorder, shown under that section's list. */
   const [orderError, setOrderError] = useState<{ section: "categories" | "tabs"; text: string }>();
@@ -225,6 +236,11 @@ export function SettingsPage({
   return (
     <main className="settings-page">
       <h1>Settings</h1>
+      {notice && (
+        <p className="lifetime-result" role="status">
+          {notice}
+        </p>
+      )}
 
       {/* Stylus mode and Columns side by side; both are remembered on this device only. */}
       <section className="device-settings">
@@ -492,11 +508,40 @@ export function SettingsPage({
 
       <AppVersion />
 
+      {me.admin && (
+        <section>
+          <h2>Users</h2>
+          <p>Add people, reset their passwords, and turn accounts off and on.</p>
+          <a className="button" href={pathFor({ name: "users" })} onClick={(event) => go(event, { name: "users" })}>
+            Manage users
+          </a>
+        </section>
+      )}
+
       <section>
         <h2>Account</h2>
-        <button type="button" className="button" onClick={onLogout}>
-          Log out
-        </button>
+        <p>
+          Logged in as {me.displayName} ({me.loginName})
+        </p>
+        <div className="lifetime-buttons">
+          <button type="button" className="button" onClick={() => onNavigate({ name: "password" })}>
+            Change password
+          </button>
+          <button type="button" className="button" onClick={() => (pendingCount > 0 ? setConfirmingLogout(true) : onLogout())}>
+            Log out
+          </button>
+        </div>
+        {confirmingLogout && (
+          <ConfirmDialog
+            message={`${pendingCount} ${pendingCount === 1 ? "change hasn't" : "changes haven't"} been saved to the server yet. Log out anyway and lose them?`}
+            confirmLabel="Log out"
+            onConfirm={() => {
+              setConfirmingLogout(false);
+              onLogout();
+            }}
+            onCancel={() => setConfirmingLogout(false)}
+          />
+        )}
       </section>
     </main>
   );

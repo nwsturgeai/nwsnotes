@@ -2195,3 +2195,53 @@ body:has(.note-list li.dragging) {
   display: flex;
   margin-left: auto;
 }
+
+/* ---- Users page (admin) -------------------------------------------------- */
+
+.user-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.user-list > li {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.user-names {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.user-login {
+  color: var(--muted);
+}
+
+.user-label {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.user-label.off {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.settings-page .user-details {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.confirm-dialog .new-password {
+  margin: 0.75rem 0;
+  font-family: ui-monospace, monospace;
+  font-size: 1.25rem;
+  letter-spacing: 0.05em;
+  user-select: all;
+}

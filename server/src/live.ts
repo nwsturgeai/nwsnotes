@@ -1,21 +1,26 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
-import { LIVE_UPDATES_PATH, type LiveMessage } from "@nwsnotes/shared";
-import { SESSION_COOKIE, isValidSessionToken, readCookie } from "./auth.js";
+import { LIVE_LOGGED_OUT_CLOSE_CODE, LIVE_UPDATES_PATH, type LiveMessage } from "@nwsnotes/shared";
+import { sessionUser } from "./auth.js";
+import type { Users } from "./users.js";
 
 const PING_INTERVAL_MS = 30_000;
 
 /**
  * Live updates: each open website keeps a WebSocket to /ws. When one page changes
- * the notes, every other page is told to reload them.
+ * the notes, every other page of the same user is told to reload them. Each connection belongs to the user
+ * whose cookie opened it.
  */
 export class LiveUpdates {
   private readonly wss = new WebSocketServer({ noServer: true });
   /** Open connections, with the connection id each page sent and whether it answered the last ping. */
-  private readonly clients = new Map<WebSocket, { id: string | undefined; alive: boolean }>();
+  private readonly clients = new Map<WebSocket, { id: string | undefined; userId: number; alive: boolean }>();
 
-  constructor(private readonly sessionSecret: string) {
+  constructor(
+    private readonly users: Users,
+    private readonly sessionSecret: string,
+  ) {
     // Ping regularly so idle connections aren't silently dropped, and close any that stopped answering.
     setInterval(() => this.ping(), PING_INTERVAL_MS).unref();
   }
@@ -32,26 +37,46 @@ export class LiveUpdates {
       refuse(socket, 403, "Forbidden");
       return;
     }
-    if (!isValidSessionToken(readCookie(req, SESSION_COOKIE), this.sessionSecret)) {
+    const user = this.users.isReady() ? sessionUser(req, this.users, this.sessionSecret) : undefined;
+    if (!user) {
       refuse(socket, 401, "Unauthorized");
       return;
     }
     const id = url.searchParams.get("id") || undefined;
-    this.wss.handleUpgrade(req, socket, head, (ws) => this.add(ws, id));
+    this.wss.handleUpgrade(req, socket, head, (ws) => this.add(ws, id, user.id));
   };
 
-  /** Tells every page except the one that made the change to reload the notes. */
-  notifyChanged(senderId: string | undefined): void {
+  /** Tells every page of this user, except the one that made the change, to reload the notes. */
+  notifyChanged(userId: number, senderId: string | undefined): void {
     const message: LiveMessage = { type: "data-changed" };
     const text = JSON.stringify(message);
     for (const [ws, client] of this.clients) {
-      if (senderId && client.id === senderId) continue;
+      if (client.userId !== userId || (senderId && client.id === senderId)) continue;
       if (ws.readyState === ws.OPEN) ws.send(text);
     }
   }
 
-  private add(ws: WebSocket, id: string | undefined): void {
-    this.clients.set(ws, { id, alive: true });
+  /**
+   * The user's logins stopped working (turned off, or the session version raised): closes their
+   * connections, apart from `exceptId`'s (the page that changed its own password, which has a fresh
+   * cookie). The pages then check their session, and show the login page.
+   */
+  logOut(userId: number, exceptId?: string): void {
+    for (const [ws, client] of this.clients) {
+      if (client.userId !== userId || (exceptId && client.id === exceptId)) continue;
+      ws.close(LIVE_LOGGED_OUT_CLOSE_CODE, "Logged out");
+      this.clients.delete(ws);
+    }
+  }
+
+  /** End-to-end tests only: closes every connection (the database was replaced). */
+  logOutEveryone(): void {
+    for (const ws of this.clients.keys()) ws.close(LIVE_LOGGED_OUT_CLOSE_CODE, "Logged out");
+    this.clients.clear();
+  }
+
+  private add(ws: WebSocket, id: string | undefined, userId: number): void {
+    this.clients.set(ws, { id, userId, alive: true });
     ws.on("pong", () => {
       const client = this.clients.get(ws);
       if (client) client.alive = true;

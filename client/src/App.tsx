@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ALL_TAB_NAME, type Category, type Note, type NotesData, type Tab } from "@nwsnotes/shared";
+import { ALL_TAB_NAME, type Category, type Me, type Note, type NotesData, type Tab } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { useUpdateReady } from "./appUpdate";
 import { CategoryEditPage } from "./CategoryEditPage";
@@ -9,20 +9,24 @@ import { useLiveUpdates } from "./live";
 import { LoginPage } from "./LoginPage";
 import { NotesPage } from "./NotesPage";
 import {
+  clearOfflineUser,
   goOffline,
-  initOffline,
   isOffline,
   markOnline,
   probe,
   rememberData,
   savedData,
+  savedUser,
   setOfflineHandlers,
+  setOfflineUser,
   useOfflineState,
   withPending,
 } from "./offline";
 import { registerReminders, turnOffReminders } from "./reminders";
 import { usePage } from "./route";
 import { HistoryPage } from "./HistoryPage";
+import { PasswordPage } from "./PasswordPage";
+import { UsersPage } from "./UsersPage";
 import { SettingsPage } from "./SettingsPage";
 import { useColumns, useStylusMode } from "./stylusMode";
 import { TabEditPage } from "./TabEditPage";
@@ -31,7 +35,7 @@ import type { TagSelection } from "./TagPickers";
 type State =
   | { screen: "loading" }
   | { screen: "login" }
-  | { screen: "notes"; data: NotesData }
+  | { screen: "notes"; data: NotesData; me: Me }
   | { screen: "error"; error: unknown; when: Date };
 
 /** The longest logging out waits for this device's reminders to be turned off. */
@@ -73,10 +77,15 @@ export function App() {
   const loadNotes = useCallback(async () => {
     setState({ screen: "loading" });
     setRefreshError(undefined);
-    await initOffline();
+    // Who is logged in decides which offline copy and outbox are this user's, so that comes first.
+    const notesRequest = api.getNotes();
+    notesRequest.catch(() => undefined);
+    let me: Me | undefined;
     try {
-      const data = await api.getNotes();
-      setState({ screen: "notes", data: withPending(data) });
+      me = await api.me();
+      await setOfflineUser(me);
+      const data = await notesRequest;
+      setState({ screen: "notes", data: withPending(data), me });
       markOnline();
       registerReminders();
     } catch (error) {
@@ -84,10 +93,16 @@ export function App() {
         setState({ screen: "login" });
         return;
       }
-      const saved = error instanceof ApiError && error.isNetworkError ? await savedData() : undefined;
-      if (saved) {
+      // Offline: the copy saved on this device for whoever was last logged in here.
+      const user = me ?? savedUser();
+      let saved: NotesData | undefined;
+      if (user && error instanceof ApiError && error.isNetworkError) {
+        await setOfflineUser(user);
+        saved = await savedData();
+      }
+      if (user && saved) {
         goOffline();
-        setState({ screen: "notes", data: withPending(saved) });
+        setState({ screen: "notes", data: withPending(saved), me: user });
       } else {
         setState({ screen: "error", error, when: new Date() });
       }
@@ -100,7 +115,7 @@ export function App() {
    */
   const refreshNotes = useCallback(async () => {
     if (isOffline()) {
-      setState((prev) => (prev.screen === "notes" ? { screen: "notes", data: withPending(prev.data) } : prev));
+      setState((prev) => (prev.screen === "notes" ? { ...prev, data: withPending(prev.data) } : prev));
       // A reload is also asked for when the live-update connection comes back, so check for the server.
       void probe();
       return;
@@ -111,7 +126,7 @@ export function App() {
       const data = await api.getNotes();
       if (thisRefresh !== latestRefresh.current) return;
       setRefreshError(undefined);
-      setState((prev) => (prev.screen === "notes" ? { screen: "notes", data: withPending(data) } : prev));
+      setState((prev) => (prev.screen === "notes" ? { ...prev, data: withPending(data) } : prev));
       markOnline();
     } catch (error) {
       if (thisRefresh !== latestRefresh.current) return;
@@ -151,7 +166,7 @@ export function App() {
         setState((prev) =>
           prev.screen === "notes"
             ? {
-                screen: "notes",
+                ...prev,
                 data: {
                   ...prev.data,
                   notes: prev.data.notes.map((n) =>
@@ -174,7 +189,7 @@ export function App() {
   /** Applies a change this page just saved. */
   const applySaved = useCallback(
     (change: (data: NotesData) => NotesData) => {
-      setState((prev) => (prev.screen === "notes" ? { screen: "notes", data: change(prev.data) } : prev));
+      setState((prev) => (prev.screen === "notes" ? { ...prev, data: change(prev.data) } : prev));
       // A reload that started before this change was saved would leave it out, so start a fresh one.
       if (refreshInProgress.current) void refreshNotes();
     },
@@ -247,12 +262,19 @@ export function App() {
       ]);
       await api.logout();
     } finally {
+      // This user's offline copy (and any changes still waiting, which the settings page asked about) goes.
+      await clearOfflineUser();
       navigate({ name: "notes" }, { replace: true });
       setState({ screen: "login" });
     }
   }, [navigate]);
 
   const sessionExpired = useCallback(() => setState({ screen: "login" }), []);
+  /** A message for the settings page after coming back to it (e.g. after changing the password). */
+  const [settingsNotice, setSettingsNotice] = useState<string>();
+  useEffect(() => {
+    if (page.name !== "settings" && page.name !== "password") setSettingsNotice(undefined);
+  }, [page.name]);
 
   switch (state.screen) {
     case "loading":
@@ -312,7 +334,24 @@ export function App() {
               onTabsReordered={(tabs) => applySaved((data) => ({ ...data, tabs }))}
               onSessionExpired={sessionExpired}
               onLogout={logout}
+              me={state.me}
+              pendingCount={offlineState.pendingCount}
+              notice={settingsNotice}
             />
+          ) : page.name === "password" ? (
+            <PasswordPage
+              onChanged={() => {
+                setSettingsNotice("Password changed. Your other devices have been logged out.");
+                navigate({ name: "settings" });
+              }}
+              onClose={() => navigate({ name: "settings" })}
+              onSessionExpired={sessionExpired}
+            />
+          ) : page.name === "users" && state.me.admin ? (
+            <UsersPage
+              me={state.me}
+              onMeChanged={(me) => setState((prev) => (prev.screen === "notes" ? { ...prev, me } : prev))}
+              onClose={() => navigate({ name: "settings" })} onSessionExpired={sessionExpired} />
           ) : page.name === "history" ? (
             <HistoryPage onReverted={() => void refreshNotes()} onSessionExpired={sessionExpired} />
           ) : page.name === "category" ? (
