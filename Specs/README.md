@@ -16,5 +16,6 @@ requirements first, then the "Agreed technical decisions" for that area.
 | [due-dates.md](due-dates.md) | Due dates and reminders |
 | [offline-and-updates.md](offline-and-updates.md) | Offline use, live updates, the Android app, app updates |
 | [data.md](data.md) | The API, the database (Supabase), history and revert, backups, save files |
+| [users.md](users.md) | Several users with separate notebooks: accounts, logging in, the users page, per-user data |
 | [hosting.md](hosting.md) | The VM and deployment |
 | [testing.md](testing.md) | Automated tests |

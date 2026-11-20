@@ -41,6 +41,7 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 - Icons: Font Awesome Free (solid icons), installed from npm (`@fortawesome/fontawesome-svg-core`, `@fortawesome/free-solid-svg-icons`, `@fortawesome/react-fontawesome`) and bundled into the app, not loaded from a CDN, so the security headers and offline start-up keep working. All the app's icons use it, including the settings cog (`fa-gear`).
 
 ### Login
+- **Superseded by [users.md](users.md)** once several users are added: a login name as well as a password, and one admin who creates the accounts. What follows describes the single-user app.
 - A login page with a single password field. On success the server sets a secure, HttpOnly session cookie that lasts 30 days.
 - "Log out" is on the settings page only, not on the main notes screen.
 - The 32-character password is generated once on the VM. Only a hash of it is stored, in `/etc/nwsnotes/config.json` on the VM, never in GitHub.
