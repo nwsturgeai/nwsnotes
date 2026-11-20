@@ -40,6 +40,8 @@ async function addNote(page: Page, title: string) {
 }
 
 test("notes added and edited offline are saved when the server is back", async ({ page, context }) => {
+  // Syncing waits for the app's next check on the server (every 15 seconds), so allow time on a slow machine.
+  test.setTimeout(90_000);
   await openNotes(page);
   await context.setOffline(true);
 
@@ -56,11 +58,11 @@ test("notes added and edited offline are saved when the server is back", async (
   expect(await savedNote(page, "Written offline")).toBeUndefined();
 
   await context.setOffline(false);
-  await expect(offlineIcon(page)).toHaveCount(0, { timeout: 20_000 });
-  await expect(pendingIcon(page, "Written offline")).toHaveCount(0);
-  // The waiting changes are sent one at a time.
-  await expect.poll(async () => (await savedNote(page, "Written offline")) !== undefined).toBe(true);
-  await expect.poll(async () => (await savedNote(page, "Buy oat milk")) !== undefined).toBe(true);
+  await expect(offlineIcon(page)).toHaveCount(0, { timeout: 30_000 });
+  await expect(pendingIcon(page, "Written offline")).toHaveCount(0, { timeout: 20_000 });
+  // The waiting changes are sent one at a time (allowing for a slow machine).
+  await expect.poll(async () => (await savedNote(page, "Written offline")) !== undefined, { timeout: 20_000 }).toBe(true);
+  await expect.poll(async () => (await savedNote(page, "Buy oat milk")) !== undefined, { timeout: 20_000 }).toBe(true);
 
   // Everything is on the server, as a reload shows.
   await page.reload();
