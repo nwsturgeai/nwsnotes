@@ -57,18 +57,41 @@ export function useFullTagList(): [boolean, (on: boolean) => void] {
   return useDeviceSetting("nwsnotes.fullTagList", (stored) => stored === "on", onOff);
 }
 
-export const MAX_COLUMNS = 4;
+/** The Columns setting: always one column, or as many as fit at least this wide. */
+export type ColumnsChoice = "single" | "wide" | "medium" | "narrow";
 
-/** How many columns the note list is split into (1 to 4, default 1). A higher saved value (5 was allowed) counts as 4. */
-export function useColumns(): [number, (columns: number) => void] {
-  return useDeviceSetting(
+/** The Columns setting's choices, in the order Settings shows them, with each one's smallest column width (px). */
+export const COLUMN_CHOICES: { value: ColumnsChoice; label: string; minWidth?: number }[] = [
+  { value: "single", label: "Single" },
+  { value: "wide", label: "Wide", minWidth: 500 },
+  { value: "medium", label: "Medium", minWidth: 400 },
+  { value: "narrow", label: "Narrow", minWidth: 300 },
+];
+
+/** Numbers saved before (1 to 5 columns), as the choice in the same place. */
+const OLD_COLUMNS: Record<string, ColumnsChoice> = { "1": "single", "2": "wide", "3": "medium", "4": "narrow", "5": "narrow" };
+
+/** The Columns setting (default Medium). */
+export function useColumns(): [ColumnsChoice, (choice: ColumnsChoice) => void] {
+  return useDeviceSetting<ColumnsChoice>(
     "nwsnotes.columns",
-    (stored) => {
-      const columns = Number(stored);
-      return Number.isInteger(columns) && columns >= 1 ? Math.min(columns, MAX_COLUMNS) : 1;
-    },
+    (stored) => COLUMN_CHOICES.find((choice) => choice.value === stored)?.value ?? OLD_COLUMNS[stored ?? ""] ?? "medium",
     String,
   );
+}
+
+/**
+ * How many columns a list this wide (px) is split into: one for Single; otherwise as many as fit at
+ * the choice's smallest width (at least one, with no upper limit; the app is at most 1280px wide).
+ */
+export function columnCount(choice: ColumnsChoice, width: number): number {
+  const minWidth = COLUMN_CHOICES.find((option) => option.value === choice)?.minWidth;
+  return minWidth ? Math.max(1, Math.floor(width / minWidth)) : 1;
+}
+
+/** Whether each tab shows its number of notes, e.g. "All (153)" (default off). */
+export function useTabCounts(): [boolean, (on: boolean) => void] {
+  return useDeviceSetting("nwsnotes.tabCounts", (stored) => stored === "on", onOff);
 }
 
 /** The pen thicknesses to choose from, in CSS pixels. */

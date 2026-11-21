@@ -19,6 +19,8 @@ async function dragAbove(page: Page, note: Locator, above: Locator, cancel = fal
 }
 
 test.beforeEach(async ({ page }) => {
+  // One column, so the notes are one above another (Medium, the default, gives several on a wide screen).
+  await page.addInitScript(() => localStorage.setItem("nwsnotes.columns", "single"));
   await openNotes(page);
   await selectTab(page, "Work");
   await expectTitles(page, WORK);

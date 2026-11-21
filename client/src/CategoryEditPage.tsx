@@ -6,6 +6,7 @@ import { ApiError, api } from "./api";
 import { hueColour } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { HuePicker } from "./HuePicker";
+import { DragGrip, draggedStyle, rowsWithGap, useListDrag } from "./listDrag";
 
 interface Props {
   /** "new" to add a category. */
@@ -91,6 +92,17 @@ function CategoryForm({
 
   /** The arrow to focus after a move, so pressing it again keeps moving the same tag. */
   const focusArrow = useRef<{ key: number; direction: "up" | "down" }>(undefined);
+
+  /** Dragging tag rows by their grips: a drop rearranges the list, which is saved with the category. */
+  const tagListRef = useRef<HTMLDivElement>(null);
+  const { drag: tagDrag, gripHandlers: tagGrip } = useListDrag(tagListRef, (key, target) =>
+    setRows((current) => {
+      const moving = current.find((row) => row.key === key);
+      if (!moving) return current;
+      const others = current.filter((row) => row.key !== key);
+      return [...others.slice(0, target), moving, ...others.slice(target)];
+    }),
+  );
 
   /** Moves a tag row up (-1) or down (+1); the new order is saved with the category. */
   function moveRow(key: number, by: -1 | 1) {
@@ -226,8 +238,20 @@ function CategoryForm({
 
         <fieldset>
           <legend>Tags</legend>
-          {rows.map((row, index) => (
-            <div key={row.key} className="tag-row">
+          <div className="tag-rows" ref={tagListRef}>
+          {rowsWithGap(rows, (row) => row.key, tagDrag).map((entry) => {
+            if ("gap" in entry) return <div key="drag-gap" className="drag-gap" style={{ height: entry.gap }} aria-hidden />;
+            const row = entry.item;
+            const index = rows.indexOf(row);
+            const dragging = tagDrag?.id === row.key;
+            return (
+            <div
+              key={row.key}
+              data-drag-id={row.key}
+              className={dragging ? "tag-row dragging" : "tag-row"}
+              style={dragging ? draggedStyle(tagDrag) : undefined}
+            >
+              <DragGrip label={`Drag ${row.name || `tag ${index + 1}`}`} handlers={tagGrip(row.key)} />
               {/* The tag's colour: tapping opens the hue picker. Saved with the category. */}
               <button
                 type="button"
@@ -290,7 +314,9 @@ function CategoryForm({
                 <FontAwesomeIcon icon={faTrashCan} />
               </button>
             </div>
-          ))}
+            );
+          })}
+          </div>
           <button type="button" className="button" disabled={saving} onClick={addRow}>
             Add tag
           </button>

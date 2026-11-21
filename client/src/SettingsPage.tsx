@@ -19,7 +19,8 @@ import { reminderState, turnOffReminders, turnOnReminders, type ReminderState } 
 import { hueColour } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { pathFor, type Page } from "./route";
-import { MAX_COLUMNS, PEN_WIDTHS, usePenWidth } from "./stylusMode";
+import { COLUMN_CHOICES, PEN_WIDTHS, usePenWidth, type ColumnsChoice } from "./stylusMode";
+import { DragGrip, draggedStyle, rowsWithGap, useListDrag } from "./listDrag";
 import { TagPills } from "./TagPills";
 
 interface Props {
@@ -31,8 +32,10 @@ interface Props {
   allTabPlacement: TabPlacement;
   stylusMode: boolean;
   onStylusModeChange: (on: boolean) => void;
-  columns: number;
-  onColumnsChange: (columns: number) => void;
+  columns: ColumnsChoice;
+  onColumnsChange: (columns: ColumnsChoice) => void;
+  tabCounts: boolean;
+  onTabCountsChange: (on: boolean) => void;
   onNavigate: (page: Page) => void;
   /** Called after a Lifetime button changed notes, to reload them. */
   onNotesChanged: () => void;
@@ -91,6 +94,14 @@ function OrderButtons({
   );
 }
 
+/** `items` with the one with this id moved to `target`, its index among the others (a drop). */
+function movedTo<T extends { id: number }>(items: T[], id: number, target: number): T[] | undefined {
+  const moving = items.find((item) => item.id === id);
+  if (!moving) return undefined;
+  const others = items.filter((item) => item.id !== id);
+  return [...others.slice(0, target), moving, ...others.slice(target)];
+}
+
 /** `items` with the one with this id swapped with its neighbour above (-1) or below (+1). */
 function moved<T extends { id: number }>(items: T[], id: number, by: -1 | 1): T[] | undefined {
   const from = items.findIndex((item) => item.id === id);
@@ -116,6 +127,8 @@ export function SettingsPage({
   onStylusModeChange,
   columns,
   onColumnsChange,
+  tabCounts,
+  onTabCountsChange,
   onNavigate,
   onNotesChanged,
   onCategoriesReordered,
@@ -147,12 +160,16 @@ export function SettingsPage({
     focusArrow.current = `${key}-${(by < 0) !== atEdge ? "up" : "down"}`;
   }
 
-  /** Moves a user category up or down: shown at once, and saved straight away (reverted if that fails). */
-  async function moveCategory(id: number, by: -1 | 1) {
-    const userCategories = categories.filter((category) => !category.system);
-    const next = moved(userCategories, id, by);
+  /** Moves a user category up or down with its arrows. */
+  function moveCategory(id: number, by: -1 | 1) {
+    const next = moved(categories.filter((category) => !category.system), id, by);
     if (!next) return;
     focusAfterMove(`category-${id}`, by, next.findIndex((c) => c.id === id), next.length);
+    void saveCategoryOrder(next);
+  }
+
+  /** The user categories in a new order (arrows or a drop): shown at once, and saved straight away (reverted if that fails). */
+  async function saveCategoryOrder(next: Category[]) {
     setOrderError(undefined);
     onCategoriesReordered([...next, ...categories.filter((category) => category.system)]);
     try {
@@ -167,11 +184,16 @@ export function SettingsPage({
     }
   }
 
-  /** Moves a tab up or down: shown at once, and saved straight away (reverted if that fails). */
-  async function moveTab(id: number, by: -1 | 1) {
+  /** Moves a tab up or down with its arrows. */
+  function moveTab(id: number, by: -1 | 1) {
     const next = moved(tabs, id, by);
     if (!next) return;
     focusAfterMove(`tab-${id}`, by, next.findIndex((t) => t.id === id), next.length);
+    void saveTabOrder(next);
+  }
+
+  /** The tabs in a new order (arrows or a drop): shown at once, and saved straight away (reverted if that fails). */
+  async function saveTabOrder(next: Tab[]) {
     setOrderError(undefined);
     onTabsReordered(next);
     try {
@@ -185,6 +207,19 @@ export function SettingsPage({
       onNotesChanged();
     }
   }
+  /** Dragging categories and tabs by their grips (the shared list drag); a drop is saved straight away. */
+  const userCategories = categories.filter((category) => !category.system);
+  const systemCategories = categories.filter((category) => category.system);
+  const categoryListRef = useRef<HTMLUListElement>(null);
+  const tabListRef = useRef<HTMLUListElement>(null);
+  const { drag: categoryDrag, gripHandlers: categoryGrip } = useListDrag(categoryListRef, (id, target) => {
+    const next = movedTo(userCategories, id, target);
+    if (next) void saveCategoryOrder(next);
+  });
+  const { drag: tabDrag, gripHandlers: tabGrip } = useListDrag(tabListRef, (id, target) => {
+    const next = movedTo(tabs, id, target);
+    if (next) void saveTabOrder(next);
+  });
   const [busy, setBusy] = useState(false);
   /** Read by each canvas when it opens, so there's no need to pass it around. */
   const [penWidth, setPenWidth] = usePenWidth();
@@ -242,7 +277,7 @@ export function SettingsPage({
         </p>
       )}
 
-      {/* Stylus mode and Columns side by side; both are remembered on this device only. */}
+      {/* Stylus mode, Columns and Tab counts side by side; all are remembered on this device only. */}
       <section className="device-settings">
         <div>
           <label className="switch">
@@ -262,20 +297,28 @@ export function SettingsPage({
             <span id="columns-label" className="switch-label">
               Columns
             </span>
-            {Array.from({ length: MAX_COLUMNS }, (_, index) => index + 1).map((count) => (
+            {COLUMN_CHOICES.map((choice) => (
               <button
-                key={count}
+                key={choice.value}
                 type="button"
                 role="radio"
-                aria-checked={columns === count}
-                className={columns === count ? "column-choice chosen" : "column-choice"}
-                onClick={() => onColumnsChange(count)}
+                aria-checked={columns === choice.value}
+                className={columns === choice.value ? "column-choice chosen" : "column-choice"}
+                onClick={() => onColumnsChange(choice.value)}
               >
-                {count}
+                {choice.label}
               </button>
             ))}
           </div>
-          <p>How many columns the notes are shown in.</p>
+          <p>One column, or as many as fit at that width.</p>
+        </div>
+        <div>
+          <label className="switch">
+            <input type="checkbox" role="switch" checked={tabCounts} onChange={(event) => onTabCountsChange(event.target.checked)} />
+            <span className="switch-track" aria-hidden="true" />
+            <span className="switch-label">Tab counts</span>
+          </label>
+          <p>Show each tab's number of notes beside its name.</p>
         </div>
         <p className="device-note">These settings are remembered on this device only.</p>
       </section>
@@ -377,8 +420,10 @@ export function SettingsPage({
         <h2>Categories</h2>
         <p>Tags are arranged into categories. Click a category to rename it or its tags, or to add tags.</p>
         {categories.length > 0 && (
-          <ul className="category-list">
-            {categories.map((category) => {
+          <ul className="category-list" ref={categoryListRef}>
+            {[...rowsWithGap(userCategories, (c) => c.id, categoryDrag), ...systemCategories.map((item) => ({ item }))].map((row) => {
+              if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
+              const category = row.item;
               const details = (
                 <>
                   <span className="category-name">{category.name}</span>
@@ -399,10 +444,20 @@ export function SettingsPage({
                 </>
               );
               const page: Page = { name: "category", id: category.id };
-              const userCategories = categories.filter((c) => !c.system);
               const index = userCategories.findIndex((c) => c.id === category.id);
+              const dragging = categoryDrag?.id === category.id;
               return (
-                <li key={category.id}>
+                <li
+                  key={category.id}
+                  {...(!category.system && { "data-drag-id": category.id })}
+                  className={dragging ? "dragging" : undefined}
+                  style={dragging ? draggedStyle(categoryDrag) : undefined}
+                >
+                  {category.system ? (
+                    <span className="drag-grip-space" aria-hidden />
+                  ) : (
+                    <DragGrip label={`Drag ${category.name}`} handlers={categoryGrip(category.id)} />
+                  )}
                   {/* The built-in Lifetime category can't be edited or moved (it's always last), so it isn't a link. */}
                   {category.system ? (
                     <span className="tab-entry">{details}</span>
@@ -444,8 +499,10 @@ export function SettingsPage({
       <section>
         <h2>Tabs</h2>
         <p>A tab shows only the notes with the tags it lists. Click a tab to change or delete it.</p>
-        <ul className="category-list">
+        <ul className="category-list" ref={tabListRef}>
           <li>
+            {/* "All" is always the first tab, so it can't be moved. */}
+            <span className="drag-grip-space" aria-hidden />
             {/* The built-in tab: its page only sets where it shows. */}
             <a href={pathFor({ name: "tab", id: "all" })} onClick={(event) => go(event, { name: "tab", id: "all" })}>
               <span className="category-name">{ALL_TAB_NAME}</span>
@@ -455,10 +512,20 @@ export function SettingsPage({
             {/* "All" is always the first tab, so it can't be moved. */}
             <span className="order-buttons" aria-hidden />
           </li>
-          {tabs.map((tab, index) => {
+          {rowsWithGap(tabs, (tab) => tab.id, tabDrag).map((row) => {
+            if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
+            const tab = row.item;
+            const index = tabs.indexOf(tab);
             const page: Page = { name: "tab", id: tab.id };
+            const dragging = tabDrag?.id === tab.id;
             return (
-              <li key={tab.id}>
+              <li
+                key={tab.id}
+                data-drag-id={tab.id}
+                className={dragging ? "dragging" : undefined}
+                style={dragging ? draggedStyle(tabDrag) : undefined}
+              >
+                <DragGrip label={`Drag ${tab.name}`} handlers={tabGrip(tab.id)} />
                 <a href={pathFor(page)} onClick={(event) => go(event, page)}>
                   <span className="category-name">{tab.name}</span>
                   {tab.placement === "left" && <span className="category-kind">left</span>}
