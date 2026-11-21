@@ -481,8 +481,10 @@ a:focus-visible {
 }
 
 /* Multi-select: "All" and "None" take the filters' place in the row. */
-.bulk-select-all {
+.bulk-select-all,
+.list-lifetime {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
 }
 

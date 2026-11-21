@@ -546,6 +546,29 @@ export function NotesPage({
     }
   }
 
+  /** Edit-order mode's lifetime buttons: the listed notes that are Waiting, and those that are Archived. */
+  const listedWaiting = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_WAITING).map((note) => note.id);
+  const listedArchived = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED).map((note) => note.id);
+  const [listLifetimeBusy, setListLifetimeBusy] = useState(false);
+
+  /** Moves the listed Waiting notes to Archived, or the listed Archived ones to the Bin, in one save. */
+  async function changeListedLifetimes(action: "waiting-to-archived" | "archived-to-bin", noteIds: number[]) {
+    if (listLifetimeBusy || noteIds.length === 0) return;
+    setListLifetimeBusy(true);
+    try {
+      const { count } = await api.bulkLifetime(action, noteIds);
+      if (count > 0) onNotesChanged();
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setNotice({ text: `Nothing was changed: ${error instanceof Error ? error.message : String(error)}`, error: true });
+    } finally {
+      setListLifetimeBusy(false);
+    }
+  }
+
   /** Archive, reinstate or bin a note. If it no longer matches the filters, it leaves the list. */
   async function changeLifetime(note: Note, lifetime: LifetimeChange) {
     if (busyNoteId !== undefined) return;
@@ -877,6 +900,32 @@ export function NotesPage({
                 >
                   None
                 </button>
+              </div>
+            ) : ordering ? (
+              // Edit-order mode: in place of the dropdowns and search, buttons that change the listed notes' Lifetime.
+              <div className="list-lifetime" role="group" aria-label="Lifetime of the listed notes">
+                {listedWaiting.length > 0 && (
+                  <button
+                    type="button"
+                    className="small-button"
+                    title="Archive every Waiting note in this list"
+                    disabled={listLifetimeBusy || drag !== undefined}
+                    onClick={() => void changeListedLifetimes("waiting-to-archived", listedWaiting)}
+                  >
+                    Waiting → Archive ({listedWaiting.length})
+                  </button>
+                )}
+                {listedArchived.length > 0 && (
+                  <button
+                    type="button"
+                    className="small-button"
+                    title="Move every Archived note in this list to the bin"
+                    disabled={listLifetimeBusy || drag !== undefined}
+                    onClick={() => void changeListedLifetimes("archived-to-bin", listedArchived)}
+                  >
+                    Archived → Bin ({listedArchived.length})
+                  </button>
+                )}
               </div>
             ) : (
               <>

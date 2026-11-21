@@ -124,9 +124,12 @@ export const api = {
       { lifetime, ...(tagsChangedDateTime && { tagsChangedDateTime }) } satisfies LifetimeRequest,
       changeHeaders(),
     ),
-  /** The Settings Lifetime buttons; each returns how many notes changed (or were deleted). */
-  bulkLifetime: (action: "reset-new" | "archived-to-bin" | "empty-bin") =>
-    request<{ count: number }>("POST", `/api/notes/${action}`, undefined, changeHeaders()),
+  /**
+   * The Settings Lifetime buttons, and edit-order mode's (with `noteIds`: only those notes); each
+   * returns how many notes changed (or were deleted).
+   */
+  bulkLifetime: (action: "reset-new" | "archived-to-bin" | "waiting-to-archived" | "empty-bin", noteIds?: number[]) =>
+    request<{ count: number }>("POST", `/api/notes/${action}`, noteIds && { noteIds }, changeHeaders()),
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
