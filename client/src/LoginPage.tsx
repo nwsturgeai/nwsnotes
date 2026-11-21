@@ -67,6 +67,10 @@ export function LoginPage({ onLoggedIn }: Props) {
           </p>
         )}
       </form>
+      {/* The help pages are public, so they can be read before logging in. */}
+      <p className="login-help">
+        <a href="/docs/">New here? Read the introduction</a>
+      </p>
     </main>
   );
 }

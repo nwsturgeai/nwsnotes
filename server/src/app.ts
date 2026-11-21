@@ -460,6 +460,9 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
   const indexFile = path.join(config.publicDir, "index.html");
   if (existsSync(indexFile)) {
     app.use(express.static(config.publicDir, { index: "index.html" }));
+    // A help page that doesn't exist gets a "page not found" help page, not the app.
+    const docsNotFound = path.join(config.publicDir, "docs", "404.html");
+    app.get(["/docs", "/docs/{*path}"], (_req, res) => res.status(404).sendFile(docsNotFound));
     // Any other page address gets the website, which decides what to show.
     app.get("/{*path}", (_req, res) => res.sendFile(indexFile));
   } else {

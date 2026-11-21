@@ -21,7 +21,8 @@ The app has help pages, such as an introduction guide for new users, served as s
 - To start with, there's `index.md` as a placeholder for the owner to fill in, and `contents.md` listing just the introduction. The other pages come later.
 
 ### Building them
-- `npm run build` turns each `docs/<name>.md` into `client/dist/docs/<name>/index.html` (`index.md` becomes `client/dist/docs/index.html`), and copies `docs.css` and `images/`. It uses one small Markdown library (e.g. `marked`), in a script in the `client` workspace that runs after Vite's build.
+- `npm run build` turns each `docs/<name>.md` into `client/dist/docs/<name>/index.html` (`index.md` becomes `client/dist/docs/index.html`), and copies `docs.css`, `images/` and the app's font (`docs/font.woff2`). It's done by a small Vite plugin in `client/vite.config.ts` (the work is in `client/docsBuild.ts`, using the `marked` library), which adds the pages to the build before the service worker is made, so they're saved for offline use.
+- **Previewing while writing:** with `npm run dev`, the dev server (port 5173) builds the pages afresh on each request, so saving a `.md` file and reloading the page shows the change. A broken link shows as an error message instead of the page.
 - **Addresses:** `/docs/` for the introduction, `/docs/contents/` for the contents and `/docs/<name>/` for each other page. Links between pages are written in the Markdown as `name.md` and turned into those addresses.
 - **One shared layout** for every page:
   - a header with "nwsnotes help" (a link to the introduction), "Contents" and "← Back to the app" (a link to `/`);

@@ -1,12 +1,55 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { buildDocs, docsContentType } from "./docsBuild";
+
+/**
+ * The help pages (docs/*.md, see Specs/docs.md): added to the built site before the service worker is
+ * made, so it saves them for offline use; and in development, built afresh on each request, so edits
+ * show on reloading.
+ */
+function helpPages(): Plugin {
+  return {
+    name: "nwsnotes-help-pages",
+    generateBundle() {
+      for (const file of buildDocs()) this.emitFile({ type: "asset", fileName: file.fileName, source: file.source });
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const address = decodeURIComponent((req.url ?? "").split("?")[0]!);
+        if (address !== "/docs" && !address.startsWith("/docs/")) return next();
+        let files;
+        try {
+          files = buildDocs();
+        } catch (error) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.end(error instanceof Error ? error.message : String(error));
+          return;
+        }
+        const name = address.slice(1);
+        // /docs and /docs/tabs go to /docs/ and /docs/tabs/, as on the live site.
+        if (!name.includes(".") && !name.endsWith("/") && files.some((file) => file.fileName === `${name}/index.html` || (name === "docs" && file.fileName === "docs/index.html"))) {
+          res.writeHead(301, { Location: `${address}/` });
+          res.end();
+          return;
+        }
+        const wanted = name.endsWith("/") ? `${name}index.html` : name;
+        const file = files.find((candidate) => candidate.fileName === wanted) ?? files.find((candidate) => candidate.fileName === "docs/404.html")!;
+        res.statusCode = file.fileName === wanted ? 200 : 404;
+        res.setHeader("Content-Type", docsContentType(file.fileName));
+        res.end(file.source);
+      });
+    },
+  };
+}
 
 export default defineConfig({
   // Shown on the settings page as the app's version.
   define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   plugins: [
     react(),
+    helpPages(),
     // Makes the site installable as an Android app (PWA): a web app manifest and a service worker.
     VitePWA({
       // A downloaded new version waits until "Reload" is tapped (appUpdate.ts registers the worker).
@@ -32,7 +75,8 @@ export default defineConfig({
         // addresses (including the backup download link) always go to the network.
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/ws/],
+        // The help pages are their own pages, not the app (they're saved for offline use like the rest).
+        navigateFallbackDenylist: [/^\/api\//, /^\/ws/, /^\/docs(\/|$)/],
         // Due-date reminders: showing pushed notifications and opening the app when one is tapped.
         importScripts: ["push-sw.js"],
       },
