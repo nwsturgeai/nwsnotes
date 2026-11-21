@@ -29,6 +29,7 @@ For each note, store the date and time when its tags were last set or changed. I
 ### Tag sort order
 The tags within each category have a sort order.
 When editing a category, there should be up and down arrows alongside each tag, which can be clicked to move that tag up or down the list and so change the order.
+Categories and tabs in Settings, and tags on a category's page, can also be reordered by drag-and-drop, using a drag handle (fa-grip-vertical) at the left of each row. The up and down arrows stay too.
 The tag dropdowns (everywhere they appear) and the lists of tags in the expanded new-note section should all show the tags in this order.
 
 ### On the main notes page:
@@ -118,6 +119,12 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
   - The built-in Lifetime category is always last, and "All" is always the first tab. Neither can move, and their rows have no arrows (the space is kept, so the rows line up).
   - The order is used everywhere: the new-note dropdowns and pills, the filter row, the tab editor, the pills on notes, and the tab strip in the header.
   - New categories and tabs are added at the end.
+- **Drag-and-drop in Settings:** each user category's row and each tab's row in Settings, and each tag's row on a category's page, has an `fa-grip-vertical` handle at its left, in a 24px-wide area, as on notes in edit-order mode. The grips are always shown (there's no separate mode), and the up and down arrows stay.
+  - **Dragging works as for notes:** pressing a grip picks the row up straight away (mouse, finger or stylus, which respond as normal in Settings); the row follows the pointer up or down, a gap opens where it would go, and letting go drops it there. Escape, or dropping it where it started, changes nothing. The page scrolls by itself when the pointer is near the top or bottom of the screen. The grip has `touch-action: none`, so a finger drag doesn't scroll the page.
+  - **Saving:** dropping a category or tab is saved straight away, exactly like an arrow click (the same order requests, the same error and reload if it fails). Dropping a tag only rearranges the category page's list; it's saved with the page's Save button, or discarded with Cancel, like the tag arrows.
+  - **Rows that can't move:** the "All" tab and the built-in Lifetime category have no grip (the space is kept, so rows line up), and nothing can be dropped above "All" or below Lifetime.
+  - **One shared drag:** the notes' drag code (`client/src/noteDrag.ts`) becomes one shared piece used by the note list, the category and tab lists, and the tag list, so they all behave the same. Dragging notes is unchanged.
+  - **Tests:** dragging a tab, a category and a tag to a new place; categories and tabs are saved at once (a reload shows it), tags only on Save (Cancel discards it); the arrows still work; "All" has no grip and stays first.
 - Adding and editing use the same page, at `/settings/categories/new` and `/settings/categories/<id>`, so the back button works. It has a name text box, a "Multi-select" checkbox (tapping its text toggles it), one text box per tag for renaming with a bin button (`fa-trash-can`) beside it, and an "Add tag" button that adds an empty tag row.
 - Empty new tag rows are ignored when saving. Emptying an existing tag's name is an error; its bin button deletes it instead.
 - **Deleting tags:** the bin removes the row; nothing changes until Save. A category must keep at least one tag (the last bin is disabled). If deleted tags are on any notes, Save first asks, in the app's own pop-up, "Delete the tag "X"? It will be removed from N notes.". On save the server takes deleted tags off every note and out of every tab's filter; a filter left with no tags is dropped, and a tab left with no filters shows every note (its editor will ask for a tag next time it's saved). Notes' modified times aren't changed by this.

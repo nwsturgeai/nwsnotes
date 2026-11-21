@@ -16,7 +16,7 @@ parentId - an integer, nullable.  When this note is a child of a long-form note,
 dueDateTime - an optional date-time value for when this note is due to be resolved.  May only be populated for regular notes, not long-form notes.
 
 The main app screen will show:
-A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list, apart from notes put in order (see "Setting the order of notes").  Each row should show the note title.  Rows should be separated by a thin horizontal line.
+A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list, apart from notes put in order (see "Setting the order of notes").  Each row should show the note title.  Rows should be separated by a thin horizontal line, dark enough to show clearly between notes of any colour.
 If there isn't enough space to show all notes, then scroll vertically to see the rest.
 There will be an area to enter a new note at the bottom of the page - always visible even if there are more notes than fit.  This area at the bottom should not scroll when the list of notes scrolls.  This area should be fixed height, 150px tall.
 There should be no "New note" heading.
@@ -26,10 +26,10 @@ For now, phone layout is not important, I will make changes later to address tha
 
 ### Columns
 
-The Settings page should have a "Columns" setting, where a number between 1 and 4 can be chosen (default: 1).
+The Settings page should have a "Columns" setting with four choices: a single column; or "Wide", "Medium" or "Narrow" columns, where as many columns are shown as fit with each at least 500, 400 or 300 pixels wide (so with "Wide", 2 columns only show when there are at least 1000 pixels). There's no upper limit on the number of columns. Default: "Medium".
 This setting should appear alongside the "Stylus mode" setting at the top of the list of Settings.
 The value for this setting should be saved into browser local storage so that it is remembered / retained on this device.
-This setting controls how notes are shown within the notes list.  Notes should be shown in vertical columns, the number of columns being specified by this setting.
+This setting controls how notes are shown within the notes list.  Notes should be shown in vertical columns, the number of columns following from this setting and the width available.
 The order of notes should be: top to bottom in the first column, then continuing top to bottom in the second column, and so on (columns go from left to right).
 
 ## Setting the order of notes
@@ -58,6 +58,9 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 
 ## Agreed technical decisions
 
+### Lines between notes
+- Each note row has a 1px line under it in black at 20% strength (`rgb(0 0 0 / 0.2)`), rather than the app's pale border colour. Being see-through, it shows as a darker shade of whatever colour the row has, so it's clear on every tag colour, mid grey on plain rows, and subtle on dark (archived) rows. The app's other borders keep the pale colour.
+
 ### New-note area
 - The area is a fixed 150px high (including its padding and border) at the bottom of the page and never scrolls with the note list; the list fills the rest of the page below the header. Padding is reduced so the canvas, buttons and one row of dropdowns fit. If more appears than fits (an error message, or dropdowns wrapping onto a second row), the area scrolls inside itself; it never grows.
 - A single-line text box and an "Add" button. Pressing Enter also adds the note. There is no "New note" heading; the text box keeps its placeholder text and an accessible label.
@@ -69,7 +72,8 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - In stylus mode the text box is replaced by the writing canvas (see Stylus mode in [stylus.md](stylus.md)).
 
 ### Columns
-- **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as four small buttons labelled 1 to 4 (default 1). It's remembered on this device in local storage. A device that saved 5 (allowed before) is treated as 4.
+- **Setting:** "Columns" sits beside the Stylus mode switch at the top of the settings page, as four small buttons: "Single", "Wide", "Medium" and "Narrow" (default "Medium"). It's remembered on this device in local storage, as `single`, `wide`, `medium` or `narrow`. A device that saved a number from before keeps its choice in order: 1 is Single, 2 Wide, 3 Medium, and 4 (or 5, allowed earlier) Narrow.
+- **How many columns:** Single is always one. Otherwise the count is `floor(width / minimum)`, at least 1 and with no upper limit, where the minimum is 500px (Wide), 400px (Medium) or 300px (Narrow) and the width is the note list's own width (so Left tabs, when showing, leave less). It's worked out exactly in script, not with CSS `column-width` (whose gaps would need slightly more than 1000px for two Wide columns), and again whenever the list's width changes (a `ResizeObserver`: resizing the window, turning the tablet, Left tabs appearing). For example, Medium gives 1 column on a phone and on the tablet upright (768px), and 2 when it's turned (1024px). The app itself stays at most 1280px wide on any screen, as now, so the list is never wider than that: at most 2 Wide, 3 Medium or 4 Narrow columns, however large the monitor.
 - **Layout:** the note list is split into that many balanced columns (CSS multi-column), and the whole list scrolls up and down as now. Notes flow top to bottom down the first column, then the second, and so on from left to right, so the newest note is at the bottom of the last column. A note is never split across two columns.
 - A handwritten note wider than its column is shrunk to fit.
 - **Balanced columns (accepted):** adding a note can move other notes between columns, as the columns even out. If this feels jumpy in use, an alternative is to fill each column to the screen's height and scroll sideways.

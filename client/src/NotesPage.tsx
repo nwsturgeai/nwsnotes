@@ -65,7 +65,7 @@ import { LongFormEditor } from "./LongFormEditor";
 import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
-import { useFullTagList } from "./stylusMode";
+import { columnCount, useFullTagList, type ColumnsChoice } from "./stylusMode";
 
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
@@ -95,8 +95,8 @@ interface Props {
   tabsBlocked: boolean;
   /** In stylus mode, new notes are written on a canvas instead of typed. */
   stylusMode: boolean;
-  /** How many balanced columns the note list is split into (the Columns setting). */
-  columns: number;
+  /** The Columns setting: one column, or as many balanced ones as fit at its width. */
+  columns: ColumnsChoice;
   /** The dropdowns' selections for new notes, kept by the app so they survive visits to settings and edits. */
   tagSelection: TagSelection;
   onTagSelectionChange: (selection: TagSelection) => void;
@@ -168,6 +168,16 @@ export function NotesPage({
   onSessionExpired,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
+  /** The note list's width, for how many columns fit (worked out again whenever it changes). */
+  const [listWidth, setListWidth] = useState(0);
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const observer = new ResizeObserver(() => setListWidth(list.clientWidth));
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+  const columnTotal = columnCount(columns, listWidth);
   const inputRef = useRef<HTMLInputElement>(null);
   const padRef = useRef<StylusPadHandle>(null);
   const [title, setTitle] = useState("");
@@ -844,6 +854,8 @@ export function NotesPage({
             className={extraFilters.length > 0 || searchWords.length > 0 ? "filter-row filtered" : "filter-row"}
             aria-label="More filters for this tab"
           >
+            {/* The dropdowns, reset and search wrap together like words; edit-order stays top-right. */}
+            <div className="filter-row-main">
             {bulk ? (
               // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
               <div className="bulk-select-all" role="group" aria-label="Select notes">
@@ -916,6 +928,7 @@ export function NotesPage({
                 )}
               </>
             )}
+            </div>
             <div className="filter-row-end">
               <IconButton
                 icon={ordering ? faClipboardCheck : faArrowDownWideShort}
@@ -937,7 +950,7 @@ export function NotesPage({
               </p>
             ) : (
               // Notes run top to bottom down each column, then on to the next column to the right.
-              <ul style={{ columnCount: columns }}>
+              <ul style={{ columnCount: columnTotal }}>
                 {rows.map((row) => {
                   if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
                   const note = row.note;
@@ -1153,7 +1166,7 @@ export function NotesPage({
       )}
 
       {/* The full-tag-list toggle sits over the divider between the list and the add/edit area. */}
-      <div className="area-divider">
+      <div className={longForm ? "area-divider over-editor" : "area-divider"}>
         <button
           type="button"
           className="area-toggle"

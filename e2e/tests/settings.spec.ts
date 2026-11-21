@@ -197,15 +197,15 @@ test("the Pen section shows only in stylus mode, and History comes just before L
 });
 
 test("stylus mode and columns are remembered on this device", async ({ page }) => {
-  await page.getByRole("radiogroup", { name: "Columns" }).getByRole("radio", { name: "2" }).click();
-  await expect(page.getByRole("radiogroup", { name: "Columns" }).getByRole("radio", { name: "2" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radiogroup", { name: "Columns" }).getByRole("radio", { name: "Single" }).click();
+  await expect(page.getByRole("radiogroup", { name: "Columns" }).getByRole("radio", { name: "Single" })).toHaveAttribute("aria-checked", "true");
   await page.locator("label.switch").filter({ hasText: "Stylus mode" }).click();
   await page.getByRole("link", { name: "← Notes" }).click();
-  await expect(page.locator(".note-list ul").first()).toHaveCSS("column-count", "2");
+  await expect(page.locator(".note-list ul").first()).toHaveCSS("column-count", "1");
   await expect(page.getByRole("img", { name: "Stylus mode is on" })).toBeVisible();
 
   await page.reload();
-  await expect(page.locator(".note-list ul").first()).toHaveCSS("column-count", "2");
+  await expect(page.locator(".note-list ul").first()).toHaveCSS("column-count", "1");
   await expect(addArea(page).getByRole("img", { name: "Writing area for a new note" })).toBeVisible();
 
   await page.getByRole("link", { name: "Settings" }).click();
@@ -213,4 +213,58 @@ test("stylus mode and columns are remembered on this device", async ({ page }) =
   await expect(page.getByRole("switch", { name: "Stylus mode" })).not.toBeChecked();
   await page.getByRole("link", { name: "← Notes" }).click();
   await expect(page.getByRole("textbox", { name: "New note" })).toBeVisible();
+});
+
+/** Drags a row by its grip to just above another row (the shared drag, as for notes). */
+async function dragAbove(page: Page, row: import("@playwright/test").Locator, above: import("@playwright/test").Locator) {
+  // In the middle of the screen, so the pointer is on it and not near the edges (which scroll the page).
+  await row.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  const grip = (await row.getByTitle("Drag to reorder").boundingBox())!;
+  const to = (await above.boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + grip.width / 2, to.y + 4, { steps: 10 });
+  await page.mouse.up();
+}
+
+test.describe("drag-and-drop", () => {
+  const tabRow = (page: Page, name: string) =>
+    section(page, "Tabs").getByRole("listitem").filter({ has: page.locator(".category-name", { hasText: new RegExp(`^${name}$`) }) });
+
+  test("tabs can be dragged into a new order, saved straight away; All has no grip and stays first", async ({ page }) => {
+    await expect(tabRow(page, "All").getByTitle("Drag to reorder")).toHaveCount(0);
+    await dragAbove(page, tabRow(page, "On hold"), tabRow(page, "Work"));
+    await expect(section(page, "Tabs").locator(".category-name")).toHaveText(["All", "On hold", "Work", "Home"]);
+    // Dropping above All still puts it just after All.
+    await dragAbove(page, tabRow(page, "Home"), tabRow(page, "All"));
+    await expect(section(page, "Tabs").locator(".category-name")).toHaveText(["All", "Home", "On hold", "Work"]);
+    await page.reload();
+    await expect(section(page, "Tabs").locator(".category-name")).toHaveText(["All", "Home", "On hold", "Work"]);
+  });
+
+  test("categories can be dragged into a new order, saved straight away; Lifetime stays last", async ({ page }) => {
+    await expect(categoryLine(page, "Lifetime").getByTitle("Drag to reorder")).toHaveCount(0);
+    await dragAbove(page, categoryLine(page, "Topic"), categoryLine(page, "Area"));
+    await expect(section(page, "Categories").locator(".category-name")).toHaveText(["Topic", "Area", "Lifetime"]);
+    await page.reload();
+    await expect(section(page, "Categories").locator(".category-name")).toHaveText(["Topic", "Area", "Lifetime"]);
+  });
+
+  test("tags can be dragged into a new order, saved only with the category", async ({ page }) => {
+    const tagRow = (name: string) => page.locator(".tag-row").filter({ has: page.locator(`input[value="${name}"]`) });
+    const tagNames = () => page.locator(".tag-row input[type=text]").evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
+
+    await editCategory(page, "Topic");
+    await dragAbove(page, tagRow("Reading"), tagRow("Ideas"));
+    await expect.poll(tagNames).toEqual(["Reading", "Ideas", "Shopping"]);
+    // Cancel throws it away.
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(categoryLine(page, "Topic").locator(".category-tags")).toHaveText("Ideas, Shopping, Reading");
+
+    await editCategory(page, "Topic");
+    await dragAbove(page, tagRow("Reading"), tagRow("Ideas"));
+    await expect.poll(tagNames).toEqual(["Reading", "Ideas", "Shopping"]);
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(categoryLine(page, "Topic").locator(".category-tags")).toHaveText("Reading, Ideas, Shopping");
+  });
 });

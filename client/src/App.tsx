@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ALL_TAB_NAME, type Category, type Me, type Note, type NotesData, type Tab } from "@nwsnotes/shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ALL_TAB_NAME, noteMatchesFilters, type Category, type Me, type Note, type NotesData, type Tab } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { useUpdateReady } from "./appUpdate";
 import { CategoryEditPage } from "./CategoryEditPage";
@@ -28,7 +28,7 @@ import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
 import { UsersPage } from "./UsersPage";
 import { SettingsPage } from "./SettingsPage";
-import { useColumns, useStylusMode } from "./stylusMode";
+import { useColumns, useStylusMode, useTabCounts } from "./stylusMode";
 import { TabEditPage } from "./TabEditPage";
 import type { TagSelection } from "./TagPickers";
 
@@ -46,6 +46,7 @@ export function App() {
   const [page, navigate] = usePage();
   const [stylusMode, setStylusMode] = useStylusMode();
   const [columns, setColumns] = useColumns();
+  const [showTabCounts, setShowTabCounts] = useTabCounts();
   const [refreshError, setRefreshError] = useState<string>();
   /** The new-note tag dropdowns' selections; kept until the page is reloaded or the tab changes. */
   const [tagSelection, setTagSelection] = useState<TagSelection>({});
@@ -246,6 +247,17 @@ export function App() {
   const tabs = state.screen === "notes" ? state.data.tabs : [];
   /** Whether the built-in "All" tab is in the left strip (data saved offline before this existed counts as top). */
   const allOnLeft = state.screen === "notes" && state.data.allTabPlacement === "left";
+  const notes = state.screen === "notes" ? state.data.notes : undefined;
+  /**
+   * With the Tab counts setting on: each tab's number of notes, by its own filters only (the filter row
+   * and search don't change them). Bin notes count only where a tab's own filters include Bin.
+   */
+  const tabCounts = useMemo(() => {
+    if (!showTabCounts || !notes) return undefined;
+    const counts = new Map<number | "all", number>([["all", notes.filter((note) => noteMatchesFilters(note, [])).length]]);
+    for (const tab of tabs) counts.set(tab.id, notes.filter((note) => noteMatchesFilters(note, tab.categories)).length);
+    return counts;
+  }, [showTabCounts, notes, tabs]);
   const selectedTab = tabs.find((tab) => tab.id === selectedTabId);
   // If the selected tab is deleted (here or on another page), go back to "All".
   useEffect(() => {
@@ -292,6 +304,7 @@ export function App() {
             tabs={tabs.filter((tab) => tab.placement !== "left")}
             allOnTop={!allOnLeft}
             leftStrip={allOnLeft || tabs.some((tab) => tab.placement === "left")}
+            tabCounts={tabCounts}
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
             editing={editingNote !== undefined || bulkActive}
@@ -328,6 +341,8 @@ export function App() {
               onStylusModeChange={setStylusMode}
               columns={columns}
               onColumnsChange={setColumns}
+              tabCounts={showTabCounts}
+              onTabCountsChange={setShowTabCounts}
               onNavigate={navigate}
               onNotesChanged={() => void refreshNotes()}
               onCategoriesReordered={(categories) => applySaved((data) => ({ ...data, categories }))}
@@ -385,8 +400,8 @@ export function App() {
               categories={state.data.categories}
               selectedTab={selectedTab}
               leftTabs={[
-                ...(allOnLeft ? [{ id: undefined, name: ALL_TAB_NAME }] : []),
-                ...tabs.filter((tab) => tab.placement === "left"),
+                ...(allOnLeft ? [{ id: undefined, name: ALL_TAB_NAME, count: tabCounts?.get("all") }] : []),
+                ...tabs.filter((tab) => tab.placement === "left").map((tab) => ({ id: tab.id, name: tab.name, count: tabCounts?.get(tab.id) })),
               ]}
               onSelectTab={selectTab}
               tabsBlocked={editingNote !== undefined || bulkActive}

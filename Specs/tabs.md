@@ -15,6 +15,9 @@ When creating or editing a tab, dropdowns for all the Categories are shown, the 
 After the user begins to add or edit a tab, there should be "Save" and "Cancel" buttons.
 
 When the browser window is too narrow, the rightmost tabs are replaced with an ellipsis button (fa-ellipsis).  Tabs that don't fit well in the limited width are hidden; clicking the ellipsis opens a dropdown listing all of the hidden tabs.  The user can click on one of those tabs: it becomes selected and appears in the visible list of tabs, bumping the previous rightmost visible tab so that it is no longer visible but instead appears in the ellipsis dropdown list.
+
+### Note counts on tabs
+A new on/off setting shows each tab's note count alongside its name, e.g. "All (153)". When it's on, the minimum tab width goes up to 75 pixels.
 No tab should be narrower than 55 pixels; tabs that would be narrower than that go into the ellipsis dropdown.
 
 The first Tab should be called "All" and should have no filters.  This Tab cannot be edited or deleted.
@@ -80,7 +83,13 @@ If any text is typed into the search box, the list of notes shown in the main ar
 - The tabs sit at the left of the header, styled like browser tabs: the selected tab looks to be in front, joined to the note list below; the others look behind it. Each tab has 0.3rem of padding at its left and right.
 - **Size:** the header is 40px tall (on the settings pages too). The tabs are 36px tall, with a 4px gap above them, and their names are 0.9rem. The Settings cog and stylus icon stay 40px squares, filling the header's height. The header has no padding on its right, so the cog's square reaches the right-hand edge of the screen (on every page).
 - **Too many to fit:** all tabs shrink equally so they fit in the header, and names that no longer fit are cut short with "…". Hovering a tab shows its full name. The icons on the right of the header keep their space.
-- **Tabs menu:** no tab is narrower than 55px. When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
+- **Note counts on tabs:**
+  - **Setting:** a "Tab counts" on/off switch at the top of Settings, with Stylus mode and Columns. Off by default. Remembered on this device in local storage, like them.
+  - **What shows:** while it's on, every tab's name is followed by its count in brackets, e.g. "All (153)", "Work (12)", "Home (0)": in the top strip, the left strip (in the same vertical text) and the "…" menu.
+  - **What's counted:** the notes the tab's own filters show, as when it's opened with nothing ticked in the filter row and no search. Bin notes count only if the tab's own filters include Bin. The filter row and search never change the counts, so they stay steady while filtering. They update straight away when notes change, here or (by live update) elsewhere.
+  - **Long names:** only the name is cut short ("…"); the count always shows, e.g. "Very long na… (12)".
+  - **Width:** while it's on, no top tab is narrower than 75px (instead of 55px), so fewer may fit before the "…" menu.
+- **Tabs menu:** no tab is narrower than 55px (75px with tab counts on). When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
   - How many fit is worked out from the tab strip's actual width (measured whenever it changes), with no breakpoints.
   - The menu opens from a narrow "…" button (`fa-ellipsis`) in the last place on the right. It's a list like the tag dropdowns, with each hidden tab's full name, in the tabs' usual order.
   - Choosing a tab there selects it and closes the menu.
@@ -101,6 +110,10 @@ If any text is typed into the search box, the list of notes shown in the main ar
 
 ### Additional tab filters
 - **Filter row:** below the header, inside the selected tab and above the note list, a row that doesn't scroll with the notes. It has one dropdown per category the tab doesn't already filter on (for "All", every category), including Lifetime when the tab doesn't set it. Like the tab editor, every dropdown is a check-list, even for single-select categories. Just right of the dropdowns (not at the far right) is a "reset filters" button (`fa-reply-all`, the same 24px size as the note buttons), which clears every dropdown in the row.
+- **Filter row layout when it wraps:** the row has two parts.
+  - On the left, one group that wraps like words: the dropdowns, then "reset filters" (when shown), then the search button. When the dropdowns need more than one line, the reset and search buttons follow straight after the last dropdown, on the same line as it, rather than on a line of their own.
+  - On the right, fixed: the edit-order button, always at the top-right of the row, level with the first line of dropdowns. The group on the left wraps before reaching it.
+  - The search box, when open, still takes a full line of its own under the group. When everything fits on one line, the row looks as before. In multi-select, "All" and "None" take the dropdowns' place in the same group.
 - **"select all":** each of the row's dropdown lists starts with a small "select all" link (0.85rem, the accent colour, underlined), above the tags. It ticks every tag in that dropdown and leaves the list open. Once every tag is ticked, it's greyed out. Only the filter row has it, not the new-note dropdowns or the tab editor. Ticking every tag still filters: notes with none of the category's tags are hidden, and for Lifetime it includes Bin, so Bin notes show.
 - **Yellow while filtering:** while any of the row's dropdowns has a tag ticked, or a search is typed in the search box, the row's background is bright yellow (`#ffe94d`, the `--filtered` colour), so it's clear the tab's list is narrowed. It goes back to white once nothing is ticked and the search is empty or closed (e.g. after "reset filters" and closing the search). An open but empty search box doesn't turn it yellow, as it doesn't narrow the list.
 - **Matching:** the row's choices combine with the tab's own filter using the same rules: every category must match, and any ticked tag within a category will do.
