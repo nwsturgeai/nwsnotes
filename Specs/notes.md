@@ -16,7 +16,7 @@ parentId - an integer, nullable.  When this note is a child of a long-form note,
 dueDateTime - an optional date-time value for when this note is due to be resolved.  May only be populated for regular notes, not long-form notes.
 
 The main app screen will show:
-A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list, apart from notes put in order (see "Setting the order of notes").  Each row should show the note title.  Rows should be separated by a thin horizontal line.
+A list of all notes occupying most of the page.  Notes should appear in created-date order with the most recently created at the bottom of the list, apart from notes put in order (see "Setting the order of notes").  Each row should show the note title.  Rows should be separated by a thin horizontal line, dark enough to show clearly between notes of any colour.
 If there isn't enough space to show all notes, then scroll vertically to see the rest.
 There will be an area to enter a new note at the bottom of the page - always visible even if there are more notes than fit.  This area at the bottom should not scroll when the list of notes scrolls.  This area should be fixed height, 150px tall.
 There should be no "New note" heading.
@@ -57,6 +57,9 @@ Whilst in edit mode it should not be possible to switch to a different Tab.
 Tag selections for a note can be updated in edit mode to have any new tag values.  Updating a note with new Tag selections can therefore cause the note to disappear from the current Tab - this is correct and wanted.
 
 ## Agreed technical decisions
+
+### Lines between notes
+- Each note row has a 1px line under it in black at 20% strength (`rgb(0 0 0 / 0.2)`), rather than the app's pale border colour. Being see-through, it shows as a darker shade of whatever colour the row has, so it's clear on every tag colour, mid grey on plain rows, and subtle on dark (archived) rows. The app's other borders keep the pale colour.
 
 ### New-note area
 - The area is a fixed 150px high (including its padding and border) at the bottom of the page and never scrolls with the note list; the list fills the rest of the page below the header. Padding is reduced so the canvas, buttons and one row of dropdowns fit. If more appears than fits (an error message, or dropdowns wrapping onto a second row), the area scrolls inside itself; it never grows.
