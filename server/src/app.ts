@@ -265,15 +265,17 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
     },
   );
 
-  // The Settings page's Lifetime buttons. Each returns how many notes it changed or deleted.
+  // The Settings page's Lifetime buttons, and edit-order mode's (which send `noteIds`: only the notes
+  // listed). Each returns how many notes it changed or deleted.
   const bulkLifetime = {
     "reset-new": (store: NoteStore) => store.resetNew(),
-    "archived-to-bin": (store: NoteStore) => store.archivedToBin(),
+    "archived-to-bin": (store: NoteStore, noteIds: unknown) => store.archivedToBin(noteIds),
+    "waiting-to-archived": (store: NoteStore, noteIds: unknown) => store.waitingToArchived(noteIds),
     "empty-bin": (store: NoteStore) => store.emptyBin(),
   };
   for (const [action, run] of Object.entries(bulkLifetime)) {
-    notesRouter.post(`/${action}`, async (req, res) => {
-      const count = await run(notebookOf(res));
+    notesRouter.post(`/${action}`, async (req: Request<object, object, { noteIds?: unknown } | undefined>, res) => {
+      const count = await run(notebookOf(res), req.body?.noteIds);
       if (count > 0) notifyChanged(req, res);
       res.json({ count });
     });

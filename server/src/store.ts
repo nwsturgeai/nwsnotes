@@ -675,9 +675,17 @@ export class NoteStore {
     return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE);
   }
 
-  /** The Settings "Archived to Bin" button: every Archived note is moved to the Bin. Returns how many. */
-  archivedToBin(): Promise<number> {
-    return this.changeLifetimes(LIFETIME_ARCHIVED, LIFETIME_BIN);
+  /**
+   * The Settings "Archived to Bin" button: every Archived note is moved to the Bin. With `rawNoteIds`
+   * (edit-order mode's button), only those notes. Returns how many.
+   */
+  archivedToBin(rawNoteIds?: unknown): Promise<number> {
+    return this.changeLifetimes(LIFETIME_ARCHIVED, LIFETIME_BIN, rawNoteIds);
+  }
+
+  /** Edit-order mode's "Waiting → Archive" button: the given notes that are Waiting become Archived. */
+  waitingToArchived(rawNoteIds?: unknown): Promise<number> {
+    return this.changeLifetimes(LIFETIME_WAITING, LIFETIME_ARCHIVED, rawNoteIds);
   }
 
   /** The Settings "Empty Bin" button: every Bin note is deleted. Returns how many. */
@@ -749,22 +757,35 @@ export class NoteStore {
     return this.noteOrder.filter((id) => ids.has(id));
   }
 
-  /** Moves every note with one Lifetime to another in a single save. Returns how many changed. */
-  private changeLifetimes(from: number, to: number): Promise<number> {
+  /**
+   * Moves every note with one Lifetime to another in a single save. With `rawNoteIds`, only those notes
+   * (any that are missing or no longer have the `from` Lifetime are skipped). Returns how many changed.
+   */
+  private changeLifetimes(from: number, to: number, rawNoteIds?: unknown): Promise<number> {
     return this.enqueue(async () => {
-      const count = this.notes.filter((n) => lifetimeOf(n) === from).length;
+      let only: Set<number> | undefined;
+      if (rawNoteIds !== undefined) {
+        if (!Array.isArray(rawNoteIds) || !rawNoteIds.every((id) => Number.isInteger(id))) {
+          throw new RequestError(400, '"noteIds" must be a list of ids.');
+        }
+        only = new Set(rawNoteIds as number[]);
+      }
+      const changing = (n: Note) => lifetimeOf(n) === from && (only === undefined || only.has(n.id));
+      const count = this.notes.filter(changing).length;
       if (count === 0) return 0;
       const now = this.nextSaveTime();
       const timestamp = now.toISOString();
       const notes = this.notes.map((n) =>
-        lifetimeOf(n) === from
+        changing(n)
           ? { ...n, lastModifiedDateTime: timestamp, tagsChangedDateTime: timestamp, tagIds: withLifetime(n, to) }
           : n,
       );
       const summary =
         from === LIFETIME_NEW
           ? `Reset New (${plural(count, "note")} made Active)`
-          : `Archived to Bin (${plural(count, "note")} moved to the bin)`;
+          : from === LIFETIME_WAITING
+            ? `Waiting to Archived (${plural(count, "note")} archived)`
+            : `Archived to Bin (${plural(count, "note")} moved to the bin)`;
       await this.save(now, { notes }, { record: { summary } });
       return count;
     });
