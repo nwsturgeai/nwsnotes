@@ -15,3 +15,4 @@
 13. [Settings](settings.md)
 14. [History: going back](history.md)
 15. [Offline use and installing the app](offline.md)
+16. [Texting notes in, from the car](text-messages.md)

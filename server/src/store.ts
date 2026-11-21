@@ -449,7 +449,15 @@ export class NoteStore {
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { dueDateTime?: string; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown; noteLimit?: number } = {},
+    options: {
+      dueDateTime?: string;
+      clientId?: unknown;
+      createdDateTime?: unknown;
+      tagsChangedDateTime?: unknown;
+      noteLimit?: number;
+      /** "sms": texted in, which the History says. */
+      source?: "sms";
+    } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
       let clientId: string | undefined;
@@ -501,7 +509,7 @@ export class NoteStore {
         ...(clientId !== undefined && { clientId }),
       };
       await this.save(now, { notes: [...this.notes, note], lastNoteId: note.id }, {
-        record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}` },
+        record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}${options.source === "sms" ? " by text message" : ""}` },
       });
       return { note, created: true };
     });

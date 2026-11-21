@@ -20,6 +20,8 @@ import {
   type Tab,
   type NoteOrderRequest,
   type NoteStats,
+  type SmsLinkCode,
+  type SmsStatus,
   type TabRequest,
 } from "@nwsnotes/shared";
 import { connectionId } from "./live";
@@ -154,6 +156,10 @@ export const api = {
   /** Who is logged in. */
   me: () => request<Me>("GET", "/api/me"),
   myStats: () => request<NoteStats>("GET", "/api/me/stats"),
+  /** Adding notes by text message: whether a phone is linked, a code to link one, and unlinking it. */
+  smsStatus: () => request<SmsStatus>("GET", "/api/me/sms"),
+  smsLinkCode: () => request<SmsLinkCode>("POST", "/api/me/sms/link-code"),
+  smsUnlink: () => request<SmsStatus>("DELETE", "/api/me/sms"),
   /** Changing your own password: this page stays logged in, your other devices are logged out. */
   changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
   /** The users page (admin only). */

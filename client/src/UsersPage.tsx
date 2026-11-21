@@ -268,6 +268,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                     <strong>{user.displayName}</strong> <span className="user-login">{user.loginName}</span>
                     {user.admin && <span className="user-label">Admin</span>}
                     {user.disabled && <span className="user-label off">Turned off</span>}
+                    {user.smsLinked && <span className="user-label">Phone</span>}
                   </div>
                   <p className="user-details">
                     Created {when(user.createdDateTime)} · Last logged in {user.lastLoginDateTime ? when(user.lastLoginDateTime) : "Never"} ·{" "}

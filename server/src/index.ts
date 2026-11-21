@@ -8,6 +8,7 @@ import { openDatabase } from "./db.js";
 import { LiveUpdates } from "./live.js";
 import { PushReminders } from "./push.js";
 import { Notebooks } from "./notebooks.js";
+import { SmsNotes } from "./sms.js";
 import { Users } from "./users.js";
 
 /** The value after a command-line option, e.g. `--user admin`. */
@@ -55,10 +56,12 @@ async function main() {
   }
 
   await notebooks.init();
-  const push = new PushReminders(config.dataDir, config.pushContact, notebooks);
+  const push = new PushReminders(config.dataDir, config.pushContact, notebooks, config.testMode);
   await push.init();
   const live = new LiveUpdates(users, config.sessionSecret);
-  const app = createApp(config, notebooks, live, push, db);
+  const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret);
+  if (config.sms) console.log(`Notes can be texted to ${config.sms.number}.`);
+  const app = createApp(config, notebooks, live, push, db, sms);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {
