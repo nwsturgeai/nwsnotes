@@ -17,5 +17,6 @@ requirements first, then the "Agreed technical decisions" for that area.
 | [offline-and-updates.md](offline-and-updates.md) | Offline use, live updates, the Android app, app updates |
 | [data.md](data.md) | The API, the database (Supabase), history and revert, backups, save files |
 | [users.md](users.md) | Several users with separate notebooks: accounts, logging in, the users page, per-user data |
+| [docs.md](docs.md) | Help pages: public static HTML pages written in Markdown, served by the same server |
 | [hosting.md](hosting.md) | The VM and deployment |
 | [testing.md](testing.md) | Automated tests |
