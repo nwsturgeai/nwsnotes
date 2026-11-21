@@ -9,20 +9,22 @@ The app has help pages, such as an introduction guide for new users, served as s
 - They look like part of nwsnotes, read well on a phone, and have a way back to the app.
 - The installed app can open them offline.
 - The app links to them: a "Help" link in Settings, and "New here? Read the introduction" on the login page.
+- **The first page is the introduction:** at its top, a link to the help contents; then a basic introduction to the app, why people might want to use it, and how to use it in a basic way. The owner writes the introduction first; the other help pages are written after that.
 
 ## Agreed technical decisions
 
 ### Writing the pages
 - **Markdown source** in `docs/` at the repository root (next to `Specs/`), one file per page, plus `docs/images/` for screenshots and `docs/docs.css` for the pages' look.
-- **`docs/index.md`** is the contents page. Its list of links sets the pages' order, used for each page's "Previous" and "Next" links.
+- **`docs/index.md`** is the introduction, at `/docs/`: the first page anyone sees. It starts with a link to the contents, then the introduction itself, written by the owner.
+- **`docs/contents.md`** is the contents page, at `/docs/contents/`. Its list of links sets the pages' order (the introduction first), used for each page's "Previous" and "Next" links.
 - Each page's title is its first `# heading`.
-- To start with, there's only `index.md` and a short `getting-started.md` placeholder, which the owner will replace with the introduction guide.
+- To start with, there's `index.md` as a placeholder for the owner to fill in, and `contents.md` listing just the introduction. The other pages come later.
 
 ### Building them
 - `npm run build` turns each `docs/<name>.md` into `client/dist/docs/<name>/index.html` (`index.md` becomes `client/dist/docs/index.html`), and copies `docs.css` and `images/`. It uses one small Markdown library (e.g. `marked`), in a script in the `client` workspace that runs after Vite's build.
-- **Addresses:** `/docs/` for the contents and `/docs/<name>/` for each page. Links between pages are written in the Markdown as `name.md` and turned into those addresses.
+- **Addresses:** `/docs/` for the introduction, `/docs/contents/` for the contents and `/docs/<name>/` for each other page. Links between pages are written in the Markdown as `name.md` and turned into those addresses.
 - **One shared layout** for every page:
-  - a header with "nwsnotes help" (a link to the contents) and "← Back to the app" (a link to `/`);
+  - a header with "nwsnotes help" (a link to the introduction), "Contents" and "← Back to the app" (a link to `/`);
   - the page;
   - "Previous" and "Next" links at the bottom.
 - The pages have no scripts, so they work with the server's security headers (helmet's default Content Security Policy) unchanged.
@@ -36,11 +38,11 @@ The app has help pages, such as an introduction guide for new users, served as s
 
 ### Links from the app
 - **Settings:** a "Help" section, just above Account, with a "Help pages" link to `/docs/`.
-- **Login page:** under the form, "New here? Read the introduction" linking to `/docs/getting-started/`.
+- **Login page:** under the form, "New here? Read the introduction" linking to `/docs/`.
 - Both open in the same window. The pages' "← Back to the app" link returns.
 
 ### Tests
 - A new `docs.spec.ts`:
-  - `/docs/` opens without a login, lists its pages, and each page opens with its title, "← Back to the app" and working "Previous" and "Next" links;
+  - `/docs/` (the introduction) opens without a login and links to the contents; the contents lists the pages, and each page opens with its title, "← Back to the app" and working "Previous" and "Next" links;
   - a missing `/docs/nothing/` gives a 404 with a link to the contents;
   - the Settings "Help pages" link and the login page's link reach the help pages.
