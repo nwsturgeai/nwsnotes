@@ -113,7 +113,8 @@ test("a long name is cut short on one line", async ({ page }) => {
   expect(box.height).toBeLessThanOrEqual(160);
   expect(box.width).toBeLessThanOrEqual(48);
   // On one line, cut short with "…" rather than wrapping.
-  const name = tab.locator(".left-tab-name");
+  // The name part is what's cut (a tab count, when shown, stays whole).
+  const name = tab.locator(".left-tab-name .tab-name-text");
   await expect(name).toHaveCSS("white-space", "nowrap");
   await expect(name).toHaveCSS("text-overflow", "ellipsis");
   expect(await name.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);

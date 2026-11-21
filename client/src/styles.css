@@ -194,11 +194,26 @@ body:has(.app) {
   cursor: pointer;
 }
 
+/* The name, and with tab counts its count: only the name is cut short, so the count always shows. */
 .tab-name {
-  display: block;
-  overflow: hidden;
+  display: flex;
+  justify-content: center;
   white-space: nowrap;
+}
+
+.tab-name-text {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tab-count {
+  flex: none;
+}
+
+/* With tab counts on, tabs are a little wider. */
+.tab-strip.with-counts .tab:not(.tab-more-button) {
+  min-width: 75px;
 }
 
 /* The "…" button for the tabs that don't fit: a narrow tab at the end of the strip. */
@@ -421,12 +436,16 @@ a:focus-visible {
 }
 
 .left-tab-name {
+  display: flex;
   max-height: 144px;
-  overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
+}
+
+/* In the vertical text, the name runs down the page: it's the height that's cut short. */
+.left-tab-name .tab-name-text {
+  min-height: 0;
 }
 
 .left-tab.selected {
@@ -454,8 +473,7 @@ a:focus-visible {
 .filter-row {
   display: flex;
   flex: none;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.35rem 0.5rem;
   border-bottom: 1px solid var(--line);
@@ -490,10 +508,21 @@ a:focus-visible {
   background: var(--filtered);
 }
 
-.filter-row .tag-pickers {
-  flex: 0 1 auto;
-  margin-top: 0;
+/*
+ * Left part: the dropdowns (their own wrapper's box is dropped, so each is an item here), "reset
+ * filters" and search wrap together like words, so search follows the last dropdown.
+ */
+.filter-row-main {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.35rem 0.5rem;
+  min-width: 0;
+}
+
+.filter-row .tag-pickers {
+  display: contents;
 }
 
 /*
@@ -515,7 +544,8 @@ a:focus-visible {
   gap: 0.5rem;
   /* Little space above and below, the same for typed and handwritten notes. */
   padding: 0.2rem 0.4rem 0.2rem 1rem;
-  border-bottom: 1px solid var(--line);
+  /* See-through, so it shows as a darker shade of any row colour (the pale --line vanishes on light tints). */
+  border-bottom: 1px solid rgb(0 0 0 / 0.2);
   overflow-wrap: anywhere;
   /* A note is never split across two columns. */
   break-inside: avoid;
@@ -887,6 +917,11 @@ body:has(.note-list li.dragging) {
   z-index: 4;
   flex: none;
   height: 0;
+}
+
+/* While the long-form editor is open, the toggle is drawn above it, so the whole button shows. */
+.area-divider.over-editor {
+  z-index: 21;
 }
 
 .area-toggle {
@@ -1579,9 +1614,8 @@ body:has(.note-list li.dragging) {
 }
 
 .column-choice {
-  width: 1.9rem;
   height: 1.9rem;
-  padding: 0;
+  padding: 0 0.5rem;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
@@ -1975,6 +2009,59 @@ body:has(.note-list li.dragging) {
 }
 
 /* A tag's text box with its bin button. */
+/* ---- Dragging rows in Settings (categories, tabs, a category's tags) ---- */
+
+/* The grip at a row's left, as on notes in edit-order mode; the same space is kept on rows that can't move. */
+.drag-grip,
+.drag-grip-space {
+  display: grid;
+  flex: none;
+  place-items: center;
+  align-self: stretch;
+  width: 24px;
+  color: var(--muted);
+}
+
+.drag-grip {
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* The row being dragged follows the pointer, above the page. */
+.category-list > li.dragging,
+.tag-row.dragging {
+  position: fixed;
+  z-index: 30;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+  opacity: 0.95;
+}
+
+.category-list > li.dragging .drag-grip,
+.tag-row.dragging .drag-grip {
+  cursor: grabbing;
+}
+
+/* Where the dragged row would go. */
+.category-list > li.drag-gap,
+.tag-rows > .drag-gap {
+  box-sizing: border-box;
+  border: 2px dashed var(--line);
+  background: var(--editing-bg);
+}
+
+body:has(.dragging) {
+  cursor: grabbing;
+}
+
+.tag-rows {
+  display: contents;
+}
+
 .tag-row {
   display: flex;
   align-items: center;
@@ -2191,8 +2278,12 @@ body:has(.note-list li.dragging) {
   font-size: 0.85rem;
 }
 
+/* Right part: always at the top-right, centred on the first line of dropdowns. */
 .filter-row-end {
   display: flex;
+  flex: none;
+  align-items: center;
+  min-height: var(--filter-line-height, 2rem);
   margin-left: auto;
 }
 

@@ -14,6 +14,8 @@ interface Props {
   allOnTop: boolean;
   /** Whether the notes page has a left strip (some tab is set to Left): the top tabs then line up with it. */
   leftStrip: boolean;
+  /** With the Tab counts setting on: each tab's number of notes (by id; "all" for the All tab). */
+  tabCounts?: Map<number | "all", number>;
   /** The selected tab's id, or undefined for the built-in "All" tab. */
   selectedTabId: number | undefined;
   onSelectTab: (id: number | undefined) => void;
@@ -42,6 +44,7 @@ export function Header({
   tabs,
   allOnTop,
   leftStrip,
+  tabCounts,
   selectedTabId,
   onSelectTab,
   editing,
@@ -71,7 +74,14 @@ export function Header({
     <>
       <header className={page.name === "notes" && leftStrip ? "app-header with-left-tabs" : "app-header"}>
         {page.name === "notes" && (
-          <TabStrip tabs={tabs} allOnTop={allOnTop} selectedTabId={selectedTabId} onSelectTab={onSelectTab} editing={editing} />
+          <TabStrip
+            tabs={tabs}
+            allOnTop={allOnTop}
+            tabCounts={tabCounts}
+            selectedTabId={selectedTabId}
+            onSelectTab={onSelectTab}
+            editing={editing}
+          />
         )}
         {back && (
           <a href={pathFor(back.page)} className="header-link" onClick={(event) => go(event, back.page)}>
@@ -127,13 +137,30 @@ export function Header({
   );
 }
 
-/** No tab is narrower than this; tabs that would be go into the "…" menu instead. */
+/** No tab is narrower than this (wider with tab counts); tabs that would be go into the "…" menu instead. */
 const TAB_MIN_PX = 55;
+const TAB_MIN_WITH_COUNTS_PX = 75;
 /** The gap between tabs (0.15rem), and the "…" button's width (2.25rem). */
 const TAB_GAP_PX = 2.4;
 const MORE_BUTTON_PX = 36;
 
-export type TabEntry = { id: number | undefined; name: string };
+/** A tab as the strips show it; `count` (its number of notes) only with the Tab counts setting on. */
+export type TabEntry = { id: number | undefined; name: string; count?: number };
+
+/** A tab's name and, with tab counts on, its count: only the name is cut short, so the count always shows. */
+function TabLabel({ tab }: { tab: TabEntry }) {
+  return (
+    <>
+      <span className="tab-name-text">{tab.name}</span>
+      {tab.count !== undefined && <span className="tab-count">{`\u00a0(${tab.count})`}</span>}
+    </>
+  );
+}
+
+/** A tab's name with its count, e.g. "All (153)", for menus. */
+function tabText(tab: TabEntry): string {
+  return tab.count === undefined ? tab.name : `${tab.name} (${tab.count})`;
+}
 
 /**
  * The tabs set to "Left": a narrow strip down the left of the filter row and note list, the names
@@ -167,7 +194,9 @@ export function LeftTabStrip({
               if (!editing) onSelectTab(tab.id);
             }}
           >
-            <span className="left-tab-name">{tab.name}</span>
+            <span className="left-tab-name">
+              <TabLabel tab={tab} />
+            </span>
           </button>
         );
       })}
@@ -180,9 +209,14 @@ export function LeftTabStrip({
  * fit (leaving room for the "…" button) are shown and the rest are listed in its menu, in their usual
  * order. The selected tab is always shown: if it would be hidden, it takes the last shown place.
  */
-function splitTabs(all: TabEntry[], selectedId: number | undefined, width: number): { shown: TabEntry[]; hidden: TabEntry[] } {
-  if (all.length * TAB_MIN_PX + (all.length - 1) * TAB_GAP_PX <= width) return { shown: all, hidden: [] };
-  const count = Math.max(1, Math.floor((width - MORE_BUTTON_PX) / (TAB_MIN_PX + TAB_GAP_PX)));
+function splitTabs(
+  all: TabEntry[],
+  selectedId: number | undefined,
+  width: number,
+  minWidth: number,
+): { shown: TabEntry[]; hidden: TabEntry[] } {
+  if (all.length * minWidth + (all.length - 1) * TAB_GAP_PX <= width) return { shown: all, hidden: [] };
+  const count = Math.max(1, Math.floor((width - MORE_BUTTON_PX) / (minWidth + TAB_GAP_PX)));
   let shown = all.slice(0, count);
   const selected = all.find((tab) => tab.id === selectedId);
   if (selected && !shown.includes(selected)) shown = [...shown.slice(0, count - 1), selected];
@@ -197,11 +231,15 @@ function splitTabs(all: TabEntry[], selectedId: number | undefined, width: numbe
 function TabStrip({
   tabs,
   allOnTop,
+  tabCounts,
   selectedTabId,
   onSelectTab,
   editing,
-}: Pick<Props, "tabs" | "allOnTop" | "selectedTabId" | "onSelectTab" | "editing">) {
-  const all: TabEntry[] = [...(allOnTop ? [{ id: undefined, name: ALL_TAB_NAME }] : []), ...tabs];
+}: Pick<Props, "tabs" | "allOnTop" | "tabCounts" | "selectedTabId" | "onSelectTab" | "editing">) {
+  const all: TabEntry[] = [
+    ...(allOnTop ? [{ id: undefined, name: ALL_TAB_NAME, count: tabCounts?.get("all") }] : []),
+    ...tabs.map((tab) => ({ id: tab.id, name: tab.name, count: tabCounts?.get(tab.id) })),
+  ];
   const stripRef = useRef<HTMLDivElement>(null);
   /** The strip's width: the room the header leaves it (it doesn't depend on the tabs inside). */
   const [width, setWidth] = useState(Number.POSITIVE_INFINITY);
@@ -214,10 +252,10 @@ function TabStrip({
     observer.observe(strip);
     return () => observer.disconnect();
   }, []);
-  const { shown, hidden } = splitTabs(all, selectedTabId, width);
+  const { shown, hidden } = splitTabs(all, selectedTabId, width, tabCounts ? TAB_MIN_WITH_COUNTS_PX : TAB_MIN_PX);
 
   return (
-    <div className="tab-strip" role="tablist" aria-label="Tabs" ref={stripRef}>
+    <div className={tabCounts ? "tab-strip with-counts" : "tab-strip"} role="tablist" aria-label="Tabs" ref={stripRef}>
       {shown.map((tab) => {
         const selected = tab.id === selectedTabId;
         return (
@@ -233,7 +271,9 @@ function TabStrip({
               if (!editing) onSelectTab(tab.id);
             }}
           >
-            <span className="tab-name">{tab.name}</span>
+            <span className="tab-name">
+              <TabLabel tab={tab} />
+            </span>
           </button>
         );
       })}
@@ -318,7 +358,7 @@ function MoreTabs({ tabs, editing, onSelect }: { tabs: TabEntry[]; editing: bool
                 onSelect(tab.id);
               }}
             >
-              {tab.name}
+              {tabText(tab)}
             </button>
           ))}
         </div>
