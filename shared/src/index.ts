@@ -456,6 +456,11 @@ export function validateNoteTitle(body: unknown): { ok: true; title: NoteTitle }
 
 export const NAME_MAX_LENGTH = 40;
 
+/** The most categories (not counting the built-in one), tags in a category, and tabs (not counting "All") a user can have. */
+export const CATEGORIES_MAX = 20;
+export const TAGS_PER_CATEGORY_MAX = 40;
+export const TABS_MAX = 40;
+
 /** Category and tag names count as the same if they differ only in upper/lower case. */
 export function sameName(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
@@ -487,6 +492,9 @@ export function validateCategory(
 ): { ok: true; category: CategoryRequest } | { ok: false; error: string } {
   if (typeof raw !== "object" || raw === null) {
     return { ok: false, error: "The category is missing." };
+  }
+  if (!existing && categories.filter((category) => !category.system).length >= CATEGORIES_MAX) {
+    return { ok: false, error: `You can have at most ${CATEGORIES_MAX} categories.` };
   }
   const input = raw as Partial<Record<keyof CategoryRequest, unknown>>;
 
@@ -553,6 +561,9 @@ export function validateCategory(
   if (tags.length === 0) {
     return { ok: false, error: "A category needs at least one tag." };
   }
+  if (tags.length > TAGS_PER_CATEGORY_MAX) {
+    return { ok: false, error: `A category can have at most ${TAGS_PER_CATEGORY_MAX} tags; this one has ${tags.length}.` };
+  }
 
   return { ok: true, category: { name: name.value, multiSelect: input.multiSelect, tags } };
 }
@@ -611,6 +622,9 @@ export function validateTab(
 ): { ok: true; tab: TabRequest } | { ok: false; error: string } {
   if (typeof raw !== "object" || raw === null) {
     return { ok: false, error: "The tab is missing." };
+  }
+  if (!existing && tabs.length >= TABS_MAX) {
+    return { ok: false, error: `You can have at most ${TABS_MAX} tabs, as well as "${ALL_TAB_NAME}".` };
   }
   const input = raw as Partial<Record<keyof TabRequest, unknown>>;
 

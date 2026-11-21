@@ -5,10 +5,12 @@ import { formatBytes } from "./sizes";
 import {
   ALL_TAB_NAME,
   lifetimeOf,
+  CATEGORIES_MAX,
   LIFETIME_ARCHIVED,
   LIFETIME_BIN,
   LIFETIME_NEW,
   NOTE_LIMIT_SHOWN_FROM,
+  TABS_MAX,
   type Category,
   type Me,
   type Note,
@@ -532,13 +534,17 @@ export function SettingsPage({
             {orderError.text}
           </p>
         )}
-        <a
-          className="button"
-          href={pathFor({ name: "category", id: "new" })}
-          onClick={(event) => go(event, { name: "category", id: "new" })}
-        >
-          Add category
-        </a>
+        {userCategories.length >= CATEGORIES_MAX ? (
+          <p className="hint">You have the most categories you can ({CATEGORIES_MAX}). Delete one to add another.</p>
+        ) : (
+          <a
+            className="button"
+            href={pathFor({ name: "category", id: "new" })}
+            onClick={(event) => go(event, { name: "category", id: "new" })}
+          >
+            Add category
+          </a>
+        )}
       </section>
 
       <section>
@@ -598,13 +604,17 @@ export function SettingsPage({
             {orderError.text}
           </p>
         )}
-        <a
-          className="button"
-          href={pathFor({ name: "tab", id: "new" })}
-          onClick={(event) => go(event, { name: "tab", id: "new" })}
-        >
-          Add tab
-        </a>
+        {tabs.length >= TABS_MAX ? (
+          <p className="hint">You have the most tabs you can ({TABS_MAX}). Delete one to add another.</p>
+        ) : (
+          <a
+            className="button"
+            href={pathFor({ name: "tab", id: "new" })}
+            onClick={(event) => go(event, { name: "tab", id: "new" })}
+          >
+            Add tab
+          </a>
+        )}
       </section>
 
       <Reminders />

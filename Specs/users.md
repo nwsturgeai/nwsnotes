@@ -110,6 +110,12 @@ The app can be used by several people, each with their own completely separate n
 - **Adding a stylus note at the limit is refused** (`POST /api/notes`, 409): "You've reached your limit of <limit> stylus notes. Empty the Bin to make room, or ask the admin for a higher limit." So is converting a typed note to a long-form note with handwritten details (`PUT /api/notes/:id`, 409, the same message). Typed notes can still be added, and stylus notes already there can still be edited. It's shown like the note limit's refusal.
 - **What people see:** once they've used at least 80% of it, the line at the top of Settings adds "You have <s> of your <limit> stylus notes." `GET /api/me/stats` and `UserSummary` also return `stylusNoteCount` and `stylusNoteLimit`.
 
+### Category, tag and tab limits
+- **Each user can have at most 20 categories** (the built-in Lifetime category doesn't count), **40 tags in each category**, and **40 tabs** (the built-in "All" tab doesn't count). These are fixed for everyone: the admin doesn't set them.
+- **The server refuses more** (400, from the shared checks, so the page refuses them too before sending): "You can have at most 20 categories.", "A category can have at most 40 tags; this one has <n>.", and 'You can have at most 40 tabs, as well as "All".' Editing, renaming and reordering existing categories and tabs carry on as normal.
+- **What people see:** once they're at the limit, Settings shows "You have the most categories you can (20). Delete one to add another." in place of **Add category**, and likewise for tabs in place of **Add tab**. On a category's page, once it has 40 tag rows, **Add tag** (and Enter in a tag box) gives way to "A category can have at most 40 tags."
+- **Restoring a backup** (`--restore`) and the test endpoints aren't limited.
+
 ### Storage
 - The free Supabase database holds 500 MB in all. Handwritten notes are the biggest items, so the users page also shows each user's number of notes. A limit per user isn't needed yet.
 - **How much space notes take:** measured as the space the notes' rows take in the database, after its own compression (`sum(pg_column_size(data))` over the user's `notes` rows), since that's what counts towards the 500 MB. It includes every note (archived and Bin too), but not the History's earlier copies. Shown in bytes below 1 KB, otherwise in KB or MB (1024-based) to one decimal place, e.g. "2.4 MB".
