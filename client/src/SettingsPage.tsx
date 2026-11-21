@@ -585,6 +585,15 @@ export function SettingsPage({
         </section>
       )}
 
+      {/* The help pages are their own pages (not part of the app), so this is a plain link. */}
+      <section>
+        <h2>Help</h2>
+        <p>How to use nwsnotes, from the basics to every feature.</p>
+        <a className="button" href="/docs/">
+          Help pages
+        </a>
+      </section>
+
       <section>
         <h2>Account</h2>
         <p>

@@ -1,0 +1,23 @@
+# Finding notes: filters and search
+
+## Filters
+
+Just above your notes is a row of dropdowns, one for each Category. Tick Tags in them to narrow the list down. For example, tick "Shopping" to see just your shopping notes.
+
+- Within one dropdown, ticking several Tags shows notes with **any** of them.
+- Across different dropdowns, a note must match **all** of them.
+- **select all**, at the top of a dropdown, ticks every Tag in it.
+- Each Tag shows how many notes it would list, in brackets.
+- While anything is ticked, the row turns **yellow**, so you can see the list is narrowed. The **reset** button (a curved arrow) clears it.
+
+Your ticks are remembered for each tab on each device.
+
+While the list is filtered, new notes you add automatically get the Tags that keep them in the list.
+
+## Search
+
+Tap the **magnifying glass** in the same row, and type. The list shows only notes whose title (or long-form text) contains every word you type, in any order. Tap the magnifying glass again, or press Escape, to close the search.
+
+## Tabs
+
+If you often use the same filters, save them as a tab. See [Tabs](tabs.md).

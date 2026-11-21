@@ -134,3 +134,18 @@ test("with the long-form editor open, the whole chevron shows above it", async (
   );
   expect(onTop).toBe(true);
 });
+
+test.describe(() => {
+  test.use({ addAreaStartsCollapsed: false });
+
+  test("the add area is expanded by default, showing the tag pills", async ({ page }) => {
+    await page.reload();
+    await expect(addArea(page)).toHaveClass(/\bfull\b/);
+    await expect(page.getByRole("button", { name: "Show tag dropdowns" })).toBeVisible();
+    // Collapsing it is remembered on this device.
+    await page.getByRole("button", { name: "Show tag dropdowns" }).click();
+    await page.reload();
+    await expect(addArea(page)).not.toHaveClass(/\bfull\b/);
+  });
+});
+

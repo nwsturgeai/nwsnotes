@@ -26,9 +26,24 @@ export async function resetData(page: Page) {
 }
 
 /** The tests' `test`: every test starts from the seed data, so tests don't depend on each other. */
-export const test = base.extend<{ resetBeforeEach: void }>({
+export const test = base.extend<{ resetBeforeEach: void; addAreaStartsCollapsed: boolean }>({
+  /**
+   * The add area is expanded by default, but the tests were written starting from the collapsed area
+   * (they expand it with "Show all tags"). So a device that hasn't chosen starts collapsed here; a test
+   * of the default sets this to false. A choice made during a test is still remembered across reloads.
+   */
+  addAreaStartsCollapsed: [true, { option: true }],
   resetBeforeEach: [
-    async ({ page }, use) => {
+    async ({ page, context, addAreaStartsCollapsed }, use) => {
+      if (addAreaStartsCollapsed) {
+        await context.addInitScript(() => {
+          try {
+            if (localStorage.getItem("nwsnotes.fullTagList") === null) localStorage.setItem("nwsnotes.fullTagList", "off");
+          } catch {
+            // No storage (e.g. a blank page): nothing to set.
+          }
+        });
+      }
       await resetData(page);
       await use();
     },
