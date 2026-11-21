@@ -27,4 +27,4 @@ In **Settings**, under **Lifetime**:
 - **Archived to Bin** moves every archived note to the Bin.
 - **Empty Bin** deletes the notes in the Bin for good. The app asks first.
 
-Even after emptying the Bin, you can get notes back for 30 days with [History](history.md).
+Even after emptying the Bin, you can get notes back with [History](history.md), for up to 30 days (as long as they are within your last 500 changes).

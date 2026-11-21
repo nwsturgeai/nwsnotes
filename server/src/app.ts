@@ -3,7 +3,14 @@ import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
-import { CONNECTION_ID_HEADER, validateDueDate, validateNoteDetails, validateNoteTitle, type LoginRequest } from "@nwsnotes/shared";
+import {
+  CONNECTION_ID_HEADER,
+  stylusNoteLimitOf,
+  validateDueDate,
+  validateNoteDetails,
+  validateNoteTitle,
+  type LoginRequest,
+} from "@nwsnotes/shared";
 import { RequestError } from "./errors.js";
 import { DEV_PASSWORD } from "./config.js";
 import { SESSION_COOKIE, SESSION_LENGTH_MS, createSessionToken, hashPassword, requireSession, userOf } from "./auth.js";
@@ -14,7 +21,7 @@ import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
 import { makeSingleUserDatabaseForTests } from "./persist.js";
 import type { NoteStore } from "./store.js";
-import { ADMIN_ID, meOf, noteLimitOf, type User } from "./users.js";
+import { ADMIN_ID, meOf, noteLimitOf, noteStatsOf, type User } from "./users.js";
 
 /** The logged-in user's notebook (after requireSession and withNotebook). */
 function notebookOf(res: Response): NoteStore {
@@ -98,8 +105,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
   meRouter.get("/stats", async (_req, res) => {
     const id = userOf(res).id;
     res.set("Cache-Control", "no-store");
-    const stats = (await users.noteStats(id)).get(id) ?? { noteCount: 0, noteBytes: 0 };
-    res.json({ ...stats, noteLimit: noteLimitOf(userOf(res)) });
+    res.json(noteStatsOf(userOf(res), (await users.noteStats(id)).get(id)));
   });
 
   // Changing your own password: this browser gets a fresh cookie and stays logged in; the others are logged out.
@@ -123,6 +129,12 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
   usersRouter.get("/", async (_req, res) => {
     res.set("Cache-Control", "no-store");
     res.json(await users.summaries());
+  });
+
+  // The whole database's size, for the users page.
+  usersRouter.get("/database-size", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ bytes: await users.databaseBytes() });
   });
 
   usersRouter.post("/", async (req, res) => {
@@ -196,6 +208,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
         noteLimit: noteLimitOf(userOf(res)),
+        stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(userOf(res))),
       });
       // An add sent again (its reply was lost) changes nothing, so there's nothing to tell other pages.
       if (created) notifyChanged(req, res);
@@ -233,6 +246,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
     const note = await notebookOf(res).updateNote(id, check.title, req.body?.tagIds, details.details, {
       dueDateTime: due.dueDateTime,
       tagsChangedDateTime: req.body?.tagsChangedDateTime,
+      stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(userOf(res))),
     });
     notifyChanged(req, res);
     res.json(note);

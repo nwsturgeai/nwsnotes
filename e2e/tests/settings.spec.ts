@@ -268,3 +268,54 @@ test.describe("drag-and-drop", () => {
     await expect(categoryLine(page, "Topic").locator(".category-tags")).toHaveText("Reading, Ideas, Shopping");
   });
 });
+
+test("a user can have at most 20 categories, 40 tags in each and 40 tabs", async ({ page }) => {
+  const data = (await (await page.request.get("/api/notes")).json()) as {
+    categories: { id: number; system?: boolean; tags: { id: number }[] }[];
+    tabs: unknown[];
+  };
+  const categoryCount = data.categories.filter((category) => !category.system).length;
+  const tabCount = data.tabs.length;
+  const addCategory = (name: string, tagCount = 1) =>
+    page.request.post("/api/categories", {
+      data: { name, multiSelect: true, tags: Array.from({ length: tagCount }, (_, i) => ({ name: `${name} tag ${i + 1}` })) },
+    });
+
+  // 40 tags in a category, but not 41.
+  const tooMany = await addCategory("Big", 41);
+  expect(tooMany.status()).toBe(400);
+  expect(((await tooMany.json()) as { error: string }).error).toBe("A category can have at most 40 tags; this one has 41.");
+  expect((await addCategory("Big", 40)).status()).toBe(201);
+
+  // The category page stops offering "Add tag" at 40 tag rows.
+  await page.reload();
+  await editCategory(page, "Big");
+  await expect(page.getByRole("button", { name: "Add tag" })).toHaveCount(0);
+  await expect(page.getByText("A category can have at most 40 tags.")).toBeVisible();
+  await page.getByRole("button", { name: "Delete tag Big tag 40" }).click();
+  await page.getByRole("button", { name: "Add tag" }).click();
+  await expect(page.getByRole("button", { name: "Add tag" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  // Up to 20 categories (the built-in Lifetime doesn't count).
+  for (let i = categoryCount + 1; i < 20; i++) expect((await addCategory(`Category ${i}`)).status()).toBe(201);
+  const twentyFirst = await addCategory("One too many");
+  expect(twentyFirst.status()).toBe(400);
+  expect(((await twentyFirst.json()) as { error: string }).error).toBe("You can have at most 20 categories.");
+
+  // Up to 40 tabs ("All" doesn't count).
+  const area = data.categories.find((category) => !category.system)!;
+  const filter = { categoryId: area.id, tagIds: [area.tags[0]!.id] };
+  const addTab = (name: string) => page.request.post("/api/tabs", { data: { name, categories: [filter] } });
+  for (let i = tabCount + 1; i <= 40; i++) expect((await addTab(`Tab ${i}`)).status()).toBe(201);
+  const tab41 = await addTab("One too many");
+  expect(tab41.status()).toBe(400);
+  expect(((await tab41.json()) as { error: string }).error).toBe('You can have at most 40 tabs, as well as "All".');
+
+  // Settings says so instead of offering to add more.
+  await openSettings(page);
+  await expect(section(page, "Categories").getByRole("link", { name: "Add category" })).toHaveCount(0);
+  await expect(section(page, "Categories")).toContainText("You have the most categories you can (20). Delete one to add another.");
+  await expect(section(page, "Tabs").getByRole("link", { name: "Add tab" })).toHaveCount(0);
+  await expect(section(page, "Tabs")).toContainText("You have the most tabs you can (40). Delete one to add another.");
+});

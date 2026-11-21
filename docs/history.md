@@ -1,6 +1,6 @@
 # History: going back
 
-The app keeps a record of every change you've made in the last 30 days: notes added, edited, archived or deleted, Categories and tabs changed, the order of your notes, and so on.
+The app keeps a record of your last 500 changes from the past 30 days: notes added, edited, archived or deleted, Categories and tabs changed, the order of your notes, and so on.
 
 ## Going back
 

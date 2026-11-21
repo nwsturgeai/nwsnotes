@@ -4,6 +4,7 @@ import {
   CLIENT_ID_MAX_LENGTH,
   isLifetimeTag,
   isLongForm,
+  isStylusNote,
   lifetimeOf,
   LIFETIME_ACTIVE,
   LIFETIME_ARCHIVED,
@@ -449,7 +450,14 @@ export class NoteStore {
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { dueDateTime?: string; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown; noteLimit?: number } = {},
+    options: {
+      dueDateTime?: string;
+      clientId?: unknown;
+      createdDateTime?: unknown;
+      tagsChangedDateTime?: unknown;
+      noteLimit?: number;
+      stylusNoteLimit?: number;
+    } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
       let clientId: string | undefined;
@@ -468,6 +476,7 @@ export class NoteStore {
           `You've reached your limit of ${options.noteLimit} notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
         );
       }
+      if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       if (details && title.titleText === undefined) {
@@ -508,6 +517,18 @@ export class NoteStore {
   }
 
   /**
+   * Refuses a new stylus note when the notebook already has `limit` of them (archived and Bin included).
+   * Called in the queue of changes, so two at once can't both slip under it.
+   */
+  private checkStylusNoteLimit(limit: number | undefined): void {
+    if (limit === undefined || this.notes.filter(isStylusNote).length < limit) return;
+    throw new RequestError(
+      409,
+      `You've reached your limit of ${limit} stylus notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
+    );
+  }
+
+  /**
    * Replaces a note's title (already validated) and tags, then saves. The note keeps its id, its
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
@@ -520,7 +541,7 @@ export class NoteStore {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown } = {},
+    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; stylusNoteLimit?: number } = {},
   ): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
@@ -557,6 +578,8 @@ export class NoteStore {
       if (details !== undefined && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
+      // A typed note converted to a long-form note with handwritten details becomes a stylus note.
+      if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
 
       const now = this.nextSaveTime();
       // Editing keeps the note's Lifetime.

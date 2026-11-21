@@ -5,10 +5,12 @@ import { formatBytes } from "./sizes";
 import {
   ALL_TAB_NAME,
   lifetimeOf,
+  CATEGORIES_MAX,
   LIFETIME_ARCHIVED,
   LIFETIME_BIN,
   LIFETIME_NEW,
   NOTE_LIMIT_SHOWN_FROM,
+  TABS_MAX,
   type Category,
   type Me,
   type Note,
@@ -302,7 +304,15 @@ export function SettingsPage({
                   You have <strong>{plural(stats.noteCount, "note")}</strong>
                 </>
               )}
-              , taking up <strong>{formatBytes(stats.noteBytes)}</strong>.
+              , taking up <strong>{formatBytes(stats.noteBytes)}</strong>, plus <strong>{formatBytes(stats.historyBytes)}</strong> for
+              their History.
+              {/* Likewise the stylus-note limit. */}
+              {stats.stylusNoteCount >= stats.stylusNoteLimit * NOTE_LIMIT_SHOWN_FROM && (
+                <>
+                  {" "}
+                  You have <strong>{stats.stylusNoteCount}</strong> of your <strong>{plural(stats.stylusNoteLimit, "stylus note")}</strong>.
+                </>
+              )}
             </>
           ) : (
             "You have … notes, taking up …"
@@ -388,7 +398,7 @@ export function SettingsPage({
 
       <section>
         <h2>History</h2>
-        <p>See the changes from the last 30 days, and go back to how things were after any of them.</p>
+        <p>See your last 500 changes from the past 30 days, and go back to how things were after any of them.</p>
         <a className="button" href={pathFor({ name: "history" })} onClick={(event) => go(event, { name: "history" })}>
           History
         </a>
@@ -525,13 +535,17 @@ export function SettingsPage({
             {orderError.text}
           </p>
         )}
-        <a
-          className="button"
-          href={pathFor({ name: "category", id: "new" })}
-          onClick={(event) => go(event, { name: "category", id: "new" })}
-        >
-          Add category
-        </a>
+        {userCategories.length >= CATEGORIES_MAX ? (
+          <p className="hint">You have the most categories you can ({CATEGORIES_MAX}). Delete one to add another.</p>
+        ) : (
+          <a
+            className="button"
+            href={pathFor({ name: "category", id: "new" })}
+            onClick={(event) => go(event, { name: "category", id: "new" })}
+          >
+            Add category
+          </a>
+        )}
       </section>
 
       <section>
@@ -591,13 +605,17 @@ export function SettingsPage({
             {orderError.text}
           </p>
         )}
-        <a
-          className="button"
-          href={pathFor({ name: "tab", id: "new" })}
-          onClick={(event) => go(event, { name: "tab", id: "new" })}
-        >
-          Add tab
-        </a>
+        {tabs.length >= TABS_MAX ? (
+          <p className="hint">You have the most tabs you can ({TABS_MAX}). Delete one to add another.</p>
+        ) : (
+          <a
+            className="button"
+            href={pathFor({ name: "tab", id: "new" })}
+            onClick={(event) => go(event, { name: "tab", id: "new" })}
+          >
+            Add tab
+          </a>
+        )}
       </section>
 
       <Reminders />
