@@ -21,7 +21,7 @@ interface Props {
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
 /** Everyone's notes or their sizes, added up. */
-const total = (users: UserSummary[], field: "noteCount" | "noteBytes") => users.reduce((sum, user) => sum + user[field], 0);
+const total = (users: UserSummary[], field: "noteCount" | "noteBytes" | "historyBytes") => users.reduce((sum, user) => sum + user[field], 0);
 
 /** E.g. "18 Nov 2026, 09:40", in this device's time zone. */
 function when(iso: string): string {
@@ -147,7 +147,12 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
     [onSessionExpired],
   );
 
+  /** The whole database's size; undefined while loading, or if it couldn't be found out. */
+  const [databaseBytes, setDatabaseBytes] = useState<number>();
+
   const load = useCallback(async () => {
+    // Fetched alongside the list; if it fails, the line is just left out.
+    void api.databaseSize().then(({ bytes }) => setDatabaseBytes(bytes), () => setDatabaseBytes(undefined));
     try {
       setUsers(await api.users());
     } catch (err) {
@@ -228,9 +233,14 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
         <>
           <p className="note-stats">
             All users: <strong>{plural(total(users, "noteCount"), "note")}</strong>,{" "}
-            <strong>{formatBytes(total(users, "noteBytes"))}</strong> of the database&apos;s 500 MB.
+            <strong>{formatBytes(total(users, "noteBytes") + total(users, "historyBytes"))}</strong> with their History.
           </p>
-          <p className="hint">Each change in the last 30 days of History also keeps an earlier copy, which takes some extra space.</p>
+          {databaseBytes !== undefined && (
+            <p className="note-stats database-size">
+              The whole database takes up <strong>{formatBytes(databaseBytes)}</strong> of its 500 MB, including indexes and
+              its own overhead.
+            </p>
+          )}
         </>
       )}
       {users && (
@@ -285,7 +295,8 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                   <p className="user-details">
                     Created {when(user.createdDateTime)} · Last logged in {user.lastLoginDateTime ? when(user.lastLoginDateTime) : "Never"} ·{" "}
                     {user.noteCount} of {plural(user.noteLimit, "note")} · {user.stylusNoteCount} of{" "}
-                    {plural(user.stylusNoteLimit, "stylus note")} · {formatBytes(user.noteBytes)}
+                    {plural(user.stylusNoteLimit, "stylus note")} · {formatBytes(user.noteBytes)} ·{" "}
+                    {formatBytes(user.historyBytes)} History
                   </p>
                   <div className="lifetime-buttons">
                     <button

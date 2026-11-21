@@ -90,7 +90,7 @@ The app can be used by several people, each with their own completely separate n
 - **"Download backup"** gives the logged-in user's own notebook, as now.
 - **Restoring by hand:** `node server.cjs --restore <file> --user <login name>`. Without `--user` it refuses.
 - **A forgotten admin password:** `node server.cjs --reset-password <login name>` on the VM prints a new generated password for that user and logs them out everywhere. This works for any user.
-- **The daily jobs** run once a day for all users: one keep-alive query, each user's backup, and pruning every user's history older than 30 days.
+- **The daily jobs** run once a day for all users: one keep-alive query, each user's backup, and pruning every user's history older than 30 days (each user's history is also kept to their newest 500 changes, as each change is saved).
 
 ### Offline copy on a device
 - The offline copy and the outbox of waiting changes are kept under the user's id, so two people who use the same device never see each other's notes.
@@ -102,7 +102,7 @@ The app can be used by several people, each with their own completely separate n
 - **Adding a note at the limit is refused** by the server (`POST /api/notes`, 409): "You've reached your limit of <limit> notes. Empty the Bin to make room, or ask the admin for a higher limit." The page shows it like other save errors, keeping the typed title or writing. Editing, archiving and everything else carry on as normal. A note written offline that's refused when it's sent is dropped, and the sync notice names it as not saved, as for any refused change.
 - **Restoring a backup** (`--restore`) and the test endpoints aren't limited.
 - **What people see:** the limit only shows once they're within 20% of it (at least 80% of it used): the line at the top of Settings then reads "You have <n> of your <limit> notes, taking up <size>." Below that, it reads as before. `GET /api/me/stats` also returns `noteLimit`.
-- **The admin sees and sets it:** each row on the users page reads "<n> of <limit> notes · <s> of <stylus limit> stylus notes · <size>", and **Edit** has a "Note limit" box (a whole number from 1 to 100,000), saved with `PUT /api/users/:id` and `{ noteLimit }`. It can be set below someone's current count: they keep their notes, but can't add more until they're under it. `UserSummary` gains `noteLimit`.
+- **The admin sees and sets it:** each row on the users page reads "<n> of <limit> notes · <s> of <stylus limit> stylus notes · <size> · <history size> History", and **Edit** has a "Note limit" box (a whole number from 1 to 100,000), saved with `PUT /api/users/:id` and `{ noteLimit }`. It can be set below someone's current count: they keep their notes, but can't add more until they're under it. `UserSummary` gains `noteLimit`.
 
 ### Stylus-note limit
 - **Each user can also have at most 5% of their note limit as stylus notes** (rounded down, and at least 1): 50 with the default 1000. It isn't set separately: the admin changes it by changing the note limit, and the Edit form says what it comes to ("5% of them can be stylus notes: <n> stylus notes.").
@@ -118,9 +118,9 @@ The app can be used by several people, each with their own completely separate n
 
 ### Storage
 - The free Supabase database holds 500 MB in all. Handwritten notes are the biggest items, so the users page also shows each user's number of notes. A limit per user isn't needed yet.
-- **How much space notes take:** measured as the space the notes' rows take in the database, after its own compression (`sum(pg_column_size(data))` over the user's `notes` rows), since that's what counts towards the 500 MB. It includes every note (archived and Bin too), but not the History's earlier copies. Shown in bytes below 1 KB, otherwise in KB or MB (1024-based) to one decimal place, e.g. "2.4 MB".
-- **Settings (everyone):** just under the "Settings" title, "You have <n> notes, taking up <size>." ("1 note" for one), from `GET /api/me/stats`, which returns `{ noteCount, noteBytes }` for the logged-in user. It shows "…" in place of the figures while loading, and nothing if it fails.
-- **The users page:** each user's row shows their note count and size, e.g. "42 notes · 1.1 MB" (`UserSummary` gains `noteBytes`). Above the list, a total for everyone: "All users: <n> notes, <size> of the database's 500 MB." A small note under it says the History's earlier copies take some extra space.
+- **How much space notes take:** measured as the space the notes' rows take in the database, after its own compression (`sum(pg_column_size(data))` over the user's `notes` rows), since that's what counts towards the 500 MB. It includes every note (archived and Bin too). **The History's size** is measured the same way, over the "before" copies in the user's `change_items` (`sum(pg_column_size("before"))`), and shown alongside. Shown in bytes below 1 KB, otherwise in KB or MB (1024-based) to one decimal place, e.g. "2.4 MB".
+- **Settings (everyone):** just under the "Settings" title, "You have <n> notes, taking up <size>, plus <history size> for their History." ("1 note" for one), from `GET /api/me/stats`, which returns `{ noteCount, noteBytes, historyBytes }` for the logged-in user. It shows "…" in place of the figures while loading, and nothing if it fails.
+- **The users page:** each user's row shows their note count and sizes, e.g. "42 notes · 1.1 MB · 300.2 KB History" (`UserSummary` gains `noteBytes` and `historyBytes`). Above the list, a total for everyone, notes and History together: "All users: <n> notes, <size> with their History." Under it, the real size of the whole database, from `pg_database_size(current_database())` (every table, index and the database's own overhead, so more than the notes and History alone): "The whole database takes up <size> of its 500 MB, including indexes and its own overhead." It comes from `GET /api/users/database-size` (admin only, `{ bytes }`), fetched alongside the list; if that fails, the line is left out.
 
 ### Tests
 - A new `users.spec.ts`:

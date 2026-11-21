@@ -131,6 +131,12 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
     res.json(await users.summaries());
   });
 
+  // The whole database's size, for the users page.
+  usersRouter.get("/database-size", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ bytes: await users.databaseBytes() });
+  });
+
   usersRouter.post("/", async (req, res) => {
     const { user, password } = await users.create(req.body);
     res.status(201).json({ user: users.summary(user), password });

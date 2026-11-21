@@ -461,28 +461,50 @@ function shownSize(bytes: number): string {
 }
 
 test("Settings shows how many notes you have and the space they take; the users page shows each user's and the total", async ({ page, browser }) => {
-  const stats = (await (await page.request.get("/api/me/stats")).json()) as { noteCount: number; noteBytes: number };
+  type Stats = { noteCount: number; noteBytes: number; historyBytes: number };
+  // An edit, so the History holds an earlier copy of a note.
+  const notes = (await (await page.request.get("/api/notes")).json()) as { notes: { id: number; titleText?: string; tagIds: number[] }[] };
+  const typed = notes.notes.find((note) => note.titleText !== undefined)!;
+  const edited = await page.request.put(`/api/notes/${typed.id}`, {
+    data: { titleText: `${typed.titleText} (edited)`, tagIds: typed.tagIds.filter((id) => id > 0) },
+  });
+  expect(edited.ok(), await edited.text()).toBe(true);
+  const stats = (await (await page.request.get("/api/me/stats")).json()) as Stats;
   expect(stats.noteCount).toBe(9);
   expect(stats.noteBytes).toBeGreaterThan(0);
+  expect(stats.historyBytes).toBeGreaterThan(0);
 
   await page.goto("/settings");
-  await expect(page.locator(".note-stats")).toHaveText(`You have 9 notes, taking up ${shownSize(stats.noteBytes)}.`);
+  await expect(page.locator(".note-stats")).toHaveText(
+    `You have 9 notes, taking up ${shownSize(stats.noteBytes)}, plus ${shownSize(stats.historyBytes)} for their History.`,
+  );
 
   // Another user, with one note: their own figures, and both on the users page with the total.
   const { password } = await addUser(page.request, "Sam Smith", "sam");
   const sam = await loggedIn(browser, "sam", password);
   await addNote(sam, "Sam's note");
   await sam.getByRole("link", { name: "Settings" }).click();
-  const samStats = (await (await sam.request.get("/api/me/stats")).json()) as { noteCount: number; noteBytes: number };
+  const samStats = (await (await sam.request.get("/api/me/stats")).json()) as Stats;
   expect(samStats.noteCount).toBe(1);
-  await expect(sam.locator(".note-stats")).toHaveText(`You have 1 note, taking up ${shownSize(samStats.noteBytes)}.`);
+  await expect(sam.locator(".note-stats")).toHaveText(
+    `You have 1 note, taking up ${shownSize(samStats.noteBytes)}, plus ${shownSize(samStats.historyBytes)} for their History.`,
+  );
 
   await openUsersPage(page);
-  await expect(userRow(page, ADMIN)).toContainText(`9 of 1000 notes · 1 of 50 stylus notes · ${shownSize(stats.noteBytes)}`);
-  await expect(userRow(page, "sam")).toContainText(`1 of 1000 notes · 0 of 50 stylus notes · ${shownSize(samStats.noteBytes)}`);
-  await expect(page.locator(".note-stats")).toHaveText(
-    `All users: 10 notes, ${shownSize(stats.noteBytes + samStats.noteBytes)} of the database's 500 MB.`,
+  await expect(userRow(page, ADMIN)).toContainText(
+    `9 of 1000 notes · 1 of 50 stylus notes · ${shownSize(stats.noteBytes)} · ${shownSize(stats.historyBytes)} History`,
   );
+  await expect(userRow(page, "sam")).toContainText(`1 of 1000 notes · 0 of 50 stylus notes · ${shownSize(samStats.noteBytes)} · ${shownSize(samStats.historyBytes)} History`);
+  const all = stats.noteBytes + stats.historyBytes + samStats.noteBytes + samStats.historyBytes;
+  await expect(page.locator(".note-stats").first()).toHaveText(`All users: 10 notes, ${shownSize(all)} with their History.`);
+  // The whole database, from pg_database_size: more than the notes and History alone.
+  const database = (await (await page.request.get("/api/users/database-size")).json()) as { bytes: number };
+  expect(database.bytes).toBeGreaterThan(all);
+  await expect(page.locator(".database-size")).toHaveText(
+    /^The whole database takes up \d+(\.\d)? (KB|MB) of its 500 MB, including indexes and its own overhead\.$/,
+  );
+  // Only the admin can see it.
+  expect((await sam.request.get("/api/users/database-size")).status()).toBe(403);
 });
 
 test("each user has a note limit, set by the admin, shown to them only when they're near it", async ({ page, browser }) => {

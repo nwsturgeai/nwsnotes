@@ -304,7 +304,8 @@ export function SettingsPage({
                   You have <strong>{plural(stats.noteCount, "note")}</strong>
                 </>
               )}
-              , taking up <strong>{formatBytes(stats.noteBytes)}</strong>.
+              , taking up <strong>{formatBytes(stats.noteBytes)}</strong>, plus <strong>{formatBytes(stats.historyBytes)}</strong> for
+              their History.
               {/* Likewise the stylus-note limit. */}
               {stats.stylusNoteCount >= stats.stylusNoteLimit * NOTE_LIMIT_SHOWN_FROM && (
                 <>
@@ -397,7 +398,7 @@ export function SettingsPage({
 
       <section>
         <h2>History</h2>
-        <p>See the changes from the last 30 days, and go back to how things were after any of them.</p>
+        <p>See your last 500 changes from the past 30 days, and go back to how things were after any of them.</p>
         <a className="button" href={pathFor({ name: "history" })} onClick={(event) => go(event, { name: "history" })}>
           History
         </a>

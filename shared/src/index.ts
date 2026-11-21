@@ -269,6 +269,8 @@ export interface UserSummary extends Me {
   noteCount: number;
   /** The space their notes take in the database, in bytes. */
   noteBytes: number;
+  /** The space their History's earlier copies take, in bytes. */
+  historyBytes: number;
   /** The most notes they can have. */
   noteLimit: number;
   /** How many of their notes are stylus (handwritten) notes, and the most they can have (see stylusNoteLimitOf). */
@@ -300,6 +302,8 @@ export function isStylusNote(note: Pick<Note, "titleImage" | "detailsImage">): b
 export interface NoteStats {
   noteCount: number;
   noteBytes: number;
+  /** The space their History's earlier copies take (bytes). */
+  historyBytes: number;
   /** The most notes they can have (shown to them only once they're near it). */
   noteLimit: number;
   /** How many of them are stylus notes, and the most they can have (likewise shown only once they're near it). */

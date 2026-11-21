@@ -158,6 +158,8 @@ export const api = {
   changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
   /** The users page (admin only). */
   users: () => request<UserSummary[]>("GET", "/api/users"),
+  /** The whole database's size (bytes), from pg_database_size. */
+  databaseSize: () => request<{ bytes: number }>("GET", "/api/users/database-size"),
   addUser: (body: NewUserRequest) => request<{ user: UserSummary; password: string }>("POST", "/api/users", body),
   updateUser: (id: number, body: UserUpdateRequest) => request<UserSummary>("PUT", `/api/users/${id}`, body),
   resetPassword: (id: number) => request<{ password: string }>("POST", `/api/users/${id}/reset-password`),

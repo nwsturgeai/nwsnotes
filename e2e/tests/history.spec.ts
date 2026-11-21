@@ -166,3 +166,32 @@ test("going back undoes a change to the note order", async ({ page }) => {
   await page.getByRole("link", { name: "← Notes" }).click();
   await expectTitles(page, ALL);
 });
+
+test("only the newest 500 changes are kept, and the oldest of them can still be gone back to", async ({ page }) => {
+  // 510 changes: the All tab moved to the left and back.
+  for (let i = 0; i < 510; i++) {
+    const moved = await page.request.put("/api/tabs/all", { data: { placement: i % 2 === 0 ? "left" : "top" } });
+    expect(moved.ok()).toBe(true);
+  }
+  const changes: { id: number; summary: string }[] = [];
+  let before: number | undefined;
+  for (;;) {
+    const page_ = (await (await page.request.get(`/api/history?limit=200${before ? `&before=${before}` : ""}`)).json()) as {
+      changes: { id: number; summary: string }[];
+      more: boolean;
+    };
+    changes.push(...page_.changes);
+    if (!page_.more) break;
+    before = page_.changes.at(-1)!.id;
+  }
+  expect(changes).toHaveLength(500);
+  // The seed's import is long gone; the oldest kept is the 11th move (to the left).
+  expect(changes.at(-1)!.summary).toBe("Moved the All tab to the left");
+
+  const back = await page.request.post("/api/history/revert", { data: { toChangeId: changes.at(-1)!.id } });
+  expect(back.ok(), await back.text()).toBe(true);
+  expect(((await back.json()) as { undone: number }).undone).toBe(499);
+  // The 500 kept are now the newest 500, the revert included.
+  const after = (await (await page.request.get("/api/history?limit=200")).json()) as { changes: { summary: string }[] };
+  expect(after.changes[0]!.summary).toMatch(/^Went back to /);
+});
