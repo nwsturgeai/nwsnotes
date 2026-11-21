@@ -203,7 +203,7 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
 - Changing tab resets every dropdown (see "Tabs on the notes page" in [tabs.md](tabs.md)); adding a note still keeps the selections.
 
 ### Full-tag-list mode
-- **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode.
+- **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode. **Expanded by default:** a device that has never used the toggle shows the expanded area (the tag pills), so new users see their tags straight away; one that chose to collapse it stays collapsed.
 - **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match.
 - **Scrolling:** the area itself never scrolls. The text box or canvas, any message under it, and the buttons stay put. If the pills don't fit, only the pills scroll up and down, in the space under the text box and beside the buttons.
   - The collapsed 150px area is unchanged: if it overflows, the whole area scrolls. This is because the dropdowns' lists open below them and would be cut off in a separately scrolling strip.

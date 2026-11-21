@@ -14,7 +14,7 @@ You might want to group your notes by what aspect of your life they relate to i.
 
 On the Notes page, just below where you can type a new note, you will see your available Tags.  You can click those Tag pills to set the Tags on a note before you create it.
 
-Each note in your list has quick button to edit it.  Editing happens in the same place as where you add new notes.  When editing a note, you can change its Tags by clicking on different Tag pills.  Click the tick mark button to save your edits.
+Each note in your list has a quick button to edit it.  Editing happens in the same place as where you add new notes.  When editing a note, you can change its Tags by clicking on different Tag pills.  Click the tick mark button to save your edits.
 
 ### Just a little more advanced - simple filtering by Tags:
 

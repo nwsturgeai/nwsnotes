@@ -54,7 +54,8 @@ export function useStylusMode(): [boolean, (on: boolean) => void] {
 
 /** Whether the add/edit area shows every tag as a pill (full-tag-list mode) instead of dropdowns. */
 export function useFullTagList(): [boolean, (on: boolean) => void] {
-  return useDeviceSetting("nwsnotes.fullTagList", (stored) => stored === "on", onOff);
+  // Expanded unless this device has chosen to collapse it.
+  return useDeviceSetting("nwsnotes.fullTagList", (stored) => stored !== "off", onOff);
 }
 
 /** The Columns setting: always one column, or as many as fit at least this wide. */
