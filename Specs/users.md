@@ -97,6 +97,13 @@ The app can be used by several people, each with their own completely separate n
 - **Logging out** clears that user's offline copy from the device. If changes are still waiting to be sent, it asks first: "<n> changes haven't been saved to the server yet. Log out anyway and lose them?"
 - Device settings (stylus mode, columns, pen thickness, full-tag-list mode) stay per device, as now.
 
+### Note limit
+- **Each user has a maximum number of notes,** `noteLimit` in their `data` (1000 when missing), the admin included. It counts all their notes: archived, Bin, long-form notes and their child notes.
+- **Adding a note at the limit is refused** by the server (`POST /api/notes`, 409): "You've reached your limit of <limit> notes. Empty the Bin to make room, or ask the admin for a higher limit." The page shows it like other save errors, keeping the typed title or writing. Editing, archiving and everything else carry on as normal. A note written offline that's refused when it's sent is dropped, and the sync notice names it as not saved, as for any refused change.
+- **Restoring a backup** (`--restore`) and the test endpoints aren't limited.
+- **What people see:** the limit only shows once they're within 20% of it (at least 80% of it used): the line at the top of Settings then reads "You have <n> of your <limit> notes, taking up <size>." Below that, it reads as before. `GET /api/me/stats` also returns `noteLimit`.
+- **The admin sees and sets it:** each row on the users page reads "<n> of <limit> notes · <size>", and **Edit** has a "Note limit" box (a whole number from 1 to 100,000), saved with `PUT /api/users/:id` and `{ noteLimit }`. It can be set below someone's current count: they keep their notes, but can't add more until they're under it. `UserSummary` gains `noteLimit`.
+
 ### Storage
 - The free Supabase database holds 500 MB in all. Handwritten notes are the biggest items, so the users page also shows each user's number of notes. A limit per user isn't needed yet.
 - **How much space notes take:** measured as the space the notes' rows take in the database, after its own compression (`sum(pg_column_size(data))` over the user's `notes` rows), since that's what counts towards the 500 MB. It includes every note (archived and Bin too), but not the History's earlier copies. Shown in bytes below 1 KB, otherwise in KB or MB (1024-based) to one decimal place, e.g. "2.4 MB".
