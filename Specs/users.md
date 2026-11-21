@@ -99,6 +99,9 @@ The app can be used by several people, each with their own completely separate n
 
 ### Storage
 - The free Supabase database holds 500 MB in all. Handwritten notes are the biggest items, so the users page also shows each user's number of notes. A limit per user isn't needed yet.
+- **How much space notes take:** measured as the space the notes' rows take in the database, after its own compression (`sum(pg_column_size(data))` over the user's `notes` rows), since that's what counts towards the 500 MB. It includes every note (archived and Bin too), but not the History's earlier copies. Shown in bytes below 1 KB, otherwise in KB or MB (1024-based) to one decimal place, e.g. "2.4 MB".
+- **Settings (everyone):** just under the "Settings" title, "You have <n> notes, taking up <size>." ("1 note" for one), from `GET /api/me/stats`, which returns `{ noteCount, noteBytes }` for the logged-in user. It shows "…" in place of the figures while loading, and nothing if it fails.
+- **The users page:** each user's row shows their note count and size, e.g. "42 notes · 1.1 MB" (`UserSummary` gains `noteBytes`). Above the list, a total for everyone: "All users: <n> notes, <size> of the database's 500 MB." A small note under it says the History's earlier copies take some extra space.
 
 ### Tests
 - A new `users.spec.ts`:
