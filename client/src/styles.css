@@ -1051,7 +1051,9 @@ body:has(.note-list li.dragging) {
 }
 
 .new-note form {
+  /* At most 768px wide, centred on a wider screen. */
   max-width: 48rem;
+  margin: 0 auto;
 }
 
 .new-note label {

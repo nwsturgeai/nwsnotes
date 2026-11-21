@@ -149,3 +149,13 @@ test.describe(() => {
   });
 });
 
+test("on a wide screen the new-note area is at most 768px wide and centred", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  const area = (await page.locator(".new-note").boundingBox())!;
+  const form = (await page.locator(".new-note form").boundingBox())!;
+  expect(form.width).toBeLessThanOrEqual(768);
+  const left = form.x - area.x;
+  const right = area.x + area.width - (form.x + form.width);
+  expect(Math.abs(left - right)).toBeLessThan(2);
+});
+
