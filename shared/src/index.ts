@@ -240,8 +240,55 @@ export interface CategoryRequest {
 
 /** Body of POST /api/login. */
 export interface LoginRequest {
+  /** The login name, compared ignoring case. */
+  loginName: string;
   password: string;
 }
+
+/** GET /api/me: who is logged in. */
+export interface Me {
+  id: number;
+  loginName: string;
+  displayName: string;
+  admin: boolean;
+}
+
+/** Body of PUT /api/me/password. */
+export interface PasswordChangeRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+/** A user, as the users page (admin only) lists them. */
+export interface UserSummary extends Me {
+  disabled: boolean;
+  createdDateTime: string;
+  /** Missing if they've never logged in. */
+  lastLoginDateTime?: string;
+  /** How many notes their notebook has. */
+  noteCount: number;
+}
+
+/** Body of POST /api/users (adding a user). */
+export interface NewUserRequest {
+  loginName: string;
+  displayName: string;
+}
+
+/** Body of PUT /api/users/:id: only the parts given change. */
+export interface UserUpdateRequest {
+  loginName?: string;
+  displayName?: string;
+  disabled?: boolean;
+}
+
+/** Login names: 3 to 32 letters, digits, ".", "-" and "_". */
+export const LOGIN_NAME_PATTERN = /^[A-Za-z0-9._-]{3,32}$/;
+export const LOGIN_NAME_RULE = 'A login name must be 3 to 32 characters: letters, digits, ".", "-" and "_".';
+export const DISPLAY_NAME_MAX_LENGTH = 60;
+/** Passwords people choose. */
+export const PASSWORD_MIN_LENGTH = 10;
+export const PASSWORD_MAX_LENGTH = 200;
 
 /** Shape of every error response from the API. */
 export interface ApiErrorBody {
@@ -250,6 +297,9 @@ export interface ApiErrorBody {
 
 /** Address of the live-updates WebSocket. The website adds `?id=<connection id>`. */
 export const LIVE_UPDATES_PATH = "/ws";
+
+/** The close code the server ends a live-updates connection with when its user's logins stop working. */
+export const LIVE_LOGGED_OUT_CLOSE_CODE = 4001;
 
 /** Header the website sends with every change, so the server doesn't notify the page that made it. */
 export const CONNECTION_ID_HEADER = "X-Connection-Id";

@@ -7,34 +7,62 @@ import { loadConfig } from "./config.js";
 import { openDatabase } from "./db.js";
 import { LiveUpdates } from "./live.js";
 import { PushReminders } from "./push.js";
-import { NoteStore } from "./store.js";
+import { Notebooks } from "./notebooks.js";
+import { Users } from "./users.js";
+
+/** The value after a command-line option, e.g. `--user admin`. */
+function option(name: string): string | undefined {
+  const at = process.argv.indexOf(name);
+  return at >= 0 ? process.argv[at + 1] : undefined;
+}
 
 async function main() {
   const config = loadConfig();
   const db = await openDatabase(config);
-  const store = new NoteStore(db, config.dataDir);
+  const users = new Users(db, { loginName: config.adminLoginName, passwordHash: config.passwordHash });
+  const notebooks = new Notebooks(db, config.dataDir, users);
 
-  // `node server.cjs --restore <file>`: replaces all the data with a backup file's, then stops.
-  const restoreAt = process.argv.indexOf("--restore");
-  if (restoreAt >= 0) {
-    const file = process.argv[restoreAt + 1];
-    if (!file) throw new Error("Give the backup file to restore: --restore <file>");
-    await store.init();
-    if (!store.isReady()) throw new Error("The database can't be reached, so nothing was restored.");
+  // `node server.cjs --restore <file> --user <login name>`: replaces that user's notebook with a backup
+  // file's, then stops.
+  if (process.argv.includes("--restore")) {
+    const file = option("--restore");
+    const loginName = option("--user");
+    if (!file || file.startsWith("--")) throw new Error("Give the backup file to restore: --restore <file> --user <login name>");
+    if (!loginName || loginName.startsWith("--")) {
+      throw new Error("Give whose notebook to restore it into: --restore <file> --user <login name>. Nothing was restored.");
+    }
+    await notebooks.init({ dailyJobs: false });
+    const user = users.byLoginName(loginName);
+    if (!user) throw new Error(`There is no user "${loginName}", so nothing was restored.`);
+    const store = await notebooks.for(user.id);
     const count = await store.restore(path.basename(file), readFileSync(file, "utf8"));
-    console.log(`Restored ${count} notes from ${file}. Restart the app (pm2 restart nwsnotes) so it loads them.`);
+    console.log(`Restored ${count} notes from ${file} into ${user.loginName}'s notebook. Restart the app (pm2 restart nwsnotes) so it loads them.`);
     process.exit(0);
   }
 
-  await store.init();
-  const push = new PushReminders(config.dataDir, config.pushContact, store);
+  // `node server.cjs --reset-password <login name>`: prints a new generated password for that user and
+  // logs them out everywhere, then stops.
+  if (process.argv.includes("--reset-password")) {
+    const loginName = option("--reset-password");
+    if (!loginName || loginName.startsWith("--")) throw new Error("Give whose password to reset: --reset-password <login name>");
+    await notebooks.init({ dailyJobs: false });
+    const user = users.byLoginName(loginName);
+    if (!user) throw new Error(`There is no user "${loginName}".`);
+    const password = await users.resetPassword(user.id);
+    console.log(`New password for ${user.loginName} (shown only once): ${password}`);
+    console.log("They're logged out everywhere. Restart the app (pm2 restart nwsnotes) so it uses the new password.");
+    process.exit(0);
+  }
+
+  await notebooks.init();
+  const push = new PushReminders(config.dataDir, config.pushContact, notebooks);
   await push.init();
-  const live = new LiveUpdates(config.sessionSecret);
-  const app = createApp(config, store, live, push, db);
+  const live = new LiveUpdates(users, config.sessionSecret);
+  const app = createApp(config, notebooks, live, push, db);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {
-      console.log(`Development API on http://localhost:${config.httpPort} (password: "dev")`);
+      console.log(`Development API on http://localhost:${config.httpPort} (log in as "admin", password "dev")`);
     });
     return;
   }

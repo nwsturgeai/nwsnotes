@@ -24,6 +24,7 @@ The settings page should show which version is running, and have a button to che
 - If the connection drops, the website reconnects automatically, waiting a little longer after each failed attempt. After any reconnect, and whenever the app comes back on screen, it reloads the notes in case it missed a message.
 - These background reloads don't show "Loading...", don't clear a title being typed, and keep the list scrolled to the bottom. If one fails, a small notice is shown instead of the full error page.
 - Logging out closes the connection.
+- With several users (see [users.md](users.md)), "data changed" messages go only to the same user's other connections, and the offline copy is kept per user.
 - The server pings each connection regularly so idle connections aren't silently dropped.
 
 ### Android app (PWA)

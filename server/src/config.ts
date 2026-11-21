@@ -5,8 +5,14 @@ import { hashPassword } from "./auth.js";
 export interface Config {
   /** True on the VM; false when running locally with `npm run dev`. */
   production: boolean;
-  /** Password hash in the format produced by hashPassword(). */
-  passwordHash: string;
+  /**
+   * The admin's first password, as a hash in the format produced by hashPassword(). Only used on the first
+   * start of the version with users (to make user 1, so the old single password keeps working), or with a
+   * new database; after that, passwords are kept with the users.
+   */
+  passwordHash?: string;
+  /** User 1's (the admin's) login name when user 1 is made. Default "admin". */
+  adminLoginName: string;
   /** Random secret used to sign session cookies. */
   sessionSecret: string;
   /** Folder holding the note save-files. */
@@ -37,11 +43,13 @@ export interface Config {
 
 const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
 
-const DEV_PASSWORD = "dev";
+/** The admin's password in development and the tests. */
+export const DEV_PASSWORD = "dev";
+const DEFAULT_ADMIN_LOGIN_NAME = "admin";
 
 /**
  * Production reads /etc/nwsnotes/config.json (or the file named by NWSNOTES_CONFIG).
- * Development uses local defaults, with the password "dev".
+ * Development uses local defaults: the admin is "admin", with the password "dev".
  */
 export function loadConfig(): Config {
   const production = process.env.NODE_ENV === "production";
@@ -57,6 +65,7 @@ export function loadConfig(): Config {
     return {
       production,
       passwordHash: hashPassword(DEV_PASSWORD),
+      adminLoginName: DEFAULT_ADMIN_LOGIN_NAME,
       sessionSecret: "development-only-secret",
       // The end-to-end tests keep their data in their own folder, never with real or dev notes.
       dataDir: path.resolve(process.env.NWSNOTES_DATA_DIR ?? "dev-data"),
@@ -74,12 +83,13 @@ export function loadConfig(): Config {
 
   const file = process.env.NWSNOTES_CONFIG ?? "/etc/nwsnotes/config.json";
   const raw = JSON.parse(readFileSync(file, "utf8")) as Partial<Config>;
-  for (const key of ["passwordHash", "sessionSecret", "databaseUrl"] as const) {
+  for (const key of ["sessionSecret", "databaseUrl"] as const) {
     if (!raw[key]) throw new Error(`${file} is missing "${key}"`);
   }
   return {
     production,
-    passwordHash: raw.passwordHash!,
+    passwordHash: raw.passwordHash,
+    adminLoginName: raw.adminLoginName ?? DEFAULT_ADMIN_LOGIN_NAME,
     sessionSecret: raw.sessionSecret!,
     dataDir: raw.dataDir ?? "/var/lib/nwsnotes/data",
     certDir: raw.certDir ?? "/etc/nwsnotes/certs",

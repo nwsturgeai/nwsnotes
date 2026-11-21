@@ -12,7 +12,7 @@ const offlineIcon = (page: Page) => page.getByRole("banner").getByRole("img", { 
 /** The clock on a note whose change is waiting to be sent. */
 const pendingIcon = (page: Page, title: string) => noteRow(page, title).locator(".note-pending");
 
-/** Whether the app has stored its offline copy of the data (in IndexedDB), with this many notes. */
+/** Whether the app has stored its offline copy of the data (in IndexedDB, under the admin's user id), with this many notes. */
 function offlineCopyNotes(page: Page): Promise<number> {
   return page.evaluate(
     () =>
@@ -21,7 +21,7 @@ function offlineCopyNotes(page: Page): Promise<number> {
         open.onerror = () => resolve(0);
         open.onsuccess = () => {
           try {
-            const get = open.result.transaction("kv").objectStore("kv").get("data");
+            const get = open.result.transaction("kv").objectStore("kv").get("data:1");
             get.onsuccess = () => resolve((get.result as { notes?: unknown[] } | undefined)?.notes?.length ?? 0);
             get.onerror = () => resolve(0);
           } catch {
@@ -40,6 +40,8 @@ async function addNote(page: Page, title: string) {
 }
 
 test("notes added and edited offline are saved when the server is back", async ({ page, context }) => {
+  // Syncing waits for the app's next check on the server (every 15 seconds), so allow time on a slow machine.
+  test.setTimeout(90_000);
   await openNotes(page);
   await context.setOffline(true);
 
@@ -56,11 +58,11 @@ test("notes added and edited offline are saved when the server is back", async (
   expect(await savedNote(page, "Written offline")).toBeUndefined();
 
   await context.setOffline(false);
-  await expect(offlineIcon(page)).toHaveCount(0, { timeout: 20_000 });
-  await expect(pendingIcon(page, "Written offline")).toHaveCount(0);
-  // The waiting changes are sent one at a time.
-  await expect.poll(async () => (await savedNote(page, "Written offline")) !== undefined).toBe(true);
-  await expect.poll(async () => (await savedNote(page, "Buy oat milk")) !== undefined).toBe(true);
+  await expect(offlineIcon(page)).toHaveCount(0, { timeout: 30_000 });
+  await expect(pendingIcon(page, "Written offline")).toHaveCount(0, { timeout: 20_000 });
+  // The waiting changes are sent one at a time (allowing for a slow machine).
+  await expect.poll(async () => (await savedNote(page, "Written offline")) !== undefined, { timeout: 20_000 }).toBe(true);
+  await expect.poll(async () => (await savedNote(page, "Buy oat milk")) !== undefined, { timeout: 20_000 }).toBe(true);
 
   // Everything is on the server, as a reload shows.
   await page.reload();

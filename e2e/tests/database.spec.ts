@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { expect, expectTitles, noteRow, noteTitles, openNotes, seed, test } from "./fixtures";
+import { ADMIN, expect, expectTitles, logIn, noteRow, noteTitles, openNotes, seed, test } from "./fixtures";
 
 async function addNote(page: Page, title: string) {
   const box = page.getByRole("textbox", { name: "New note" });
@@ -90,4 +90,48 @@ test("when the database can't be reached, the app works offline and catches up a
   await expect(noteRow(page, "Written while it was down").locator(".note-pending")).toHaveCount(0, { timeout: 10_000 });
   await page.reload();
   await expect(noteRow(page, "Written while it was down")).toBeVisible();
+});
+
+test("a database from before there were users becomes the admin's, unchanged, and the old password still logs in", async ({
+  page,
+  browser,
+}) => {
+  // A shared order that isn't the default, so it can be seen to survive.
+  expect((await page.request.put("/api/notes/order", { data: { noteOrder: [9, 2, 4] } })).ok()).toBe(true);
+  const before = (await (await page.request.get("/api/notes")).json()) as {
+    notes: { id: number }[];
+    categories: { system?: boolean }[];
+    tabs: unknown[];
+    allTabPlacement: string;
+    noteOrder: number[];
+  };
+  const saveFile = { ...before, categories: before.categories.filter((category) => !category.system), lastNoteId: 9 };
+
+  // The database is replaced by one with no users table and no user_id columns, then started again.
+  const oldPassword = "the old single password";
+  const response = await page.request.post("/api/test/single-user-database", {
+    data: { saveFile, password: oldPassword, summary: "Made before there were users" },
+  });
+  expect(response.ok()).toBe(true);
+
+  // The old password logs in as the admin (whose login name is the config's, "admin" by default).
+  const use = test.info().project.use;
+  const device = await (await browser.newContext({ baseURL: use.baseURL, viewport: use.viewport, serviceWorkers: "block", storageState: { cookies: [], origins: [] } })).newPage();
+  await device.goto("/");
+  await logIn(device, ADMIN, oldPassword);
+  await expect(device.getByRole("link", { name: "Settings" })).toBeVisible();
+  expect(await (await device.request.get("/api/me")).json()).toEqual({ id: 1, loginName: ADMIN, displayName: "Admin", admin: true });
+
+  // Notes, categories, tabs and the shared order are just as they were.
+  expect(await (await device.request.get("/api/notes")).json()).toEqual(before);
+  await expect.poll(async () => (await noteTitles(device)).slice(0, 3)).toEqual(["Garden ideas", "Buy milk", "Old invoice"]);
+  // The history is too, and can still be gone back through.
+  await device.getByRole("link", { name: "Settings" }).click();
+  await device.getByRole("link", { name: "History", exact: true }).click();
+  await expect(device.locator(".history-list .history-summary")).toHaveText(["Made before there were users"]);
+
+  // New notes carry on from the old ids.
+  const added = await device.request.post("/api/notes", { data: { titleText: "After the move", tagIds: [] } });
+  expect(((await added.json()) as { id: number }).id).toBe(10);
+  await device.context().close();
 });

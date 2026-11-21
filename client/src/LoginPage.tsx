@@ -7,17 +7,20 @@ interface Props {
 }
 
 export function LoginPage({ onLoggedIn }: Props) {
+  const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
+  const ready = loginName.trim().length > 0 && password.length > 0;
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy || password.length === 0) return;
+    if (busy || !ready) return;
     setBusy(true);
     setError(undefined);
     try {
-      await api.login({ password });
+      await api.login({ loginName: loginName.trim(), password });
       // Asked now, while the tap on "Log in" still lets the page ask for permission.
       remindAfterLogin();
       onLoggedIn();
@@ -31,17 +34,31 @@ export function LoginPage({ onLoggedIn }: Props) {
     <main className="login-page">
       <form onSubmit={submit} className="login-card">
         <h1>nwsnotes</h1>
+        <label htmlFor="login-name">Name</label>
+        <input
+          id="login-name"
+          name="username"
+          type="text"
+          value={loginName}
+          autoComplete="username"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          autoFocus
+          disabled={busy}
+          onChange={(event) => setLoginName(event.target.value)}
+        />
         <label htmlFor="password">Password</label>
         <input
           id="password"
+          name="password"
           type="password"
           value={password}
           autoComplete="current-password"
-          autoFocus
           disabled={busy}
           onChange={(event) => setPassword(event.target.value)}
         />
-        <button type="submit" disabled={busy || password.length === 0}>
+        <button type="submit" disabled={busy || !ready}>
           {busy ? "Logging in…" : "Log in"}
         </button>
         {error && (

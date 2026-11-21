@@ -4,21 +4,35 @@ import express, { type NextFunction, type Request, type Response } from "express
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { CONNECTION_ID_HEADER, validateDueDate, validateNoteDetails, validateNoteTitle, type LoginRequest } from "@nwsnotes/shared";
-import {
-  SESSION_COOKIE,
-  SESSION_LENGTH_MS,
-  createSessionToken,
-  requireSession,
-  verifyPassword,
-} from "./auth.js";
+import { RequestError } from "./errors.js";
+import { DEV_PASSWORD } from "./config.js";
+import { SESSION_COOKIE, SESSION_LENGTH_MS, createSessionToken, hashPassword, requireSession, userOf } from "./auth.js";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
+import type { Notebooks } from "./notebooks.js";
+import { makeSingleUserDatabaseForTests } from "./persist.js";
 import type { NoteStore } from "./store.js";
+import { ADMIN_ID, meOf, type User } from "./users.js";
+
+/** The logged-in user's notebook (after requireSession and withNotebook). */
+function notebookOf(res: Response): NoteStore {
+  return res.locals.notebook as NoteStore;
+}
 
 /** The main website + API app. */
-export function createApp(config: Config, store: NoteStore, live: LiveUpdates, push: PushReminders, db: Db) {
+export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdates, push: PushReminders, db: Db) {
+  const users = notebooks.users;
+
+  /** Loads the logged-in user's notebook (after requireSession): every data route works on it. */
+  const withNotebook = async (_req: Request, res: Response, next: NextFunction) => {
+    res.locals.notebook = await notebooks.for(userOf(res).id);
+    next();
+  };
+  /** Tells the user's other pages to reload, after a change. */
+  const notifyChanged = (req: { get(name: string): string | undefined }, res: Response) => live.notifyChanged(userOf(res).id, req.get(CONNECTION_ID_HEADER));
+
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -43,16 +57,25 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
     message: { error: "Too many login attempts. Please wait 15 minutes and try again." },
   });
 
-  app.post("/api/login", loginLimiter, (req: Request<object, object, Partial<LoginRequest>>, res) => {
-    const password = req.body?.password;
-    if (typeof password !== "string" || !verifyPassword(password, config.passwordHash)) {
-      res.status(401).json({ error: "Incorrect password." });
-      return;
-    }
-    res.cookie(SESSION_COOKIE, createSessionToken(config.sessionSecret), {
+  /** Gives this browser a session for the user (a fresh cookie, after logging in or changing the password). */
+  const startSession = (res: Response, user: User) =>
+    res.cookie(SESSION_COOKIE, createSessionToken(config.sessionSecret, user.id, user.sessionVersion), {
       ...cookieOptions,
       maxAge: SESSION_LENGTH_MS,
     });
+
+  app.post("/api/login", loginLimiter, async (req: Request<object, object, Partial<LoginRequest>>, res) => {
+    const result = users.checkLogin(req.body?.loginName, req.body?.password);
+    if (result === "incorrect") {
+      res.status(401).json({ error: "Incorrect name or password." });
+      return;
+    }
+    if (result === "disabled") {
+      res.status(403).json({ error: "This account is turned off." });
+      return;
+    }
+    await users.recordLogin(result.id);
+    startSession(res, result);
     res.json({ ok: true });
   });
 
@@ -61,13 +84,79 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
     res.json({ ok: true });
   });
 
+  // --- The logged-in user ---------------------------------------------------
+
+  const meRouter = express.Router();
+  meRouter.use(requireSession(users, config.sessionSecret));
+
+  meRouter.get("/", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(meOf(userOf(res)));
+  });
+
+  // Changing your own password: this browser gets a fresh cookie and stays logged in; the others are logged out.
+  meRouter.put("/password", async (req, res) => {
+    const user = await users.changeOwnPassword(userOf(res).id, req.body);
+    startSession(res, user);
+    live.logOut(user.id, req.get(CONNECTION_ID_HEADER));
+    res.json({ ok: true });
+  });
+
+  app.use("/api/me", meRouter);
+
+  // --- Users (the admin only) ---------------------------------------------
+
+  const usersRouter = express.Router();
+  usersRouter.use(requireSession(users, config.sessionSecret), (_req, res, next) => {
+    if (!userOf(res).admin) throw new RequestError(403, "Only the admin can manage users.");
+    next();
+  });
+
+  usersRouter.get("/", async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(await users.summaries());
+  });
+
+  usersRouter.post("/", async (req, res) => {
+    const { user, password } = await users.create(req.body);
+    res.status(201).json({ user: users.summary(user, 0), password });
+  });
+
+  /** The user id in the address, which must be a user. */
+  const userIdOf = (req: Request<{ id: string }>): number => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || !users.byId(id)) throw new RequestError(404, `There is no user with id ${req.params.id}.`);
+    return id;
+  };
+
+  usersRouter.put("/:id", async (req: Request<{ id: string }>, res) => {
+    const id = userIdOf(req);
+    if (id === userOf(res).id && (req.body as { disabled?: unknown } | undefined)?.disabled === true) {
+      throw new RequestError(400, "You can't turn off your own account.");
+    }
+    const { user, loggedOut } = await users.update(id, req.body);
+    if (loggedOut) live.logOut(id);
+    const notes = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM nwsnotes.notes WHERE user_id = $1", [id]);
+    res.json(users.summary(user, Number(notes[0]?.count ?? 0)));
+  });
+
+  usersRouter.post("/:id/reset-password", async (req: Request<{ id: string }>, res) => {
+    const id = userIdOf(req);
+    if (id === userOf(res).id) throw new RequestError(400, "Change your own password from Settings instead.");
+    const password = await users.resetPassword(id);
+    live.logOut(id);
+    res.json({ password });
+  });
+
+  app.use("/api/users", usersRouter);
+
   // --- Notes ----------------------------------------------------------------
 
   const notesRouter = express.Router();
-  notesRouter.use(requireSession(config.sessionSecret));
+  notesRouter.use(requireSession(users, config.sessionSecret), withNotebook);
 
   notesRouter.get("/", (_req, res) => {
-    res.json(store.getAll());
+    res.json(notebookOf(res).getAll());
   });
 
   // A small request the app sends while offline, to find out when the server can be reached again
@@ -94,14 +183,14 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
         res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : !due.ok ? due.error : "" });
         return;
       }
-      const { note, created } = await store.add(check.title, req.body?.tagIds, details.details, req.body?.parentId, {
+      const { note, created } = await notebookOf(res).add(check.title, req.body?.tagIds, details.details, req.body?.parentId, {
         dueDateTime: due.dueDateTime,
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
       });
       // An add sent again (its reply was lost) changes nothing, so there's nothing to tell other pages.
-      if (created) live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+      if (created) notifyChanged(req, res);
       res.status(created ? 201 : 200).json(note);
     },
   );
@@ -109,14 +198,14 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   // Multi-select: add and remove tags on several notes at once. (Before "/:id", which would match it.)
   // The shared note order (moving notes in edit-order mode, or adding at the top). Before "/:id".
   notesRouter.put("/order", async (req, res) => {
-    const noteOrder = await store.setNoteOrder(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const noteOrder = await notebookOf(res).setNoteOrder(req.body);
+    notifyChanged(req, res);
     res.json({ noteOrder });
   });
 
   notesRouter.put("/bulk-tags", async (req, res) => {
-    const notes = await store.bulkTags(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const notes = await notebookOf(res).bulkTags(req.body);
+    notifyChanged(req, res);
     res.json(notes);
   });
 
@@ -133,11 +222,11 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
       res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : !due.ok ? due.error : "" });
       return;
     }
-    const note = await store.updateNote(id, check.title, req.body?.tagIds, details.details, {
+    const note = await notebookOf(res).updateNote(id, check.title, req.body?.tagIds, details.details, {
       dueDateTime: due.dueDateTime,
       tagsChangedDateTime: req.body?.tagsChangedDateTime,
     });
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    notifyChanged(req, res);
     res.json(note);
   });
 
@@ -148,8 +237,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
       res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
       return;
     }
-    await store.deleteNote(id);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    await notebookOf(res).deleteNote(id);
+    notifyChanged(req, res);
     res.json({ ok: true });
   });
 
@@ -162,25 +251,29 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
         res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
         return;
       }
-      const note = await store.setLifetime(id, req.body?.lifetime, req.body?.tagsChangedDateTime);
-      live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+      const note = await notebookOf(res).setLifetime(id, req.body?.lifetime, req.body?.tagsChangedDateTime);
+      notifyChanged(req, res);
       res.json(note);
     },
   );
 
   // The Settings page's Lifetime buttons. Each returns how many notes it changed or deleted.
-  const bulkLifetime = { "reset-new": () => store.resetNew(), "archived-to-bin": () => store.archivedToBin(), "empty-bin": () => store.emptyBin() };
+  const bulkLifetime = {
+    "reset-new": (store: NoteStore) => store.resetNew(),
+    "archived-to-bin": (store: NoteStore) => store.archivedToBin(),
+    "empty-bin": (store: NoteStore) => store.emptyBin(),
+  };
   for (const [action, run] of Object.entries(bulkLifetime)) {
     notesRouter.post(`/${action}`, async (req, res) => {
-      const count = await run();
-      if (count > 0) live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+      const count = await run(notebookOf(res));
+      if (count > 0) notifyChanged(req, res);
       res.json({ count });
     });
   }
 
   // Everything, in the save-file format, as a download (for manual backups).
   notesRouter.get("/download", (_req, res) => {
-    const file = store.backup();
+    const file = notebookOf(res).backup();
     res.set("Cache-Control", "no-store");
     res.attachment(file.name);
     res.type("application/json").send(file.content);
@@ -191,18 +284,18 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   // --- Categories (and their tags) ------------------------------------------
 
   const categoriesRouter = express.Router();
-  categoriesRouter.use(requireSession(config.sessionSecret));
+  categoriesRouter.use(requireSession(users, config.sessionSecret), withNotebook);
 
   categoriesRouter.post("/", async (req, res) => {
-    const category = await store.addCategory(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const category = await notebookOf(res).addCategory(req.body);
+    notifyChanged(req, res);
     res.status(201).json(category);
   });
 
   // The categories' order (the settings page's up and down buttons). Before "/:id", which would match it.
   categoriesRouter.put("/order", async (req, res) => {
-    const categories = await store.reorderCategories(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const categories = await notebookOf(res).reorderCategories(req.body);
+    notifyChanged(req, res);
     res.json(categories);
   });
 
@@ -212,8 +305,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
       res.status(404).json({ error: `There is no category with id ${req.params.id}.` });
       return;
     }
-    const category = await store.updateCategory(id, req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const category = await notebookOf(res).updateCategory(id, req.body);
+    notifyChanged(req, res);
     res.json(category);
   });
 
@@ -222,25 +315,25 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   // --- Tabs (saved filters) -------------------------------------------------
 
   const tabsRouter = express.Router();
-  tabsRouter.use(requireSession(config.sessionSecret));
+  tabsRouter.use(requireSession(users, config.sessionSecret), withNotebook);
 
   tabsRouter.post("/", async (req, res) => {
-    const tab = await store.addTab(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const tab = await notebookOf(res).addTab(req.body);
+    notifyChanged(req, res);
     res.status(201).json(tab);
   });
 
   // Where the built-in "All" tab shows. Before "/:id", which would match it.
   tabsRouter.put("/all", async (req, res) => {
-    const placement = await store.setAllTabPlacement(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const placement = await notebookOf(res).setAllTabPlacement(req.body);
+    notifyChanged(req, res);
     res.json({ placement });
   });
 
   // The tabs' order (the settings page's up and down buttons). Before "/:id", which would match it.
   tabsRouter.put("/order", async (req, res) => {
-    const tabs = await store.reorderTabs(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const tabs = await notebookOf(res).reorderTabs(req.body);
+    notifyChanged(req, res);
     res.json(tabs);
   });
 
@@ -250,8 +343,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
       res.status(404).json({ error: `There is no tab with id ${req.params.id}.` });
       return;
     }
-    const tab = await store.updateTab(id, req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const tab = await notebookOf(res).updateTab(id, req.body);
+    notifyChanged(req, res);
     res.json(tab);
   });
 
@@ -262,8 +355,8 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
       res.status(404).json({ error: `There is no tab with id ${req.params.id}.` });
       return;
     }
-    await store.deleteTab(id);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    await notebookOf(res).deleteTab(id);
+    notifyChanged(req, res);
     res.json({ ok: true });
   });
 
@@ -272,7 +365,7 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   // --- Reminders (Web Push) ---------------------------------------------------
 
   const pushRouter = express.Router();
-  pushRouter.use(requireSession(config.sessionSecret));
+  pushRouter.use(requireSession(users, config.sessionSecret));
 
   // The server's public key, which the browser needs to subscribe.
   pushRouter.get("/key", (_req, res) => {
@@ -280,18 +373,18 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   });
 
   pushRouter.post("/subscribe", async (req, res) => {
-    await push.subscribe(req.body);
+    await push.subscribe(userOf(res).id, req.body);
     res.json({ ok: true });
   });
 
   pushRouter.post("/unsubscribe", async (req, res) => {
-    await push.unsubscribe(req.body);
+    await push.unsubscribe(userOf(res).id, req.body);
     res.json({ ok: true });
   });
 
   // The settings page's "Send test": replies with how many devices it reached.
   pushRouter.post("/test", async (_req, res) => {
-    res.json({ count: await push.sendTest() });
+    res.json({ count: await push.sendTest(userOf(res).id) });
   });
 
   app.use("/api/push", pushRouter);
@@ -299,16 +392,16 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
   // --- History ----------------------------------------------------------------
 
   const historyRouter = express.Router();
-  historyRouter.use(requireSession(config.sessionSecret));
+  historyRouter.use(requireSession(users, config.sessionSecret), withNotebook);
 
   historyRouter.get("/", async (req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json(await store.history(req.query.before, req.query.limit));
+    res.json(await notebookOf(res).history(req.query.before, req.query.limit));
   });
 
   historyRouter.post("/revert", async (req, res) => {
-    const result = await store.revert(req.body);
-    live.notifyChanged(req.get(CONNECTION_ID_HEADER));
+    const result = await notebookOf(res).revert(req.body);
+    notifyChanged(req, res);
     res.json(result);
   });
 
@@ -318,22 +411,39 @@ export function createApp(config: Config, store: NoteStore, live: LiveUpdates, p
 
   // Puts the data back to the seed the tests send. Only exists when the tests start the server
   // (NWSNOTES_TEST=1, never in production), so it can't be called on the live site.
+  // The test endpoints work on the logged-in user's notebook, apart from the reset (which goes back to
+  // only user 1, so it's always theirs).
   if (config.testMode && !config.production) {
+    const testSession = [requireSession(users, config.sessionSecret), withNotebook];
     app.post("/api/test/reset", async (req, res) => {
       db.simulateOutage = false;
-      await store.resetTo(JSON.stringify(req.body));
+      await notebooks.resetForTests(config.adminLoginName, hashPassword(DEV_PASSWORD));
+      await (await notebooks.for(ADMIN_ID)).resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
       res.json({ ok: true });
     });
     // Loads the data again from the database, as a restart would.
-    app.post("/api/test/reload", async (_req, res) => {
-      await store.reloadForTests();
+    app.post("/api/test/reload", ...testSession, async (_req, res) => {
+      await notebookOf(res).reloadForTests();
       res.json({ ok: true });
     });
     // The first start with a new database: imports this save-file.
-    app.post("/api/test/import", async (req, res) => {
-      res.json({ file: await store.importForTests(JSON.stringify(req.body)) });
+    app.post("/api/test/import", ...testSession, async (req, res) => {
+      res.json({ file: await notebookOf(res).importForTests(JSON.stringify(req.body)) });
     });
+    // Replaces the whole database with one from before there were users, holding this save-file's notes
+    // (and a history entry for each), then starts again as the first start of this version does.
+    app.post(
+      "/api/test/single-user-database",
+      async (req: Request<object, object, { saveFile?: unknown; password?: unknown; summary?: unknown }>, res) => {
+        const password = typeof req.body?.password === "string" ? req.body.password : DEV_PASSWORD;
+        await makeSingleUserDatabaseForTests(db, req.body?.saveFile, typeof req.body?.summary === "string" ? req.body.summary : "Old change");
+        users.setFirstAdminPasswordForTests(hashPassword(password));
+        live.logOutEveryone();
+        await notebooks.restartForTests();
+        res.json({ ok: true });
+      },
+    );
     // Makes the database unreachable (or reachable again), to test what the app does then.
     app.post("/api/test/database", (req: Request<object, object, { reachable?: unknown }>, res) => {
       db.simulateOutage = req.body?.reachable === false;

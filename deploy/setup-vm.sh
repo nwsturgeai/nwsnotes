@@ -2,8 +2,8 @@
 #
 # One-time setup of the Ubuntu VM for nwsnotes. Safe to run again.
 #
-#   sudo bash setup-vm.sh                  # first-time setup
-#   sudo bash setup-vm.sh --new-password   # generate a new login password
+#   sudo bash setup-vm.sh                               # first-time setup
+#   sudo bash setup-vm.sh --new-password [login name]   # a new password for a user (default: admin)
 #
 # See README.md for the full list of steps.
 set -euo pipefail
@@ -24,6 +24,8 @@ fi
 
 NEW_PASSWORD=false
 [[ "${1:-}" == "--new-password" ]] && NEW_PASSWORD=true
+# The admin's login name (user 1), unless the config's "adminLoginName" says otherwise.
+LOGIN_NAME=${2:-admin}
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -43,7 +45,8 @@ generate_password_and_hash() {
   '
 }
 
-# Writes config.json with the given password hash, keeping the existing session secret and any other
+# Writes config.json with the given password hash (the admin's first password: once the app has made
+# user 1 from it, passwords are kept with the users in the database), keeping the existing session secret and any other
 # settings already in it (such as the database's, from set-database.sh).
 write_config() {
   local hash=$1
@@ -73,9 +76,10 @@ show_password() {
   cat <<EOF
 
   ================================================================
-    Your nwsnotes login password (shown only once):
+    Your nwsnotes login (the password is shown only once):
 
-        $1
+        Name:     admin
+        Password: $1
 
     Save it in your password manager now.
   ================================================================
@@ -91,10 +95,10 @@ restart_app_if_running() {
 
 if $NEW_PASSWORD; then
   [[ -f $CONFIG_FILE ]] || { echo "Run the full setup first (without --new-password)." >&2; exit 1; }
-  mapfile -t secrets < <(generate_password_and_hash)
-  write_config "${secrets[1]}"
+  [[ -f $APP_DIR/server.cjs ]] || { echo "The app hasn't been deployed yet." >&2; exit 1; }
+  # Passwords are kept with the users in the database: the app makes a new one, and logs them out everywhere.
+  runuser -u "$APP_USER" -- env NODE_ENV=production LOGIN_NAME="$LOGIN_NAME" bash -c 'cd '"$APP_DIR"' && node server.cjs --reset-password "$LOGIN_NAME"'
   restart_app_if_running
-  show_password "${secrets[0]}"
   exit 0
 fi
 
@@ -181,7 +185,7 @@ fi
 step "Creating the app configuration"
 if [[ -f $CONFIG_FILE ]]; then
   echo "$CONFIG_FILE already exists; keeping the current password."
-  echo "(To get a new password: sudo bash $0 --new-password)"
+  echo "(To get a new password: sudo bash $0 --new-password <login name>)"
 else
   mapfile -t secrets < <(generate_password_and_hash)
   write_config "${secrets[1]}"

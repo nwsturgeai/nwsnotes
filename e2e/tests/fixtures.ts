@@ -8,8 +8,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 /** The data every test starts from (e2e/fixtures/seed.json): a save-file's contents. */
 export const seed = JSON.parse(readFileSync(path.join(here, "..", "fixtures", "seed.json"), "utf8")) as unknown;
 
-/** The dev password: the test server runs outside production, so it's the same as with `npm run dev`. */
+/** The admin's login name and the dev password: the test server runs outside production, so they're the same as with `npm run dev`. */
+export const ADMIN = "admin";
 export const PASSWORD = "dev";
+
+/** Fills in the login page and logs in (or tries to). */
+export async function logIn(page: Page, loginName: string, password: string) {
+  await page.getByLabel("Name").fill(loginName);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Log in" }).click();
+}
 
 /** Puts the test server's data back to the seed. */
 export async function resetData(page: Page) {

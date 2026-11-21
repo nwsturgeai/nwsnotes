@@ -63,7 +63,7 @@ export function Header({
   const back: { page: Page; label: string } | undefined =
     page.name === "settings"
       ? { page: { name: "notes" }, label: "← Notes" }
-      : page.name === "category" || page.name === "tab" || page.name === "history"
+      : page.name === "category" || page.name === "tab" || page.name === "history" || page.name === "password" || page.name === "users"
         ? { page: { name: "settings" }, label: "← Settings" }
         : undefined;
 

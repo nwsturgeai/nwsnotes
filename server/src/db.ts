@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
 import type { Config } from "./config.js";
@@ -94,6 +94,7 @@ function openPostgres(databaseUrl: string, caFile: string | undefined): Db {
 async function openPglite(dir: string): Promise<Db> {
   // Only loaded without a databaseUrl, so the live server never needs it (it isn't bundled).
   const { PGlite } = await import("@electric-sql/pglite");
+  mkdirSync(path.dirname(dir), { recursive: true });
   const pglite = new PGlite(dir);
   const db: Db = {
     simulateOutage: false,

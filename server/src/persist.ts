@@ -60,14 +60,19 @@ export interface ChangeRecord {
   undone?: number;
 }
 
-const SCHEMA = [
-  "CREATE SCHEMA IF NOT EXISTS nwsnotes",
-  "CREATE TABLE IF NOT EXISTS nwsnotes.notes (id integer PRIMARY KEY, data jsonb NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS nwsnotes.categories (id integer PRIMARY KEY, position integer NOT NULL, data jsonb NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS nwsnotes.tabs (id integer PRIMARY KEY, position integer NOT NULL, data jsonb NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS nwsnotes.meta (name text PRIMARY KEY, value jsonb NOT NULL)",
+/** The tables, as they are now: every notebook's rows carry their user's id. */
+const TABLES = [
+  "CREATE TABLE IF NOT EXISTS nwsnotes.notes (user_id integer NOT NULL, id integer NOT NULL, data jsonb NOT NULL, PRIMARY KEY (user_id, id))",
+  `CREATE TABLE IF NOT EXISTS nwsnotes.categories (
+     user_id integer NOT NULL, id integer NOT NULL, position integer NOT NULL, data jsonb NOT NULL, PRIMARY KEY (user_id, id)
+   )`,
+  `CREATE TABLE IF NOT EXISTS nwsnotes.tabs (
+     user_id integer NOT NULL, id integer NOT NULL, position integer NOT NULL, data jsonb NOT NULL, PRIMARY KEY (user_id, id)
+   )`,
+  "CREATE TABLE IF NOT EXISTS nwsnotes.meta (user_id integer NOT NULL, name text NOT NULL, value jsonb NOT NULL, PRIMARY KEY (user_id, name))",
   `CREATE TABLE IF NOT EXISTS nwsnotes.changes (
      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+     user_id integer NOT NULL,
      time timestamptz NOT NULL,
      summary text NOT NULL,
      item_count integer NOT NULL,
@@ -82,11 +87,57 @@ const SCHEMA = [
      PRIMARY KEY (change_id, kind, item_id)
    )`,
   "CREATE INDEX IF NOT EXISTS changes_time ON nwsnotes.changes (time)",
+  "CREATE INDEX IF NOT EXISTS changes_user ON nwsnotes.changes (user_id, id)",
 ];
 
-/** Creates the schema and tables if they don't exist yet. */
-export async function ensureSchema(db: Db): Promise<void> {
-  for (const sql of SCHEMA) await db.query(sql);
+/** The users: `data` holds everything apart from the id and login name (see users.ts). */
+const USERS_TABLE = [
+  "CREATE TABLE IF NOT EXISTS nwsnotes.users (id integer PRIMARY KEY, login_name text NOT NULL, data jsonb NOT NULL)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS users_login_name ON nwsnotes.users (lower(login_name))",
+];
+
+/** The tables that held the one notebook before there were users, with their old primary key's columns. */
+const NOTEBOOK_TABLES: { table: string; key?: string }[] = [
+  { table: "notes", key: "id" },
+  { table: "categories", key: "id" },
+  { table: "tabs", key: "id" },
+  { table: "meta", key: "name" },
+  { table: "changes" },
+];
+
+/**
+ * Creates the schema and tables if they don't exist yet. A database from before there were users (its
+ * tables have no `user_id`) becomes user 1's notebook: every row gets user id 1 and the keys change to
+ * include it. `firstUser` makes user 1 when there are no users yet. All of it is one transaction.
+ * Returns whether the old single-user tables were moved across.
+ */
+export async function ensureSchema(db: Db, firstUser: (query: Query) => Promise<void>): Promise<boolean> {
+  await db.query("CREATE SCHEMA IF NOT EXISTS nwsnotes");
+  return db.transaction(async (query) => {
+    for (const sql of USERS_TABLE) await query(sql);
+    const old = await query<{ table_name: string }>(
+      `SELECT t.table_name FROM information_schema.tables t
+       WHERE t.table_schema = 'nwsnotes' AND t.table_name = 'notes' AND NOT EXISTS (
+         SELECT 1 FROM information_schema.columns c
+         WHERE c.table_schema = 'nwsnotes' AND c.table_name = 'notes' AND c.column_name = 'user_id'
+       )`,
+    );
+    const migrating = old.length > 0;
+    if (migrating) {
+      for (const { table, key } of NOTEBOOK_TABLES) {
+        await query(`ALTER TABLE nwsnotes.${table} ADD COLUMN user_id integer NOT NULL DEFAULT 1`);
+        await query(`ALTER TABLE nwsnotes.${table} ALTER COLUMN user_id DROP DEFAULT`);
+        if (key) {
+          await query(`ALTER TABLE nwsnotes.${table} DROP CONSTRAINT ${table}_pkey`);
+          await query(`ALTER TABLE nwsnotes.${table} ADD PRIMARY KEY (user_id, ${key})`);
+        }
+      }
+    }
+    for (const sql of TABLES) await query(sql);
+    const [{ count } = { count: 0 }] = await query<{ count: number }>("SELECT count(*)::int AS count FROM nwsnotes.users");
+    if (Number(count) === 0) await firstUser(query);
+    return migrating;
+  });
 }
 
 /**
@@ -94,14 +145,16 @@ export async function ensureSchema(db: Db): Promise<void> {
  * `stored`, when the data is from before the note order was shared: as it is in the database (tabs with
  * their own orders), for saving the shared order made from them.
  */
-export async function loadSnapshot(db: Db): Promise<{ snapshot: Snapshot; stored?: Snapshot } | undefined> {
-  const meta = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'lastNoteId'");
+export async function loadSnapshot(db: Db, userId: number): Promise<{ snapshot: Snapshot; stored?: Snapshot } | undefined> {
+  const metaValue = (name: string) =>
+    db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE user_id = $1 AND name = $2", [userId, name]);
+  const meta = await metaValue("lastNoteId");
   if (meta.length === 0) return undefined;
-  const [placement] = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'allTabPlacement'");
-  const [order] = await db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE name = 'noteOrder'");
-  const notes = await db.query<{ data: Note }>("SELECT data FROM nwsnotes.notes ORDER BY id");
-  const categories = await db.query<{ data: Category }>("SELECT data FROM nwsnotes.categories ORDER BY position, id");
-  const tabs = await db.query<{ data: Tab }>("SELECT data FROM nwsnotes.tabs ORDER BY position, id");
+  const [placement] = await metaValue("allTabPlacement");
+  const [order] = await metaValue("noteOrder");
+  const notes = await db.query<{ data: Note }>("SELECT data FROM nwsnotes.notes WHERE user_id = $1 ORDER BY id", [userId]);
+  const categories = await db.query<{ data: Category }>("SELECT data FROM nwsnotes.categories WHERE user_id = $1 ORDER BY position, id", [userId]);
+  const tabs = await db.query<{ data: Tab }>("SELECT data FROM nwsnotes.tabs WHERE user_id = $1 ORDER BY position, id", [userId]);
   const snapshot: Snapshot = {
     notes: notes.map((row) => row.data),
     categories: categories.map((row) => row.data),
@@ -120,10 +173,10 @@ export async function loadSnapshot(db: Db): Promise<{ snapshot: Snapshot; stored
   };
 }
 
-/** End-to-end tests only: deletes everything, history included. */
-export async function emptyAll(query: Query): Promise<void> {
-  for (const table of ["change_items", "changes", "notes", "categories", "tabs", "meta"]) {
-    await query(`DELETE FROM nwsnotes.${table}`);
+/** Deletes one user's whole notebook, history included (their change items go with their changes). */
+export async function emptyNotebook(query: Query, userId: number): Promise<void> {
+  for (const table of ["changes", "notes", "categories", "tabs", "meta"]) {
+    await query(`DELETE FROM nwsnotes.${table} WHERE user_id = $1`, [userId]);
   }
 }
 
@@ -161,6 +214,7 @@ function diff<T extends { id: number }>(kind: Kind, before: T[], after: T[], pos
  */
 export async function writeChange(
   db: Db,
+  userId: number,
   before: Snapshot,
   after: Snapshot,
   time: Date,
@@ -183,60 +237,61 @@ export async function writeChange(
   return db.transaction(async (query) => {
     for (const [table, changes] of Object.entries(tables)) {
       if (changes.deletes.length > 0) {
-        await query(`DELETE FROM nwsnotes.${table} WHERE id IN (SELECT (jsonb_array_elements_text($1::jsonb))::int)`, [
+        await query(`DELETE FROM nwsnotes.${table} WHERE user_id = $2 AND id IN (SELECT (jsonb_array_elements_text($1::jsonb))::int)`, [
           JSON.stringify(changes.deletes),
+          userId,
         ]);
       }
       if (changes.upserts.length === 0) continue;
       const rows = JSON.stringify(changes.upserts);
       if (table === "notes") {
         await query(
-          `INSERT INTO nwsnotes.notes (id, data)
-           SELECT (e->>'id')::int, e->'data' FROM jsonb_array_elements($1::jsonb) e
-           ON CONFLICT (id) DO UPDATE SET data = excluded.data`,
-          [rows],
+          `INSERT INTO nwsnotes.notes (user_id, id, data)
+           SELECT $2, (e->>'id')::int, e->'data' FROM jsonb_array_elements($1::jsonb) e
+           ON CONFLICT (user_id, id) DO UPDATE SET data = excluded.data`,
+          [rows, userId],
         );
       } else {
         await query(
-          `INSERT INTO nwsnotes.${table} (id, position, data)
-           SELECT (e->>'id')::int, (e->>'position')::int, e->'data' FROM jsonb_array_elements($1::jsonb) e
-           ON CONFLICT (id) DO UPDATE SET position = excluded.position, data = excluded.data`,
-          [rows],
+          `INSERT INTO nwsnotes.${table} (user_id, id, position, data)
+           SELECT $2, (e->>'id')::int, (e->>'position')::int, e->'data' FROM jsonb_array_elements($1::jsonb) e
+           ON CONFLICT (user_id, id) DO UPDATE SET position = excluded.position, data = excluded.data`,
+          [rows, userId],
         );
       }
     }
     if (before.lastNoteId !== after.lastNoteId) {
       await query(
-        `INSERT INTO nwsnotes.meta (name, value) VALUES ('lastNoteId', $1::jsonb)
-         ON CONFLICT (name) DO UPDATE SET value = excluded.value`,
-        [JSON.stringify(after.lastNoteId)],
+        `INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($2, 'lastNoteId', $1::jsonb)
+         ON CONFLICT (user_id, name) DO UPDATE SET value = excluded.value`,
+        [JSON.stringify(after.lastNoteId), userId],
       );
     }
 
     if (placementChanged) {
       await query(
-        `INSERT INTO nwsnotes.meta (name, value) VALUES ('allTabPlacement', $1::jsonb)
-         ON CONFLICT (name) DO UPDATE SET value = excluded.value`,
-        [JSON.stringify(after.allTabPlacement)],
+        `INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($2, 'allTabPlacement', $1::jsonb)
+         ON CONFLICT (user_id, name) DO UPDATE SET value = excluded.value`,
+        [JSON.stringify(after.allTabPlacement), userId],
       );
     }
 
     if (orderChanged) {
       await query(
-        `INSERT INTO nwsnotes.meta (name, value) VALUES ('noteOrder', $1::jsonb)
-         ON CONFLICT (name) DO UPDATE SET value = excluded.value`,
-        [JSON.stringify(after.noteOrder)],
+        `INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($2, 'noteOrder', $1::jsonb)
+         ON CONFLICT (user_id, name) DO UPDATE SET value = excluded.value`,
+        [JSON.stringify(after.noteOrder), userId],
       );
     }
 
     if (joinChangeId !== undefined) {
-      await query("UPDATE nwsnotes.changes SET time = $1 WHERE id = $2", [time.toISOString(), joinChangeId]);
+      await query("UPDATE nwsnotes.changes SET time = $1 WHERE id = $2 AND user_id = $3", [time.toISOString(), joinChangeId, userId]);
       return joinChangeId;
     }
     if (!record || befores.length === 0) return undefined;
     const [change] = await query<{ id: number }>(
-      `INSERT INTO nwsnotes.changes (time, summary, item_count, reverted_to, undone) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [time.toISOString(), record.summary, befores.length, record.revertedTo ?? null, record.undone ?? null],
+      `INSERT INTO nwsnotes.changes (user_id, time, summary, item_count, reverted_to, undone) VALUES ($6, $1, $2, $3, $4, $5) RETURNING id`,
+      [time.toISOString(), record.summary, befores.length, record.revertedTo ?? null, record.undone ?? null, userId],
     );
     await query(
       `INSERT INTO nwsnotes.change_items (change_id, kind, item_id, "before")
@@ -248,7 +303,7 @@ export async function writeChange(
 }
 
 /** The newest changes (older than `beforeId`, if given), newest first, and whether there are more. */
-export async function listChanges(db: Db, beforeId: number | undefined, limit: number): Promise<{ changes: ChangeSummary[]; more: boolean }> {
+export async function listChanges(db: Db, userId: number, beforeId: number | undefined, limit: number): Promise<{ changes: ChangeSummary[]; more: boolean }> {
   const rows = await db.query<{
     id: number;
     time: Date | string;
@@ -258,8 +313,8 @@ export async function listChanges(db: Db, beforeId: number | undefined, limit: n
     undone: number | null;
   }>(
     `SELECT id, time, summary, item_count, reverted_to, undone FROM nwsnotes.changes
-     WHERE $1::int IS NULL OR id < $1::int ORDER BY id DESC LIMIT $2`,
-    [beforeId ?? null, limit + 1],
+     WHERE user_id = $3 AND ($1::int IS NULL OR id < $1::int) ORDER BY id DESC LIMIT $2`,
+    [beforeId ?? null, limit + 1, userId],
   );
   return {
     changes: rows.slice(0, limit).map((row) => ({
@@ -278,15 +333,17 @@ export async function listChanges(db: Db, beforeId: number | undefined, limit: n
  * Going back to just after change `toId`: that change's time, how many later changes there are, and
  * `after` (the snapshot) with every item they touched put back as it was then.
  */
-export async function revertedSnapshot(db: Db, toId: number, current: Snapshot): Promise<{ time: string; undone: number; snapshot: Snapshot } | undefined> {
-  const [target] = await db.query<{ time: Date | string }>("SELECT time FROM nwsnotes.changes WHERE id = $1", [toId]);
+export async function revertedSnapshot(db: Db, userId: number, toId: number, current: Snapshot): Promise<{ time: string; undone: number; snapshot: Snapshot } | undefined> {
+  const [target] = await db.query<{ time: Date | string }>("SELECT time FROM nwsnotes.changes WHERE id = $1 AND user_id = $2", [toId, userId]);
   if (!target) return undefined;
-  const [{ count } = { count: 0 }] = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM nwsnotes.changes WHERE id > $1", [toId]);
+  const [{ count } = { count: 0 }] = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM nwsnotes.changes WHERE id > $1 AND user_id = $2",
+    [toId, userId],
+  );
   // For each item, its copy from the earliest change after the target: how it was just after it.
   const items = await db.query<{ kind: Kind; item_id: number; before: Copy | null }>(
     `SELECT DISTINCT ON (kind, item_id) kind, item_id, "before" FROM nwsnotes.change_items
-     WHERE change_id > $1 ORDER BY kind, item_id, change_id`,
-    [toId],
+     WHERE change_id IN (SELECT id FROM nwsnotes.changes WHERE id > $1 AND user_id = $2) ORDER BY kind, item_id, change_id`,
+    [toId, userId],
   );
 
   const notes = new Map(current.notes.map((note) => [note.id, note]));
@@ -329,11 +386,65 @@ export async function revertedSnapshot(db: Db, toId: number, current: Snapshot):
   };
 }
 
-/** Deletes changes older than `days` days. */
+/** Deletes every user's changes older than `days` days. */
 export async function pruneHistory(db: Db, days: number): Promise<number> {
   const rows = await db.query<{ id: number }>(
     "DELETE FROM nwsnotes.changes WHERE time < now() - make_interval(days => $1) RETURNING id",
     [days],
   );
   return rows.length;
+}
+
+/**
+ * End-to-end tests only: replaces the whole database with one from before there were users (no `users`
+ * table and no `user_id` columns), holding `saveFile`'s notebook and one history entry (`summary`) that
+ * added its notes.
+ */
+export async function makeSingleUserDatabaseForTests(db: Db, rawSaveFile: unknown, summary: string): Promise<void> {
+  const file = (rawSaveFile ?? {}) as Partial<Snapshot>;
+  const notes = Array.isArray(file.notes) ? file.notes : [];
+  const categories = Array.isArray(file.categories) ? file.categories : [];
+  const tabs = Array.isArray(file.tabs) ? file.tabs : [];
+  await db.transaction(async (query) => {
+    await query("DROP SCHEMA IF EXISTS nwsnotes CASCADE");
+    for (const sql of [
+      "CREATE SCHEMA nwsnotes",
+      "CREATE TABLE nwsnotes.notes (id integer PRIMARY KEY, data jsonb NOT NULL)",
+      "CREATE TABLE nwsnotes.categories (id integer PRIMARY KEY, position integer NOT NULL, data jsonb NOT NULL)",
+      "CREATE TABLE nwsnotes.tabs (id integer PRIMARY KEY, position integer NOT NULL, data jsonb NOT NULL)",
+      "CREATE TABLE nwsnotes.meta (name text PRIMARY KEY, value jsonb NOT NULL)",
+      `CREATE TABLE nwsnotes.changes (
+         id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, time timestamptz NOT NULL, summary text NOT NULL,
+         item_count integer NOT NULL, reverted_to timestamptz, undone integer
+       )`,
+      `CREATE TABLE nwsnotes.change_items (
+         change_id integer NOT NULL REFERENCES nwsnotes.changes (id) ON DELETE CASCADE, kind text NOT NULL,
+         item_id integer NOT NULL, "before" jsonb, PRIMARY KEY (change_id, kind, item_id)
+       )`,
+      "CREATE INDEX changes_time ON nwsnotes.changes (time)",
+    ]) {
+      await query(sql);
+    }
+    for (const note of notes) await query("INSERT INTO nwsnotes.notes (id, data) VALUES ($1, $2)", [note.id, JSON.stringify(note)]);
+    for (const [table, items] of [["categories", categories], ["tabs", tabs]] as const) {
+      for (const [position, item] of items.entries()) {
+        await query(`INSERT INTO nwsnotes.${table} (id, position, data) VALUES ($1, $2, $3)`, [item.id, position, JSON.stringify(item)]);
+      }
+    }
+    const meta = {
+      lastNoteId: typeof file.lastNoteId === "number" ? file.lastNoteId : Math.max(0, ...notes.map((note) => note.id)),
+      allTabPlacement: file.allTabPlacement === "left" ? "left" : "top",
+      noteOrder: Array.isArray(file.noteOrder) ? file.noteOrder : [],
+    };
+    for (const [name, value] of Object.entries(meta)) {
+      await query("INSERT INTO nwsnotes.meta (name, value) VALUES ($1, $2::jsonb)", [name, JSON.stringify(value)]);
+    }
+    const [change] = await query<{ id: number }>(
+      "INSERT INTO nwsnotes.changes (time, summary, item_count) VALUES (now(), $1, $2) RETURNING id",
+      [summary, notes.length],
+    );
+    for (const note of notes) {
+      await query(`INSERT INTO nwsnotes.change_items (change_id, kind, item_id, "before") VALUES ($1, 'note', $2, NULL)`, [change!.id, note.id]);
+    }
+  });
 }

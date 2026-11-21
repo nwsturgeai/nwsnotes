@@ -9,10 +9,11 @@ import {
   type LifetimeChange,
   type NewNoteRequest,
   type Note,
+  type Me,
   type NotesData,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
-import { idbGet, idbSet } from "./offlineStore";
+import { idbDelete, idbGet, idbSet } from "./offlineStore";
 
 /*
  * Offline use. The notes page and the long-form editor add, edit, archive (etc.) and delete notes
@@ -26,6 +27,9 @@ import { idbGet, idbSet } from "./offlineStore";
  *
  * A change that alters a note's tags carries the time it was made (tagsChangedDateTime), so the
  * server records when the tags changed rather than when the change reached it.
+ *
+ * The offline copy and the outbox are kept under the logged-in user's id, so two people using the same
+ * device never see each other's notes. Logging out clears that user's.
  */
 
 type OutboxEntry = { seq: number; sending?: boolean } & (
@@ -46,13 +50,24 @@ interface Pending {
   nextSeq: number;
 }
 
-const PENDING_KEY = "pending";
-const DATA_KEY = "data";
+/** Where the copy and outbox were kept before there were users: the first login keeps them only for user 1. */
+const LEGACY_PENDING_KEY = "pending";
+const LEGACY_DATA_KEY = "data";
+/** Who was last logged in here, so the app can open offline from their copy. */
+const USER_KEY = "nwsnotes.user";
+/** The admin, the only user who can be given the copy from before there were users. */
+const FIRST_USER_ID = 1;
 const FIRST_TEMP_ID = -1001;
 /** While offline, how often to check whether the server can be reached again. */
 const PROBE_MS = 15_000;
 
-let pending: Pending = { outbox: [], latest: {}, idMap: {}, nextTempId: FIRST_TEMP_ID, nextSeq: 1 };
+const emptyPending = (): Pending => ({ outbox: [], latest: {}, idMap: {}, nextTempId: FIRST_TEMP_ID, nextSeq: 1 });
+
+let pending: Pending = emptyPending();
+/** Whose copy and outbox these are; undefined until the app knows who is logged in. */
+let userId: number | undefined;
+const pendingKey = (id: number) => `pending:${id}`;
+const dataKey = (id: number) => `data:${id}`;
 /** The data the app is showing (kept by the app), to build offline versions of notes from. */
 let data: NotesData | undefined;
 
@@ -66,6 +81,7 @@ export interface OfflineState {
 
 let state: OfflineState = { offline: false, pendingCount: 0, pendingIds: new Set() };
 const listeners = new Set<() => void>();
+let probeTimer: number | undefined;
 
 function publish(change?: Partial<OfflineState>) {
   state = {
@@ -118,41 +134,104 @@ function withLock<T>(name: string, task: () => Promise<T>): Promise<T> {
 
 /** Reads the waiting changes back from IndexedDB (another tab may have changed them). */
 async function reloadPending() {
-  const stored = await idbGet<Pending>(PENDING_KEY);
+  if (userId === undefined) return;
+  const stored = await idbGet<Pending>(pendingKey(userId));
   if (stored) pending = stored;
 }
 
 /** Changes the waiting changes and stores them, one tab at a time. */
 async function changePending(change: (p: Pending) => void): Promise<void> {
+  const id = userId;
+  if (id === undefined) return;
   await withLock("nwsnotes-outbox", async () => {
     await reloadPending();
     change(pending);
     // Notes no change refers to any more drop out of `latest`; the reloaded data is right for them.
     const referenced = new Set(pending.outbox.map((entry) => resolve(entry.kind === "add" ? entry.tempId : entry.noteId)));
     for (const id of Object.keys(pending.latest).map(Number)) if (!referenced.has(id)) delete pending.latest[id];
-    await idbSet(PENDING_KEY, pending);
+    await idbSet(pendingKey(id), pending);
   });
   publish();
 }
 
-/** Loads the waiting changes when the app starts. */
-export async function initOffline(): Promise<void> {
+/**
+ * Who is logged in (when the app starts, or after logging in): loads their waiting changes. The copy and
+ * outbox from before there were users are kept, as theirs, only if the first to log in is user 1.
+ */
+export async function setOfflineUser(me: Me): Promise<void> {
+  if (userId !== me.id) {
+    window.clearTimeout(saveTimer);
+    userId = me.id;
+    pending = emptyPending();
+    data = undefined;
+  }
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify(me));
+  } catch {
+    // Without local storage, the app just can't open offline before it has reached the server.
+  }
+  await withLock("nwsnotes-outbox", async () => {
+    const legacyPending = await idbGet<Pending>(LEGACY_PENDING_KEY);
+    const legacyData = await idbGet<NotesData>(LEGACY_DATA_KEY);
+    if (!legacyPending && !legacyData) return;
+    if (me.id === FIRST_USER_ID) {
+      if (legacyPending && !(await idbGet(pendingKey(me.id)))) await idbSet(pendingKey(me.id), legacyPending);
+      if (legacyData && !(await idbGet(dataKey(me.id)))) await idbSet(dataKey(me.id), legacyData);
+    }
+    await idbDelete(LEGACY_PENDING_KEY);
+    await idbDelete(LEGACY_DATA_KEY);
+  });
   await reloadPending();
   publish();
+}
+
+/** The user last logged in on this device, for opening the app offline. */
+export function savedUser(): Me | undefined {
+  try {
+    const text = localStorage.getItem(USER_KEY);
+    return text ? (JSON.parse(text) as Me) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Logging out: this user's offline copy and waiting changes are removed from this device. */
+export async function clearOfflineUser(): Promise<void> {
+  const id = userId;
+  window.clearTimeout(saveTimer);
+  window.clearInterval(probeTimer);
+  probeTimer = undefined;
+  userId = undefined;
+  pending = emptyPending();
+  data = undefined;
+  try {
+    localStorage.removeItem(USER_KEY);
+  } catch {
+    // Nothing to remove.
+  }
+  if (id !== undefined) {
+    await withLock("nwsnotes-outbox", async () => {
+      await idbDelete(pendingKey(id));
+      await idbDelete(dataKey(id));
+    });
+  }
+  publish({ offline: false });
 }
 
 let saveTimer: number | undefined;
 
 /** The data the app is now showing: kept for building offline changes, and saved for opening offline. */
 export function rememberData(next: NotesData) {
+  const id = userId;
+  if (id === undefined) return;
   data = next;
   window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => void idbSet(DATA_KEY, next), 500);
+  saveTimer = window.setTimeout(() => void idbSet(dataKey(id), next), 500);
 }
 
-/** The data saved on this device, for opening the app while offline. */
+/** The data saved on this device for the user, for opening the app while offline. */
 export function savedData(): Promise<NotesData | undefined> {
-  return idbGet<NotesData>(DATA_KEY);
+  return userId === undefined ? Promise.resolve(undefined) : idbGet<NotesData>(dataKey(userId));
 }
 
 /**
@@ -363,8 +442,6 @@ export async function deleteNote(id: number): Promise<{ ok: true }> {
 }
 
 // ---- Offline and back ------------------------------------------------------
-
-let probeTimer: number | undefined;
 
 /** The server couldn't be reached: start checking for it, and queue changes meanwhile. */
 export function goOffline() {

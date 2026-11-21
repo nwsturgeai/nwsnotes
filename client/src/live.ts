@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LIVE_UPDATES_PATH, type LiveMessage } from "@nwsnotes/shared";
+import { LIVE_LOGGED_OUT_CLOSE_CODE, LIVE_UPDATES_PATH, type LiveMessage } from "@nwsnotes/shared";
 
 /** Identifies this page to the server, so it isn't told about its own changes. */
 export const connectionId = crypto.randomUUID();
@@ -49,9 +49,12 @@ export function useLiveUpdates(enabled: boolean, onChanged: () => void) {
         }
         if (message.type === "data-changed") onChangedRef.current();
       };
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (socket !== ws) return;
         socket = undefined;
+        // This user's logins were stopped (e.g. their password changed elsewhere): reloading finds out
+        // whether this page was logged out too, and shows the login page if so.
+        if (event.code === LIVE_LOGGED_OUT_CLOSE_CODE) onChangedRef.current();
         if (!stopped) scheduleReconnect();
       };
     }

@@ -21,7 +21,7 @@ When a test fails, it should be easy to see what went wrong.
   - Before each test, the data is put back to that seed through `POST /api/test/reset`. This test-only endpoint exists only when the server is started with `NWSNOTES_TEST=1` and isn't in production. In production it doesn't exist at all, so it can't be called.
   - It also clears the push devices and resets note ids, so every test starts identically and tests don't depend on each other.
   - Tests run one at a time (one worker), because they share the one server and its data.
-- **Logging in:** a setup step logs in once with the dev password and saves the session. Every test reuses it, apart from the login tests themselves.
+- **Logging in:** a setup step logs in once with the dev password (as the admin, `admin`, once there are several users; see [users.md](users.md)) and saves the session. Every test reuses it, apart from the login tests themselves.
 - **Screen sizes:** every test runs twice, as two Playwright "projects":
   - **tablet:** 768×1024, touch, the Android Chrome user agent;
   - **desktop:** 1280×800, mouse.

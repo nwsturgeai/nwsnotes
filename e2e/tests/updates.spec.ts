@@ -73,6 +73,11 @@ test("Check for updates finds a new version, and Reload switches to it", async (
 test("the app checks for a new version by itself once a day", async ({ page }) => {
   await page.clock.install();
   await openWithServiceWorker(page);
+  // The check at start-up must have finished first; otherwise (on a slow machine) it's retried an
+  // hour later, as designed, and would find the new version before the day is up.
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("nwsnotes.lastUpdateCheck")), { timeout: 15_000 })
+    .not.toBeNull();
   publishNewVersion();
   // Not yet: it checked when it started.
   await page.clock.fastForward(2 * 60 * 60 * 1000);

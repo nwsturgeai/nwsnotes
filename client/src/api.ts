@@ -9,6 +9,11 @@ import {
   type LifetimeChange,
   type LifetimeRequest,
   type LoginRequest,
+  type Me,
+  type NewUserRequest,
+  type PasswordChangeRequest,
+  type UserSummary,
+  type UserUpdateRequest,
   type NewNoteRequest,
   type Note,
   type NotesData,
@@ -34,6 +39,7 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 
+  /** 401: not logged in (the session expired, or this user's logins were stopped). */
   get isUnauthorized(): boolean {
     return this.status === 401;
   }
@@ -144,4 +150,13 @@ export const api = {
   pushTest: () => request<{ count: number }>("POST", "/api/push/test"),
   login: (body: LoginRequest) => request<{ ok: true }>("POST", "/api/login", body),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
+  /** Who is logged in. */
+  me: () => request<Me>("GET", "/api/me"),
+  /** Changing your own password: this page stays logged in, your other devices are logged out. */
+  changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
+  /** The users page (admin only). */
+  users: () => request<UserSummary[]>("GET", "/api/users"),
+  addUser: (body: NewUserRequest) => request<{ user: UserSummary; password: string }>("POST", "/api/users", body),
+  updateUser: (id: number, body: UserUpdateRequest) => request<UserSummary>("PUT", `/api/users/${id}`, body),
+  resetPassword: (id: number) => request<{ password: string }>("POST", `/api/users/${id}/reset-password`),
 };
