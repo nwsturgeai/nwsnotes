@@ -8,6 +8,7 @@ import {
   LIFETIME_ARCHIVED,
   LIFETIME_BIN,
   LIFETIME_NEW,
+  NOTE_LIMIT_SHOWN_FROM,
   type Category,
   type Me,
   type Note,
@@ -290,7 +291,18 @@ export function SettingsPage({
         <p className="note-stats">
           {stats ? (
             <>
-              You have <strong>{plural(stats.noteCount, "note")}</strong>, taking up <strong>{formatBytes(stats.noteBytes)}</strong>.
+              {/* The limit only shows once they're near it. */}
+              {stats.noteCount >= stats.noteLimit * NOTE_LIMIT_SHOWN_FROM ? (
+                <>
+                  You have <strong>{stats.noteCount}</strong> of your{" "}
+                  <strong>{plural(stats.noteLimit, "note")}</strong>
+                </>
+              ) : (
+                <>
+                  You have <strong>{plural(stats.noteCount, "note")}</strong>
+                </>
+              )}
+              , taking up <strong>{formatBytes(stats.noteBytes)}</strong>.
             </>
           ) : (
             "You have … notes, taking up …"

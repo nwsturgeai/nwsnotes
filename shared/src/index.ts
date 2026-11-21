@@ -269,12 +269,23 @@ export interface UserSummary extends Me {
   noteCount: number;
   /** The space their notes take in the database, in bytes. */
   noteBytes: number;
+  /** The most notes they can have. */
+  noteLimit: number;
 }
+
+/** Everyone's maximum number of notes until the admin changes it, and the highest it can be set to. */
+export const NOTE_LIMIT_DEFAULT = 1000;
+export const NOTE_LIMIT_MAX = 100_000;
+
+/** At least this share of their limit used, a user is told their limit. */
+export const NOTE_LIMIT_SHOWN_FROM = 0.8;
 
 /** GET /api/me/stats: the logged-in user's number of notes, and the space they take in the database (bytes). */
 export interface NoteStats {
   noteCount: number;
   noteBytes: number;
+  /** The most notes they can have (shown to them only once they're near it). */
+  noteLimit: number;
 }
 
 /** Body of POST /api/users (adding a user). */
@@ -288,6 +299,8 @@ export interface UserUpdateRequest {
   loginName?: string;
   displayName?: string;
   disabled?: boolean;
+  /** The most notes they can have: a whole number from 1 to NOTE_LIMIT_MAX. */
+  noteLimit?: number;
 }
 
 /** Login names: 3 to 32 letters, digits, ".", "-" and "_". */

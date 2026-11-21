@@ -14,7 +14,7 @@ import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
 import { makeSingleUserDatabaseForTests } from "./persist.js";
 import type { NoteStore } from "./store.js";
-import { ADMIN_ID, meOf, type User } from "./users.js";
+import { ADMIN_ID, meOf, noteLimitOf, type User } from "./users.js";
 
 /** The logged-in user's notebook (after requireSession and withNotebook). */
 function notebookOf(res: Response): NoteStore {
@@ -98,7 +98,8 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
   meRouter.get("/stats", async (_req, res) => {
     const id = userOf(res).id;
     res.set("Cache-Control", "no-store");
-    res.json((await users.noteStats(id)).get(id) ?? { noteCount: 0, noteBytes: 0 });
+    const stats = (await users.noteStats(id)).get(id) ?? { noteCount: 0, noteBytes: 0 };
+    res.json({ ...stats, noteLimit: noteLimitOf(userOf(res)) });
   });
 
   // Changing your own password: this browser gets a fresh cookie and stays logged in; the others are logged out.
@@ -194,6 +195,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
+        noteLimit: noteLimitOf(userOf(res)),
       });
       // An add sent again (its reply was lost) changes nothing, so there's nothing to tell other pages.
       if (created) notifyChanged(req, res);

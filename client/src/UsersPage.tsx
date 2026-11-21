@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { DISPLAY_NAME_MAX_LENGTH, type Me, type UserSummary } from "@nwsnotes/shared";
+import { DISPLAY_NAME_MAX_LENGTH, NOTE_LIMIT_MAX, type Me, type UserSummary } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { formatBytes } from "./sizes";
@@ -125,7 +125,8 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
   const [newLoginName, setNewLoginName] = useState("");
   /** A password to show once. */
   const [shown, setShown] = useState<{ displayName: string; password: string }>();
-  const [editing, setEditing] = useState<{ id: number; displayName: string; loginName: string }>();
+  /** The user being edited; the note limit as typed in its box. */
+  const [editing, setEditing] = useState<{ id: number; displayName: string; loginName: string; noteLimit: string }>();
   const [confirming, setConfirming] = useState<{ user: UserSummary; action: "reset" | "turn-off" }>();
 
   const failed = useCallback(
@@ -181,7 +182,11 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
     event.preventDefault();
     if (busy || !editing) return;
     void run(async () => {
-      const user = await api.updateUser(editing.id, { displayName: editing.displayName, loginName: editing.loginName });
+      const user = await api.updateUser(editing.id, {
+        displayName: editing.displayName,
+        loginName: editing.loginName,
+        noteLimit: Number(editing.noteLimit),
+      });
       replace(user);
       if (user.id === me.id) onMeChanged({ id: user.id, loginName: user.loginName, displayName: user.displayName, admin: user.admin });
       setEditing(undefined);
@@ -235,6 +240,19 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                     onLoginName={(loginName) => setEditing({ ...editing, loginName })}
                     disabled={busy}
                   />
+                  <label htmlFor={`edit-${user.id}-note-limit`}>Note limit</label>
+                  <input
+                    id={`edit-${user.id}-note-limit`}
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={NOTE_LIMIT_MAX}
+                    step={1}
+                    required
+                    value={editing.noteLimit}
+                    disabled={busy}
+                    onChange={(event) => setEditing({ ...editing, noteLimit: event.target.value })}
+                  />
                   <div className="form-buttons">
                     <button type="submit" disabled={busy}>
                       Save
@@ -253,14 +271,16 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                   </div>
                   <p className="user-details">
                     Created {when(user.createdDateTime)} · Last logged in {user.lastLoginDateTime ? when(user.lastLoginDateTime) : "Never"} ·{" "}
-                    {plural(user.noteCount, "note")} · {formatBytes(user.noteBytes)}
+                    {user.noteCount} of {plural(user.noteLimit, "note")} · {formatBytes(user.noteBytes)}
                   </p>
                   <div className="lifetime-buttons">
                     <button
                       type="button"
                       className="button"
                       disabled={busy}
-                      onClick={() => setEditing({ id: user.id, displayName: user.displayName, loginName: user.loginName })}
+                      onClick={() =>
+                        setEditing({ id: user.id, displayName: user.displayName, loginName: user.loginName, noteLimit: String(user.noteLimit) })
+                      }
                     >
                       Edit
                     </button>

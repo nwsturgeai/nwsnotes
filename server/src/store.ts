@@ -449,7 +449,7 @@ export class NoteStore {
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { dueDateTime?: string; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown } = {},
+    options: { dueDateTime?: string; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown; noteLimit?: number } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
       let clientId: string | undefined;
@@ -460,6 +460,13 @@ export class NoteStore {
         clientId = options.clientId;
         const existing = this.notes.find((n) => n.clientId === clientId);
         if (existing) return { note: existing, created: false };
+      }
+      // Checked here, in the queue of changes, so two adds at once can't both slip under the limit.
+      if (options.noteLimit !== undefined && this.notes.length >= options.noteLimit) {
+        throw new RequestError(
+          409,
+          `You've reached your limit of ${options.noteLimit} notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
+        );
       }
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
