@@ -271,6 +271,9 @@ export interface UserSummary extends Me {
   noteBytes: number;
   /** The most notes they can have. */
   noteLimit: number;
+  /** How many of their notes are stylus (handwritten) notes, and the most they can have (see stylusNoteLimitOf). */
+  stylusNoteCount: number;
+  stylusNoteLimit: number;
 }
 
 /** Everyone's maximum number of notes until the admin changes it, and the highest it can be set to. */
@@ -280,12 +283,28 @@ export const NOTE_LIMIT_MAX = 100_000;
 /** At least this share of their limit used, a user is told their limit. */
 export const NOTE_LIMIT_SHOWN_FROM = 0.8;
 
+/** A user's stylus notes are limited to this share of their note limit. */
+export const STYLUS_NOTE_SHARE = 0.05;
+
+/** The most stylus notes a user can have: 5% of their note limit (rounded down), and at least 1. */
+export function stylusNoteLimitOf(noteLimit: number): number {
+  return Math.max(1, Math.floor(noteLimit * STYLUS_NOTE_SHARE));
+}
+
+/** A stylus note: a handwritten title, or a long-form note with handwritten details (even while they're still empty). */
+export function isStylusNote(note: Pick<Note, "titleImage" | "detailsImage">): boolean {
+  return note.titleImage !== undefined || note.detailsImage !== undefined;
+}
+
 /** GET /api/me/stats: the logged-in user's number of notes, and the space they take in the database (bytes). */
 export interface NoteStats {
   noteCount: number;
   noteBytes: number;
   /** The most notes they can have (shown to them only once they're near it). */
   noteLimit: number;
+  /** How many of them are stylus notes, and the most they can have (likewise shown only once they're near it). */
+  stylusNoteCount: number;
+  stylusNoteLimit: number;
 }
 
 /** Body of POST /api/users (adding a user). */

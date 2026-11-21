@@ -303,6 +303,13 @@ export function SettingsPage({
                 </>
               )}
               , taking up <strong>{formatBytes(stats.noteBytes)}</strong>.
+              {/* Likewise the stylus-note limit. */}
+              {stats.stylusNoteCount >= stats.stylusNoteLimit * NOTE_LIMIT_SHOWN_FROM && (
+                <>
+                  {" "}
+                  You have <strong>{stats.stylusNoteCount}</strong> of your <strong>{plural(stats.stylusNoteLimit, "stylus note")}</strong>.
+                </>
+              )}
             </>
           ) : (
             "You have … notes, taking up …"

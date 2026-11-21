@@ -478,8 +478,8 @@ test("Settings shows how many notes you have and the space they take; the users 
   await expect(sam.locator(".note-stats")).toHaveText(`You have 1 note, taking up ${shownSize(samStats.noteBytes)}.`);
 
   await openUsersPage(page);
-  await expect(userRow(page, ADMIN)).toContainText(`9 of 1000 notes · ${shownSize(stats.noteBytes)}`);
-  await expect(userRow(page, "sam")).toContainText(`1 of 1000 notes · ${shownSize(samStats.noteBytes)}`);
+  await expect(userRow(page, ADMIN)).toContainText(`9 of 1000 notes · 1 of 50 stylus notes · ${shownSize(stats.noteBytes)}`);
+  await expect(userRow(page, "sam")).toContainText(`1 of 1000 notes · 0 of 50 stylus notes · ${shownSize(samStats.noteBytes)}`);
   await expect(page.locator(".note-stats")).toHaveText(
     `All users: 10 notes, ${shownSize(stats.noteBytes + samStats.noteBytes)} of the database's 500 MB.`,
   );
@@ -516,4 +516,49 @@ test("each user has a note limit, set by the admin, shown to them only when they
   await expect(sam.getByRole("alert")).toContainText("You've reached your limit of 2 notes. Empty the Bin to make room, or ask the admin for a higher limit.");
   await expect(box).toHaveValue("Third");
   await expect(noteRow(sam, "Third")).toHaveCount(0);
+});
+
+/** A tiny handwritten image (a 1×1 PNG). */
+const INK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+test("stylus notes are limited to 5% of the note limit", async ({ page, browser }) => {
+  const { password } = await addUser(page.request, "Sam Smith", "sam");
+  await openUsersPage(page);
+  await userRow(page, "sam").getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByText("5% of them can be stylus notes: 50 stylus notes.")).toBeVisible();
+  // 5% of 40 is 2.
+  await page.getByLabel("Note limit").fill("40");
+  await expect(page.getByText("5% of them can be stylus notes: 2 stylus notes.")).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(userRow(page, "sam")).toContainText("0 of 40 notes · 0 of 2 stylus notes");
+
+  const sam = await loggedIn(browser, "sam", password);
+  const add = (data: object) => sam.request.post("/api/notes", { data: { tagIds: [], ...data } });
+  // A handwritten note, and a long-form note with handwritten details (still empty): the 2 allowed.
+  expect((await add({ titleImage: INK })).status()).toBe(201);
+  const longForm = await add({ titleText: "Long", detailsImage: "" });
+  expect(longForm.status()).toBe(201);
+  // A third is refused, either kind, but typed notes can still be added.
+  const third = await add({ titleImage: INK });
+  expect(third.status()).toBe(409);
+  expect(((await third.json()) as { error: string }).error).toBe(
+    "You've reached your limit of 2 stylus notes. Empty the Bin to make room, or ask the admin for a higher limit.",
+  );
+  expect((await add({ titleText: "Long 2", detailsImage: "" })).status()).toBe(409);
+  const typed = await add({ titleText: "Typed" });
+  expect(typed.status()).toBe(201);
+  expect((await add({ titleText: "Typed long-form", detailsText: "" })).status()).toBe(201);
+  // Converting a typed note to handwritten long-form is refused too; to typed long-form it isn't.
+  const typedId = ((await typed.json()) as { id: number }).id;
+  expect((await sam.request.put(`/api/notes/${typedId}`, { data: { titleText: "Typed", tagIds: [], detailsImage: "" } })).status()).toBe(409);
+  expect((await sam.request.put(`/api/notes/${typedId}`, { data: { titleText: "Typed", tagIds: [], detailsText: "" } })).status()).toBe(200);
+  // Stylus notes already there can still be edited.
+  const longFormId = ((await longForm.json()) as { id: number }).id;
+  expect((await sam.request.put(`/api/notes/${longFormId}`, { data: { titleText: "Long", tagIds: [], detailsImage: INK } })).status()).toBe(200);
+
+  // Sam is at the stylus limit, so Settings mentions it (but not the note limit: 4 of 40).
+  await sam.goto("/settings");
+  await expect(sam.locator(".note-stats")).toHaveText(/^You have 4 notes, taking up .+\. You have 2 of your 2 stylus notes\.$/);
+  await openUsersPage(page);
+  await expect(userRow(page, "sam")).toContainText("4 of 40 notes · 2 of 2 stylus notes");
 });

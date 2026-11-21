@@ -6,6 +6,7 @@ import {
   PASSWORD_MIN_LENGTH,
   NOTE_LIMIT_DEFAULT,
   NOTE_LIMIT_MAX,
+  stylusNoteLimitOf,
   type Me,
   type NoteStats,
   type UserSummary,
@@ -35,6 +36,15 @@ export interface UserData {
 /** A user's maximum number of notes. */
 export function noteLimitOf(user: UserData): number {
   return user.noteLimit ?? NOTE_LIMIT_DEFAULT;
+}
+
+/** A user's note counts and size, without their limits. */
+export type NoteCounts = Omit<NoteStats, "noteLimit" | "stylusNoteLimit">;
+const NO_NOTES: NoteCounts = { noteCount: 0, noteBytes: 0, stylusNoteCount: 0 };
+
+/** A user's note counts and size with their limits, as GET /api/me/stats returns them. */
+export function noteStatsOf(user: UserData, counts: NoteCounts = NO_NOTES): NoteStats {
+  return { ...counts, noteLimit: noteLimitOf(user), stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(user)) };
 }
 
 export interface User extends UserData {
@@ -146,13 +156,20 @@ export class Users {
    * Each user's number of notes and the space they take in the database (after its compression, which
    * is what counts towards the free plan's limit), or just one user's with `userId`.
    */
-  async noteStats(userId?: number): Promise<Map<number, Omit<NoteStats, "noteLimit">>> {
-    const rows = await this.db.query<{ user_id: number; count: number; bytes: number }>(
-      `SELECT user_id, count(*)::int AS count, coalesce(sum(pg_column_size(data)), 0)::float8 AS bytes
+  async noteStats(userId?: number): Promise<Map<number, NoteCounts>> {
+    // Stylus notes as isStylusNote() has them: a handwritten title or handwritten details.
+    const rows = await this.db.query<{ user_id: number; count: number; bytes: number; stylus: number }>(
+      `SELECT user_id, count(*)::int AS count, coalesce(sum(pg_column_size(data)), 0)::float8 AS bytes,
+              count(*) FILTER (WHERE data ? 'titleImage' OR data ? 'detailsImage')::int AS stylus
        FROM nwsnotes.notes WHERE $1::int IS NULL OR user_id = $1::int GROUP BY user_id`,
       [userId ?? null],
     );
-    return new Map(rows.map((row) => [Number(row.user_id), { noteCount: Number(row.count), noteBytes: Number(row.bytes) }]));
+    return new Map(
+      rows.map((row) => [
+        Number(row.user_id),
+        { noteCount: Number(row.count), noteBytes: Number(row.bytes), stylusNoteCount: Number(row.stylus) },
+      ]),
+    );
   }
 
   /** The users page's list, with each user's number of notes and their size. */
@@ -161,15 +178,13 @@ export class Users {
     return this.list().map((user) => this.summary(user, stats.get(user.id)));
   }
 
-  summary(user: User, stats: Omit<NoteStats, "noteLimit"> = { noteCount: 0, noteBytes: 0 }): UserSummary {
+  summary(user: User, counts: NoteCounts = NO_NOTES): UserSummary {
     return {
       ...meOf(user),
       disabled: user.disabled,
       createdDateTime: user.createdDateTime,
       ...(user.lastLoginDateTime !== undefined && { lastLoginDateTime: user.lastLoginDateTime }),
-      noteCount: stats.noteCount,
-      noteBytes: stats.noteBytes,
-      noteLimit: noteLimitOf(user),
+      ...noteStatsOf(user, counts),
     };
   }
 

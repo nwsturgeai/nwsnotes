@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { DISPLAY_NAME_MAX_LENGTH, NOTE_LIMIT_MAX, type Me, type UserSummary } from "@nwsnotes/shared";
+import {
+  DISPLAY_NAME_MAX_LENGTH,
+  NOTE_LIMIT_MAX,
+  STYLUS_NOTE_SHARE,
+  stylusNoteLimitOf,
+  type Me,
+  type UserSummary,
+} from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { formatBytes } from "./sizes";
@@ -253,6 +260,12 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                     disabled={busy}
                     onChange={(event) => setEditing({ ...editing, noteLimit: event.target.value })}
                   />
+                  <p className="hint">
+                    {STYLUS_NOTE_SHARE * 100}% of them can be stylus notes
+                    {Number.isInteger(Number(editing.noteLimit)) && Number(editing.noteLimit) >= 1
+                      ? `: ${plural(stylusNoteLimitOf(Number(editing.noteLimit)), "stylus note")}.`
+                      : "."}
+                  </p>
                   <div className="form-buttons">
                     <button type="submit" disabled={busy}>
                       Save
@@ -271,7 +284,8 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                   </div>
                   <p className="user-details">
                     Created {when(user.createdDateTime)} · Last logged in {user.lastLoginDateTime ? when(user.lastLoginDateTime) : "Never"} ·{" "}
-                    {user.noteCount} of {plural(user.noteLimit, "note")} · {formatBytes(user.noteBytes)}
+                    {user.noteCount} of {plural(user.noteLimit, "note")} · {user.stylusNoteCount} of{" "}
+                    {plural(user.stylusNoteLimit, "stylus note")} · {formatBytes(user.noteBytes)}
                   </p>
                   <div className="lifetime-buttons">
                     <button
