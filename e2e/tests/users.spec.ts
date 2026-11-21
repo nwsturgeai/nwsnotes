@@ -65,7 +65,7 @@ async function openUsersPage(page: Page) {
 test("the admin adds a user, whose password is shown once, and who starts with an empty notebook", async ({ page, browser }) => {
   await openUsersPage(page);
   await expect(userRow(page, ADMIN)).toContainText("Admin");
-  await expect(userRow(page, ADMIN)).toContainText("9 notes");
+  await expect(userRow(page, ADMIN)).toContainText("9 of 1000 notes");
 
   await page.getByLabel("Display name").fill("Sam Smith");
   await page.getByLabel("Login name").fill("sam");
@@ -82,7 +82,7 @@ test("the admin adds a user, whose password is shown once, and who starts with a
   await expect(page.getByText(password)).toHaveCount(0);
   await expect(userRow(page, "sam")).toContainText("Sam Smith");
   await expect(userRow(page, "sam")).toContainText("Last logged in Never");
-  await expect(userRow(page, "sam")).toContainText("0 notes");
+  await expect(userRow(page, "sam")).toContainText("0 of 1000 notes");
   await page.reload();
   await expect(page.getByText(password)).toHaveCount(0);
 
@@ -306,7 +306,7 @@ test("resetting a password and turning an account off log that user out; turned 
   await editForm.getByLabel("Login name").fill("joanna");
   await editForm.getByRole("button", { name: "Save" }).click();
   await expect(userRow(page, "joanna")).toContainText("Joanna Bloggs");
-  await expect(userRow(page, "joanna")).toContainText("1 note");
+  await expect(userRow(page, "joanna")).toContainText("1 of 1000 notes");
   // The session still works (it belongs to the user id), and the new login name logs in.
   await jo.reload();
   await expect(noteRow(jo, "Jo's note")).toBeVisible();
@@ -451,4 +451,69 @@ test.describe("the offline copy from before there were users", () => {
     }
     await device.context().close();
   });
+});
+
+/** A size as the app shows it (1024-based, one decimal place). */
+function shownSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} ${bytes === 1 ? "byte" : "bytes"}`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+test("Settings shows how many notes you have and the space they take; the users page shows each user's and the total", async ({ page, browser }) => {
+  const stats = (await (await page.request.get("/api/me/stats")).json()) as { noteCount: number; noteBytes: number };
+  expect(stats.noteCount).toBe(9);
+  expect(stats.noteBytes).toBeGreaterThan(0);
+
+  await page.goto("/settings");
+  await expect(page.locator(".note-stats")).toHaveText(`You have 9 notes, taking up ${shownSize(stats.noteBytes)}.`);
+
+  // Another user, with one note: their own figures, and both on the users page with the total.
+  const { password } = await addUser(page.request, "Sam Smith", "sam");
+  const sam = await loggedIn(browser, "sam", password);
+  await addNote(sam, "Sam's note");
+  await sam.getByRole("link", { name: "Settings" }).click();
+  const samStats = (await (await sam.request.get("/api/me/stats")).json()) as { noteCount: number; noteBytes: number };
+  expect(samStats.noteCount).toBe(1);
+  await expect(sam.locator(".note-stats")).toHaveText(`You have 1 note, taking up ${shownSize(samStats.noteBytes)}.`);
+
+  await openUsersPage(page);
+  await expect(userRow(page, ADMIN)).toContainText(`9 of 1000 notes · ${shownSize(stats.noteBytes)}`);
+  await expect(userRow(page, "sam")).toContainText(`1 of 1000 notes · ${shownSize(samStats.noteBytes)}`);
+  await expect(page.locator(".note-stats")).toHaveText(
+    `All users: 10 notes, ${shownSize(stats.noteBytes + samStats.noteBytes)} of the database's 500 MB.`,
+  );
+});
+
+test("each user has a note limit, set by the admin, shown to them only when they're near it", async ({ page, browser }) => {
+  const { id, password } = await addUser(page.request, "Sam Smith", "sam");
+
+  // The admin sets Sam's limit to 2 on the users page.
+  await openUsersPage(page);
+  await userRow(page, "sam").getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByLabel("Note limit")).toHaveValue("1000");
+  await page.getByLabel("Note limit").fill("2");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(userRow(page, "sam")).toContainText("0 of 2 notes");
+  // Out of range is refused.
+  expect((await page.request.put(`/api/users/${id}`, { data: { noteLimit: 0 } })).status()).toBe(400);
+
+  const sam = await loggedIn(browser, "sam", password);
+  await addNote(sam, "First");
+  // 1 of 2 isn't within 20% of the limit, so it isn't mentioned.
+  await sam.getByRole("link", { name: "Settings" }).click();
+  await expect(sam.locator(".note-stats")).toHaveText(/^You have 1 note, taking up /);
+  await sam.getByRole("link", { name: "← Notes" }).click();
+  await addNote(sam, "Second");
+  await sam.getByRole("link", { name: "Settings" }).click();
+  await expect(sam.locator(".note-stats")).toHaveText(/^You have 2 of your 2 notes, taking up /);
+  await sam.getByRole("link", { name: "← Notes" }).click();
+
+  // At the limit, adding is refused and the title is kept.
+  const box = sam.getByRole("textbox", { name: "New note" });
+  await box.fill("Third");
+  await box.press("Enter");
+  await expect(sam.getByRole("alert")).toContainText("You've reached your limit of 2 notes. Empty the Bin to make room, or ask the admin for a higher limit.");
+  await expect(box).toHaveValue("Third");
+  await expect(noteRow(sam, "Third")).toHaveCount(0);
 });

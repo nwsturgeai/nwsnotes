@@ -4,7 +4,10 @@ import {
   LOGIN_NAME_RULE,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  NOTE_LIMIT_DEFAULT,
+  NOTE_LIMIT_MAX,
   type Me,
+  type NoteStats,
   type UserSummary,
 } from "@nwsnotes/shared";
 import { generatePassword, hashPassword, verifyPassword } from "./auth.js";
@@ -25,6 +28,13 @@ export interface UserData {
   sessionVersion: number;
   createdDateTime: string;
   lastLoginDateTime?: string;
+  /** The most notes they can have (NOTE_LIMIT_DEFAULT when missing). */
+  noteLimit?: number;
+}
+
+/** A user's maximum number of notes. */
+export function noteLimitOf(user: UserData): number {
+  return user.noteLimit ?? NOTE_LIMIT_DEFAULT;
 }
 
 export interface User extends UserData {
@@ -132,22 +142,34 @@ export class Users {
     return user.disabled ? "disabled" : user;
   }
 
-  /** The users page's list, with each user's number of notes. */
-  async summaries(): Promise<UserSummary[]> {
-    const counts = await this.db.query<{ user_id: number; count: number }>(
-      "SELECT user_id, count(*)::int AS count FROM nwsnotes.notes GROUP BY user_id",
+  /**
+   * Each user's number of notes and the space they take in the database (after its compression, which
+   * is what counts towards the free plan's limit), or just one user's with `userId`.
+   */
+  async noteStats(userId?: number): Promise<Map<number, Omit<NoteStats, "noteLimit">>> {
+    const rows = await this.db.query<{ user_id: number; count: number; bytes: number }>(
+      `SELECT user_id, count(*)::int AS count, coalesce(sum(pg_column_size(data)), 0)::float8 AS bytes
+       FROM nwsnotes.notes WHERE $1::int IS NULL OR user_id = $1::int GROUP BY user_id`,
+      [userId ?? null],
     );
-    const byUser = new Map(counts.map((row) => [Number(row.user_id), Number(row.count)]));
-    return this.list().map((user) => this.summary(user, byUser.get(user.id) ?? 0));
+    return new Map(rows.map((row) => [Number(row.user_id), { noteCount: Number(row.count), noteBytes: Number(row.bytes) }]));
   }
 
-  summary(user: User, noteCount: number): UserSummary {
+  /** The users page's list, with each user's number of notes and their size. */
+  async summaries(): Promise<UserSummary[]> {
+    const stats = await this.noteStats();
+    return this.list().map((user) => this.summary(user, stats.get(user.id)));
+  }
+
+  summary(user: User, stats: Omit<NoteStats, "noteLimit"> = { noteCount: 0, noteBytes: 0 }): UserSummary {
     return {
       ...meOf(user),
       disabled: user.disabled,
       createdDateTime: user.createdDateTime,
       ...(user.lastLoginDateTime !== undefined && { lastLoginDateTime: user.lastLoginDateTime }),
-      noteCount,
+      noteCount: stats.noteCount,
+      noteBytes: stats.noteBytes,
+      noteLimit: noteLimitOf(user),
     };
   }
 
@@ -186,10 +208,17 @@ export class Users {
   update(id: number, raw: unknown): Promise<{ user: User; loggedOut: boolean }> {
     return this.enqueue(async () => {
       const existing = this.required(id);
-      const body = (raw ?? {}) as { loginName?: unknown; displayName?: unknown; disabled?: unknown };
+      const body = (raw ?? {}) as { loginName?: unknown; displayName?: unknown; disabled?: unknown; noteLimit?: unknown };
       const next: User = { ...existing };
       if (body.loginName !== undefined) next.loginName = this.unusedLoginName(body.loginName, id);
       if (body.displayName !== undefined) next.displayName = validDisplayName(body.displayName);
+      if (body.noteLimit !== undefined) {
+        const limit = body.noteLimit;
+        if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > NOTE_LIMIT_MAX) {
+          throw new RequestError(400, `The note limit must be a whole number from 1 to ${NOTE_LIMIT_MAX.toLocaleString("en-GB")}.`);
+        }
+        next.noteLimit = limit;
+      }
       let loggedOut = false;
       if (body.disabled !== undefined) {
         if (typeof body.disabled !== "boolean") throw new RequestError(400, '"disabled" must be true or false.');

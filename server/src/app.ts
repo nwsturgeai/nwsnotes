@@ -14,7 +14,7 @@ import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
 import { makeSingleUserDatabaseForTests } from "./persist.js";
 import type { NoteStore } from "./store.js";
-import { ADMIN_ID, meOf, type User } from "./users.js";
+import { ADMIN_ID, meOf, noteLimitOf, type User } from "./users.js";
 
 /** The logged-in user's notebook (after requireSession and withNotebook). */
 function notebookOf(res: Response): NoteStore {
@@ -94,6 +94,14 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
     res.json(meOf(userOf(res)));
   });
 
+  // Your number of notes and the space they take, for the top of Settings.
+  meRouter.get("/stats", async (_req, res) => {
+    const id = userOf(res).id;
+    res.set("Cache-Control", "no-store");
+    const stats = (await users.noteStats(id)).get(id) ?? { noteCount: 0, noteBytes: 0 };
+    res.json({ ...stats, noteLimit: noteLimitOf(userOf(res)) });
+  });
+
   // Changing your own password: this browser gets a fresh cookie and stays logged in; the others are logged out.
   meRouter.put("/password", async (req, res) => {
     const user = await users.changeOwnPassword(userOf(res).id, req.body);
@@ -119,7 +127,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
 
   usersRouter.post("/", async (req, res) => {
     const { user, password } = await users.create(req.body);
-    res.status(201).json({ user: users.summary(user, 0), password });
+    res.status(201).json({ user: users.summary(user), password });
   });
 
   /** The user id in the address, which must be a user. */
@@ -136,8 +144,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
     }
     const { user, loggedOut } = await users.update(id, req.body);
     if (loggedOut) live.logOut(id);
-    const notes = await db.query<{ count: number }>("SELECT count(*)::int AS count FROM nwsnotes.notes WHERE user_id = $1", [id]);
-    res.json(users.summary(user, Number(notes[0]?.count ?? 0)));
+    res.json(users.summary(user, (await users.noteStats(id)).get(id)));
   });
 
   usersRouter.post("/:id/reset-password", async (req: Request<{ id: string }>, res) => {
@@ -188,6 +195,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
+        noteLimit: noteLimitOf(userOf(res)),
       });
       // An add sent again (its reply was lost) changes nothing, so there's nothing to tell other pages.
       if (created) notifyChanged(req, res);

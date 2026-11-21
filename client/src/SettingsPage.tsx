@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp } from "@fortawesome/free-solid-svg-icons";
+import { formatBytes } from "./sizes";
 import {
   ALL_TAB_NAME,
   lifetimeOf,
   LIFETIME_ARCHIVED,
   LIFETIME_BIN,
   LIFETIME_NEW,
+  NOTE_LIMIT_SHOWN_FROM,
   type Category,
   type Me,
   type Note,
+  type NoteStats,
   type Tab,
   type TabPlacement,
 } from "@nwsnotes/shared";
@@ -220,6 +223,18 @@ export function SettingsPage({
     const next = movedTo(tabs, id, target);
     if (next) void saveTabOrder(next);
   });
+  /** Your number of notes and their size, fetched when the page opens and whenever the notes change. */
+  const [stats, setStats] = useState<NoteStats | "failed">();
+  useEffect(() => {
+    let current = true;
+    api
+      .myStats()
+      .then((found) => current && setStats(found))
+      .catch(() => current && setStats("failed"));
+    return () => {
+      current = false;
+    };
+  }, [notes]);
   const [busy, setBusy] = useState(false);
   /** Read by each canvas when it opens, so there's no need to pass it around. */
   const [penWidth, setPenWidth] = usePenWidth();
@@ -271,6 +286,29 @@ export function SettingsPage({
   return (
     <main className="settings-page">
       <h1>Settings</h1>
+      {/* How many notes you have and the space they take; nothing if it can't be found out. */}
+      {stats !== "failed" && (
+        <p className="note-stats">
+          {stats ? (
+            <>
+              {/* The limit only shows once they're near it. */}
+              {stats.noteCount >= stats.noteLimit * NOTE_LIMIT_SHOWN_FROM ? (
+                <>
+                  You have <strong>{stats.noteCount}</strong> of your{" "}
+                  <strong>{plural(stats.noteLimit, "note")}</strong>
+                </>
+              ) : (
+                <>
+                  You have <strong>{plural(stats.noteCount, "note")}</strong>
+                </>
+              )}
+              , taking up <strong>{formatBytes(stats.noteBytes)}</strong>.
+            </>
+          ) : (
+            "You have … notes, taking up …"
+          )}
+        </p>
+      )}
       {notice && (
         <p className="lifetime-result" role="status">
           {notice}

@@ -2349,3 +2349,13 @@ body:has(.dragging) {
   letter-spacing: 0.05em;
   user-select: all;
 }
+
+/* Settings and the users page: how many notes, and the space they take. */
+.note-stats {
+  margin: -0.25rem 0 1rem;
+  color: var(--muted);
+}
+
+.note-stats strong {
+  color: var(--text);
+}
