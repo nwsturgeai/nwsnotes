@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { DISPLAY_NAME_MAX_LENGTH, type Me, type UserSummary } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { formatBytes } from "./sizes";
 
 interface Props {
   me: Me;
@@ -12,6 +13,8 @@ interface Props {
 }
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+/** Everyone's notes or their sizes, added up. */
+const total = (users: UserSummary[], field: "noteCount" | "noteBytes") => users.reduce((sum, user) => sum + user[field], 0);
 
 /** E.g. "18 Nov 2026, 09:40", in this device's time zone. */
 function when(iso: string): string {
@@ -210,6 +213,15 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
       )}
       {users === undefined && !error && <p>Loading…</p>}
       {users && (
+        <>
+          <p className="note-stats">
+            All users: <strong>{plural(total(users, "noteCount"), "note")}</strong>,{" "}
+            <strong>{formatBytes(total(users, "noteBytes"))}</strong> of the database&apos;s 500 MB.
+          </p>
+          <p className="hint">Each change in the last 30 days of History also keeps an earlier copy, which takes some extra space.</p>
+        </>
+      )}
+      {users && (
         <ul className="user-list" aria-label="Users">
           {users.map((user) => (
             <li key={user.id}>
@@ -241,7 +253,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                   </div>
                   <p className="user-details">
                     Created {when(user.createdDateTime)} · Last logged in {user.lastLoginDateTime ? when(user.lastLoginDateTime) : "Never"} ·{" "}
-                    {plural(user.noteCount, "note")}
+                    {plural(user.noteCount, "note")} · {formatBytes(user.noteBytes)}
                   </p>
                   <div className="lifetime-buttons">
                     <button

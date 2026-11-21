@@ -5,6 +5,7 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   type Me,
+  type NoteStats,
   type UserSummary,
 } from "@nwsnotes/shared";
 import { generatePassword, hashPassword, verifyPassword } from "./auth.js";
@@ -132,22 +133,33 @@ export class Users {
     return user.disabled ? "disabled" : user;
   }
 
-  /** The users page's list, with each user's number of notes. */
-  async summaries(): Promise<UserSummary[]> {
-    const counts = await this.db.query<{ user_id: number; count: number }>(
-      "SELECT user_id, count(*)::int AS count FROM nwsnotes.notes GROUP BY user_id",
+  /**
+   * Each user's number of notes and the space they take in the database (after its compression, which
+   * is what counts towards the free plan's limit), or just one user's with `userId`.
+   */
+  async noteStats(userId?: number): Promise<Map<number, NoteStats>> {
+    const rows = await this.db.query<{ user_id: number; count: number; bytes: number }>(
+      `SELECT user_id, count(*)::int AS count, coalesce(sum(pg_column_size(data)), 0)::float8 AS bytes
+       FROM nwsnotes.notes WHERE $1::int IS NULL OR user_id = $1::int GROUP BY user_id`,
+      [userId ?? null],
     );
-    const byUser = new Map(counts.map((row) => [Number(row.user_id), Number(row.count)]));
-    return this.list().map((user) => this.summary(user, byUser.get(user.id) ?? 0));
+    return new Map(rows.map((row) => [Number(row.user_id), { noteCount: Number(row.count), noteBytes: Number(row.bytes) }]));
   }
 
-  summary(user: User, noteCount: number): UserSummary {
+  /** The users page's list, with each user's number of notes and their size. */
+  async summaries(): Promise<UserSummary[]> {
+    const stats = await this.noteStats();
+    return this.list().map((user) => this.summary(user, stats.get(user.id)));
+  }
+
+  summary(user: User, stats: NoteStats = { noteCount: 0, noteBytes: 0 }): UserSummary {
     return {
       ...meOf(user),
       disabled: user.disabled,
       createdDateTime: user.createdDateTime,
       ...(user.lastLoginDateTime !== undefined && { lastLoginDateTime: user.lastLoginDateTime }),
-      noteCount,
+      noteCount: stats.noteCount,
+      noteBytes: stats.noteBytes,
     };
   }
 

@@ -452,3 +452,35 @@ test.describe("the offline copy from before there were users", () => {
     await device.context().close();
   });
 });
+
+/** A size as the app shows it (1024-based, one decimal place). */
+function shownSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} ${bytes === 1 ? "byte" : "bytes"}`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+test("Settings shows how many notes you have and the space they take; the users page shows each user's and the total", async ({ page, browser }) => {
+  const stats = (await (await page.request.get("/api/me/stats")).json()) as { noteCount: number; noteBytes: number };
+  expect(stats.noteCount).toBe(9);
+  expect(stats.noteBytes).toBeGreaterThan(0);
+
+  await page.goto("/settings");
+  await expect(page.locator(".note-stats")).toHaveText(`You have 9 notes, taking up ${shownSize(stats.noteBytes)}.`);
+
+  // Another user, with one note: their own figures, and both on the users page with the total.
+  const { password } = await addUser(page.request, "Sam Smith", "sam");
+  const sam = await loggedIn(browser, "sam", password);
+  await addNote(sam, "Sam's note");
+  await sam.getByRole("link", { name: "Settings" }).click();
+  const samStats = (await (await sam.request.get("/api/me/stats")).json()) as { noteCount: number; noteBytes: number };
+  expect(samStats.noteCount).toBe(1);
+  await expect(sam.locator(".note-stats")).toHaveText(`You have 1 note, taking up ${shownSize(samStats.noteBytes)}.`);
+
+  await openUsersPage(page);
+  await expect(userRow(page, ADMIN)).toContainText(`9 notes · ${shownSize(stats.noteBytes)}`);
+  await expect(userRow(page, "sam")).toContainText(`1 note · ${shownSize(samStats.noteBytes)}`);
+  await expect(page.locator(".note-stats")).toHaveText(
+    `All users: 10 notes, ${shownSize(stats.noteBytes + samStats.noteBytes)} of the database's 500 MB.`,
+  );
+});

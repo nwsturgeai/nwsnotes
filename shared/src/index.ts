@@ -267,6 +267,14 @@ export interface UserSummary extends Me {
   lastLoginDateTime?: string;
   /** How many notes their notebook has. */
   noteCount: number;
+  /** The space their notes take in the database, in bytes. */
+  noteBytes: number;
+}
+
+/** GET /api/me/stats: the logged-in user's number of notes, and the space they take in the database (bytes). */
+export interface NoteStats {
+  noteCount: number;
+  noteBytes: number;
 }
 
 /** Body of POST /api/users (adding a user). */
