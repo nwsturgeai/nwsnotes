@@ -8,6 +8,9 @@ import type { Db, Query } from "./db.js";
  * back only needs the changes being undone.
  */
 
+/** The most changes kept in each user's history (besides only keeping HISTORY_DAYS' worth). */
+export const HISTORY_MAX_CHANGES = 500;
+
 /** Everything the store keeps. */
 export interface Snapshot {
   notes: Note[];
@@ -297,6 +300,14 @@ export async function writeChange(
       `INSERT INTO nwsnotes.change_items (change_id, kind, item_id, "before")
        SELECT $1, e->>'kind', (e->>'id')::int, e->'before' FROM jsonb_array_elements($2::jsonb) e`,
       [change!.id, JSON.stringify(befores)],
+    );
+    // Only the newest HISTORY_MAX_CHANGES are kept: older ones go (and their items with them). Going back
+    // only uses changes after the one gone back to, so every change still listed can still be gone back to.
+    await query(
+      `DELETE FROM nwsnotes.changes WHERE user_id = $1 AND id <= (
+         SELECT id FROM nwsnotes.changes WHERE user_id = $1 ORDER BY id DESC OFFSET $2 LIMIT 1
+       )`,
+      [userId, HISTORY_MAX_CHANGES],
     );
     return change!.id;
   });

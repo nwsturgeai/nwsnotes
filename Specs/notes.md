@@ -65,6 +65,7 @@ Tag selections for a note can be updated in edit mode to have any new tag values
 - The area is a fixed 150px high (including its padding and border) at the bottom of the page and never scrolls with the note list; the list fills the rest of the page below the header. Padding is reduced so the canvas, buttons and one row of dropdowns fit. If more appears than fits (an error message, or dropdowns wrapping onto a second row), the area scrolls inside itself; it never grows.
 - A single-line text box and an "Add" button. Pressing Enter also adds the note. There is no "New note" heading; the text box keeps its placeholder text and an accessible label.
 - **Side padding** is very small (about 4px), to give note content as much width as possible.
+- **Width:** the area's contents are at most 768px (48rem) wide. On a wider screen they're centred in the area, rather than at its left.
 - **Icon buttons:** Add (`fa-circle-plus`), Update (`fa-circle-check`), Cancel (`fa-x`) and Clear (`fa-delete-left`) show only an icon, with a tooltip and screen-reader label giving the action. All four are the same size as the Settings cog (40px square). Add and Update are filled in the accent colour; Cancel and Clear are outlined.
 - After a successful save the text box clears and keeps focus, and the list scrolls to the bottom so the new note is visible. (The box is made read-only, not disabled, while saving, since disabling it would take the focus away.)
 - When the page loads, the list starts scrolled to the bottom.
@@ -95,6 +96,11 @@ Tag selections for a note can be updated in edit mode to have any new tag values
   - It stays on when switching tabs, "All" included.
   - It can't be turned on while a note or long-form note is being edited. The button is greyed out, with the hint "Finish or cancel the edit first".
   - The note buttons (edit, Waiting or Reinstate, Archive or Move to bin) are hidden while it's on. In their place each note has two buttons of the same size: `fa-angles-up` ("Move to top") and `fa-angles-down` ("Move to bottom"), which move the note to the top or bottom of the list as shown (the same as dragging it there, so the rules under "Under extra filters" apply) and save the order. "Move to top" is greyed out on the first note and "Move to bottom" on the last, and both are while a note is being dragged.
+  - **Lifetime buttons:** while it's on, the filter row's dropdowns, reset and search buttons are hidden (the filters and any search still apply). In their place, small text buttons change the Lifetime of the notes listed on this tab (only those, with the tab, the hidden filters and the search as they are):
+    - "Waiting → Archive (N)", shown only if any listed notes are Waiting (N of them): they all become Archived.
+    - "Archived → Bin (N)", shown only if any listed notes are Archived: they all move to the Bin.
+    - Each is one save with one History entry, with no confirmation (each note can be reinstated). The list then reloads, so the counts update. They're greyed out while a note is being dragged or one of them is being handled. If it fails, the error shows as a notice over the list.
+    - Server: `POST /api/notes/waiting-to-archived` and `POST /api/notes/archived-to-bin` with `{ noteIds }`. Listed notes that are missing or no longer have that Lifetime are skipped. Without `noteIds`, `archived-to-bin` still changes every Archived note (the Settings button).
 - **Grips:** in edit-order mode each note shows an `fa-grip-vertical` icon at its left, in a 24px-wide handle.
 - **Dragging:**
   - Pressing on a grip starts the drag straight away, with no hold delay. Mouse, stylus and finger all work, in stylus mode too, as the grips only appear in this mode.

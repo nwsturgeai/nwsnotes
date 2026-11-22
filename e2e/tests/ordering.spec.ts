@@ -124,3 +124,38 @@ test("on All, Ctrl+Enter adds the note at the top", async ({ page }) => {
   await page.reload();
   await expect.poll(async () => (await noteTitles(page))[0]).toBe("Top of everything");
 });
+
+test("in edit-order mode, the filter row's buttons change the Lifetime of the listed notes only", async ({ page }) => {
+  // A Waiting note on another tab, which mustn't change.
+  const waiting = await page.request.put("/api/notes/2/lifetime", { data: { lifetime: "Waiting" } });
+  expect(waiting.ok()).toBe(true);
+  const lifetimeOf = async (id: number) => {
+    const { notes } = (await (await page.request.get("/api/notes")).json()) as { notes: { id: number; tagIds: number[] }[] };
+    return notes.find((note) => note.id === id)!.tagIds.find((tagId) => tagId < 0);
+  };
+
+  await filterRow(page).getByRole("button", { name: "Edit order" }).click();
+  // The dropdowns and search are replaced by the buttons.
+  await expect(filterRow(page).getByRole("button", { name: "Search" })).toHaveCount(0);
+  await expect(filterRow(page).locator(".tag-dropdown-button")).toHaveCount(0);
+  const toArchive = filterRow(page).getByRole("button", { name: /^Waiting → Archive/ });
+  const toBin = filterRow(page).getByRole("button", { name: /^Archived → Bin/ });
+  await expect(toArchive).toHaveText("Waiting → Archive (1)");
+  await expect(toBin).toHaveText("Archived → Bin (1)");
+
+  await toArchive.click();
+  await expect(toArchive).toHaveCount(0);
+  await expect(toBin).toHaveText("Archived → Bin (2)");
+  expect(await lifetimeOf(3)).toBe(-3);
+  expect(await lifetimeOf(2)).toBe(-5);
+
+  await toBin.click();
+  await expectTitles(page, ["Plan the team meeting"]);
+  await expect(toBin).toHaveCount(0);
+  expect(await lifetimeOf(3)).toBe(-4);
+  expect(await lifetimeOf(4)).toBe(-4);
+
+  // Finishing ordering brings the dropdowns and search back.
+  await filterRow(page).getByRole("button", { name: "Finish ordering" }).click();
+  await expect(filterRow(page).getByRole("button", { name: "Search" })).toBeVisible();
+});

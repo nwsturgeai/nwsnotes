@@ -127,9 +127,12 @@ export const api = {
       { lifetime, ...(tagsChangedDateTime && { tagsChangedDateTime }) } satisfies LifetimeRequest,
       changeHeaders(),
     ),
-  /** The Settings Lifetime buttons; each returns how many notes changed (or were deleted). */
-  bulkLifetime: (action: "reset-new" | "archived-to-bin" | "empty-bin") =>
-    request<{ count: number }>("POST", `/api/notes/${action}`, undefined, changeHeaders()),
+  /**
+   * The Settings Lifetime buttons, and edit-order mode's (with `noteIds`: only those notes); each
+   * returns how many notes changed (or were deleted).
+   */
+  bulkLifetime: (action: "reset-new" | "archived-to-bin" | "waiting-to-archived" | "empty-bin", noteIds?: number[]) =>
+    request<{ count: number }>("POST", `/api/notes/${action}`, noteIds && { noteIds }, changeHeaders()),
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
@@ -164,6 +167,8 @@ export const api = {
   changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
   /** The users page (admin only). */
   users: () => request<UserSummary[]>("GET", "/api/users"),
+  /** The whole database's size (bytes), from pg_database_size. */
+  databaseSize: () => request<{ bytes: number }>("GET", "/api/users/database-size"),
   addUser: (body: NewUserRequest) => request<{ user: UserSummary; password: string }>("POST", "/api/users", body),
   updateUser: (id: number, body: UserUpdateRequest) => request<UserSummary>("PUT", `/api/users/${id}`, body),
   resetPassword: (id: number) => request<{ password: string }>("POST", `/api/users/${id}/reset-password`),

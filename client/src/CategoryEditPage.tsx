@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp, faTrashCan } from "@fortawesome/free-solid-svg-icons";
-import { NAME_MAX_LENGTH, validateCategory, type Category, type CategoryRequest, type Note } from "@nwsnotes/shared";
+import { NAME_MAX_LENGTH, TAGS_PER_CATEGORY_MAX, validateCategory, type Category, type CategoryRequest, type Note } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { hueColour } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -79,7 +79,11 @@ function CategoryForm({
     setRows((current) => current.map((row) => (row.key === key ? { ...row, name: value } : row)));
   }
 
+  /** A category has room for at most TAGS_PER_CATEGORY_MAX tag rows. */
+  const tagsFull = rows.length >= TAGS_PER_CATEGORY_MAX;
+
   function addRow() {
+    if (tagsFull) return;
     const row = newRow();
     focusKey.current = row.key;
     setRows((current) => [...current, row]);
@@ -317,9 +321,13 @@ function CategoryForm({
             );
           })}
           </div>
-          <button type="button" className="button" disabled={saving} onClick={addRow}>
-            Add tag
-          </button>
+          {tagsFull ? (
+            <p className="hint">A category can have at most {TAGS_PER_CATEGORY_MAX} tags.</p>
+          ) : (
+            <button type="button" className="button" disabled={saving} onClick={addRow}>
+              Add tag
+            </button>
+          )}
         </fieldset>
 
         {error && (

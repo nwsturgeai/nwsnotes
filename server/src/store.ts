@@ -4,6 +4,7 @@ import {
   CLIENT_ID_MAX_LENGTH,
   isLifetimeTag,
   isLongForm,
+  isStylusNote,
   lifetimeOf,
   LIFETIME_ACTIVE,
   LIFETIME_ARCHIVED,
@@ -455,6 +456,7 @@ export class NoteStore {
       createdDateTime?: unknown;
       tagsChangedDateTime?: unknown;
       noteLimit?: number;
+      stylusNoteLimit?: number;
       /** "sms": texted in, which the History says. */
       source?: "sms";
     } = {},
@@ -476,6 +478,7 @@ export class NoteStore {
           `You've reached your limit of ${options.noteLimit} notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
         );
       }
+      if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       if (details && title.titleText === undefined) {
@@ -516,6 +519,18 @@ export class NoteStore {
   }
 
   /**
+   * Refuses a new stylus note when the notebook already has `limit` of them (archived and Bin included).
+   * Called in the queue of changes, so two at once can't both slip under it.
+   */
+  private checkStylusNoteLimit(limit: number | undefined): void {
+    if (limit === undefined || this.notes.filter(isStylusNote).length < limit) return;
+    throw new RequestError(
+      409,
+      `You've reached your limit of ${limit} stylus notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
+    );
+  }
+
+  /**
    * Replaces a note's title (already validated) and tags, then saves. The note keeps its id, its
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
@@ -528,7 +543,7 @@ export class NoteStore {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown } = {},
+    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; stylusNoteLimit?: number } = {},
   ): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
@@ -565,6 +580,8 @@ export class NoteStore {
       if (details !== undefined && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
+      // A typed note converted to a long-form note with handwritten details becomes a stylus note.
+      if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
 
       const now = this.nextSaveTime();
       // Editing keeps the note's Lifetime.
@@ -683,9 +700,17 @@ export class NoteStore {
     return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE);
   }
 
-  /** The Settings "Archived to Bin" button: every Archived note is moved to the Bin. Returns how many. */
-  archivedToBin(): Promise<number> {
-    return this.changeLifetimes(LIFETIME_ARCHIVED, LIFETIME_BIN);
+  /**
+   * The Settings "Archived to Bin" button: every Archived note is moved to the Bin. With `rawNoteIds`
+   * (edit-order mode's button), only those notes. Returns how many.
+   */
+  archivedToBin(rawNoteIds?: unknown): Promise<number> {
+    return this.changeLifetimes(LIFETIME_ARCHIVED, LIFETIME_BIN, rawNoteIds);
+  }
+
+  /** Edit-order mode's "Waiting → Archive" button: the given notes that are Waiting become Archived. */
+  waitingToArchived(rawNoteIds?: unknown): Promise<number> {
+    return this.changeLifetimes(LIFETIME_WAITING, LIFETIME_ARCHIVED, rawNoteIds);
   }
 
   /** The Settings "Empty Bin" button: every Bin note is deleted. Returns how many. */
@@ -757,22 +782,35 @@ export class NoteStore {
     return this.noteOrder.filter((id) => ids.has(id));
   }
 
-  /** Moves every note with one Lifetime to another in a single save. Returns how many changed. */
-  private changeLifetimes(from: number, to: number): Promise<number> {
+  /**
+   * Moves every note with one Lifetime to another in a single save. With `rawNoteIds`, only those notes
+   * (any that are missing or no longer have the `from` Lifetime are skipped). Returns how many changed.
+   */
+  private changeLifetimes(from: number, to: number, rawNoteIds?: unknown): Promise<number> {
     return this.enqueue(async () => {
-      const count = this.notes.filter((n) => lifetimeOf(n) === from).length;
+      let only: Set<number> | undefined;
+      if (rawNoteIds !== undefined) {
+        if (!Array.isArray(rawNoteIds) || !rawNoteIds.every((id) => Number.isInteger(id))) {
+          throw new RequestError(400, '"noteIds" must be a list of ids.');
+        }
+        only = new Set(rawNoteIds as number[]);
+      }
+      const changing = (n: Note) => lifetimeOf(n) === from && (only === undefined || only.has(n.id));
+      const count = this.notes.filter(changing).length;
       if (count === 0) return 0;
       const now = this.nextSaveTime();
       const timestamp = now.toISOString();
       const notes = this.notes.map((n) =>
-        lifetimeOf(n) === from
+        changing(n)
           ? { ...n, lastModifiedDateTime: timestamp, tagsChangedDateTime: timestamp, tagIds: withLifetime(n, to) }
           : n,
       );
       const summary =
         from === LIFETIME_NEW
           ? `Reset New (${plural(count, "note")} made Active)`
-          : `Archived to Bin (${plural(count, "note")} moved to the bin)`;
+          : from === LIFETIME_WAITING
+            ? `Waiting to Archived (${plural(count, "note")} archived)`
+            : `Archived to Bin (${plural(count, "note")} moved to the bin)`;
       await this.save(now, { notes }, { record: { summary } });
       return count;
     });

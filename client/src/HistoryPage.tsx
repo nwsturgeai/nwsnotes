@@ -125,7 +125,7 @@ export function HistoryPage({ onReverted, onSessionExpired }: Props) {
   return (
     <main className="settings-page history-page">
       <h1>History</h1>
-      <p>Changes from the last 30 days, newest first. Going back to a change undoes everything after it, and can itself be undone.</p>
+      <p>Your last 500 changes from the past 30 days, newest first. Going back to a change undoes everything after it, and can itself be undone.</p>
       {result && (
         <p className="lifetime-result" role="status">
           {result}

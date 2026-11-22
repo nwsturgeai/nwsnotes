@@ -6,6 +6,7 @@ import {
   PASSWORD_MIN_LENGTH,
   NOTE_LIMIT_DEFAULT,
   NOTE_LIMIT_MAX,
+  stylusNoteLimitOf,
   type Me,
   type NoteStats,
   type UserSummary,
@@ -39,6 +40,15 @@ export interface UserData {
 /** A user's maximum number of notes. */
 export function noteLimitOf(user: UserData): number {
   return user.noteLimit ?? NOTE_LIMIT_DEFAULT;
+}
+
+/** A user's note counts and size, without their limits. */
+export type NoteCounts = Omit<NoteStats, "noteLimit" | "stylusNoteLimit">;
+const NO_NOTES: NoteCounts = { noteCount: 0, noteBytes: 0, stylusNoteCount: 0, historyBytes: 0 };
+
+/** A user's note counts and size with their limits, as GET /api/me/stats returns them. */
+export function noteStatsOf(user: UserData, counts: NoteCounts = NO_NOTES): NoteStats {
+  return { ...counts, noteLimit: noteLimitOf(user), stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(user)) };
 }
 
 export interface User extends UserData {
@@ -172,16 +182,44 @@ export class Users {
   }
 
   /**
-   * Each user's number of notes and the space they take in the database (after its compression, which
-   * is what counts towards the free plan's limit), or just one user's with `userId`.
+   * Each user's number of notes and the space they and their History's earlier copies take in the
+   * database (after its compression, which is what counts towards the free plan's limit), or just one
+   * user's with `userId`.
    */
-  async noteStats(userId?: number): Promise<Map<number, Omit<NoteStats, "noteLimit">>> {
-    const rows = await this.db.query<{ user_id: number; count: number; bytes: number }>(
-      `SELECT user_id, count(*)::int AS count, coalesce(sum(pg_column_size(data)), 0)::float8 AS bytes
-       FROM nwsnotes.notes WHERE $1::int IS NULL OR user_id = $1::int GROUP BY user_id`,
-      [userId ?? null],
-    );
-    return new Map(rows.map((row) => [Number(row.user_id), { noteCount: Number(row.count), noteBytes: Number(row.bytes) }]));
+  /** The whole database's size in bytes: every table, index and the database's own overhead. */
+  async databaseBytes(): Promise<number> {
+    const [row] = await this.db.query<{ bytes: number }>("SELECT pg_database_size(current_database())::float8 AS bytes");
+    return Number(row!.bytes);
+  }
+
+  async noteStats(userId?: number): Promise<Map<number, NoteCounts>> {
+    const user = [userId ?? null];
+    const [notes, history] = await Promise.all([
+      // Stylus notes as isStylusNote() has them: a handwritten title or handwritten details.
+      this.db.query<{ user_id: number; count: number; bytes: number; stylus: number }>(
+        `SELECT user_id, count(*)::int AS count, coalesce(sum(pg_column_size(data)), 0)::float8 AS bytes,
+                count(*) FILTER (WHERE data ? 'titleImage' OR data ? 'detailsImage')::int AS stylus
+         FROM nwsnotes.notes WHERE $1::int IS NULL OR user_id = $1::int GROUP BY user_id`,
+        user,
+      ),
+      // The History's "before" copies (empty for a change that created an item).
+      this.db.query<{ user_id: number; bytes: number }>(
+        `SELECT c.user_id, coalesce(sum(pg_column_size(i."before")), 0)::float8 AS bytes
+         FROM nwsnotes.changes c JOIN nwsnotes.change_items i ON i.change_id = c.id
+         WHERE $1::int IS NULL OR c.user_id = $1::int GROUP BY c.user_id`,
+        user,
+      ),
+    ]);
+    const stats = new Map<number, NoteCounts>();
+    for (const row of notes) {
+      stats.set(Number(row.user_id), { ...NO_NOTES, noteCount: Number(row.count), noteBytes: Number(row.bytes), stylusNoteCount: Number(row.stylus) });
+    }
+    // A user may have History but no notes left (after emptying the Bin, say).
+    for (const row of history) {
+      const id = Number(row.user_id);
+      stats.set(id, { ...(stats.get(id) ?? NO_NOTES), historyBytes: Number(row.bytes) });
+    }
+    return stats;
   }
 
   /** The users page's list, with each user's number of notes and their size. */
@@ -190,15 +228,13 @@ export class Users {
     return this.list().map((user) => this.summary(user, stats.get(user.id)));
   }
 
-  summary(user: User, stats: Omit<NoteStats, "noteLimit"> = { noteCount: 0, noteBytes: 0 }): UserSummary {
+  summary(user: User, counts: NoteCounts = NO_NOTES): UserSummary {
     return {
       ...meOf(user),
       disabled: user.disabled,
       createdDateTime: user.createdDateTime,
       ...(user.lastLoginDateTime !== undefined && { lastLoginDateTime: user.lastLoginDateTime }),
-      noteCount: stats.noteCount,
-      noteBytes: stats.noteBytes,
-      noteLimit: noteLimitOf(user),
+      ...noteStatsOf(user, counts),
       smsLinked: user.smsPhoneNumber !== undefined,
     };
   }
