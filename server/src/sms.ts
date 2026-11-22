@@ -97,8 +97,12 @@ export class SmsNotes {
       const fields = Object.fromEntries(
         Object.entries((req.body ?? {}) as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
       );
-      const expected = twilioSignature(this.config.authToken, this.config.publicUrl + req.originalUrl, fields);
-      if (!signatureIsRight(expected, req.get("X-Twilio-Signature"))) {
+      // Twilio signs the address it posted to. That's normally publicUrl, but while the site moves to a new
+      // name the webhook may still use the old one, so the address this request came in on is accepted too.
+      // (Either way the signature needs the auth token, which only Twilio has.)
+      const addresses = new Set([this.config.publicUrl + req.originalUrl, `${req.protocol}://${req.get("host") ?? ""}${req.originalUrl}`]);
+      const given = req.get("X-Twilio-Signature");
+      if (![...addresses].some((url) => signatureIsRight(twilioSignature(this.config.authToken, url, fields), given))) {
         res.status(403).type("text").send("Not signed by Twilio.");
         return;
       }

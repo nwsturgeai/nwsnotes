@@ -19,7 +19,11 @@ function sign(url: string, fields: Record<string, string>): string {
 }
 
 /** A text arriving at the nwsnotes number, as Twilio posts it. Returns the TwiML answer. */
-async function text(request: APIRequestContext, body: string, options: { from?: string; sid?: string; signature?: string } = {}) {
+async function text(
+  request: APIRequestContext,
+  body: string,
+  options: { from?: string; sid?: string; signature?: string; host?: string } = {},
+) {
   const fields = {
     MessageSid: options.sid ?? `SM${Date.now()}${sidCount++}`,
     AccountSid: "ACtest",
@@ -28,10 +32,11 @@ async function text(request: APIRequestContext, body: string, options: { from?: 
     Body: body,
     NumMedia: "0",
   };
-  const url = `${test.info().project.use.baseURL}${WEBHOOK}`;
+  // Signed for the address Twilio posts to: the test server's own, or another name (`host`) it's reached by.
+  const url = options.host ? `http://${options.host}${WEBHOOK}` : `${test.info().project.use.baseURL}${WEBHOOK}`;
   const response = await request.post(WEBHOOK, {
     form: fields,
-    headers: { "X-Twilio-Signature": options.signature ?? sign(url, fields) },
+    headers: { "X-Twilio-Signature": options.signature ?? sign(url, fields), ...(options.host && { Host: options.host }) },
   });
   return { status: response.status(), body: await response.text() };
 }
@@ -247,6 +252,22 @@ test("a text sent twice adds one note; opt-out words and unsigned requests add n
   const unsigned = await page.request.post(WEBHOOK, { form: { From: MY_PHONE, Body: "Shopping, unsigned" } });
   expect(unsigned.status()).toBe(403);
   expect(await notes(page.request)).toHaveLength(before + 1);
+});
+
+test("a text signed for another name the site is reached by (e.g. the old address) is accepted", async ({ page }) => {
+  await linkPhone(page.request);
+  // Twilio's webhook still on the old name, with publicUrl already the new one (or the other way round).
+  const answer = await text(page.request, "Shopping, eggs", { host: "nwsnotes.duckdns.org" });
+  expect(answer.status).toBe(200);
+  expect((await lastNote(page.request)).titleText).toBe("Shopping, eggs");
+
+  // But it must be signed for the name it actually came in on.
+  const fields = { MessageSid: "SMwrongname", From: MY_PHONE, To: SMS_NUMBER, Body: "Shopping, wrong name" };
+  const wrongName = await page.request.post(WEBHOOK, {
+    form: fields,
+    headers: { Host: "nwsnotes.duckdns.org", "X-Twilio-Signature": sign(`http://elsewhere.example${WEBHOOK}`, fields) },
+  });
+  expect(wrongName.status()).toBe(403);
 });
 
 test("texts go to the linked user's own notebook, and a turned-off account gets a text back", async ({ page, browser }) => {
