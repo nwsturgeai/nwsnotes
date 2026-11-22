@@ -807,6 +807,17 @@ body:has(.note-list li.dragging) {
   color: var(--accent-text);
 }
 
+/* The main action while it's on offer (Finish ordering): white on green, like the app's main buttons. */
+.note-button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.note-button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  color: var(--accent-text);
+}
+
 /* The search box: its own line at the bottom of the filter row. */
 .filter-search {
   flex: 1 0 100%;

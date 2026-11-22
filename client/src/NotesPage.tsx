@@ -982,6 +982,7 @@ export function NotesPage({
               <IconButton
                 icon={ordering ? faFinishOrdering : faArrowDownWideShort}
                 wide={ordering}
+                primary={ordering}
                 label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
                 disabled={!ordering && (editBlocked || offline)}
                 onClick={() => setOrdering(!ordering)}
@@ -1432,6 +1433,7 @@ function IconButton({
   onClick,
   pressed,
   wide,
+  primary,
 }: {
   icon: IconDefinition;
   label: string;
@@ -1441,11 +1443,13 @@ function IconButton({
   pressed?: boolean;
   /** For an icon wider than it is tall: the button grows to fit it. */
   wide?: boolean;
+  /** Styled like the app's main buttons: white on the accent green. */
+  primary?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={["note-button", pressed && "pressed", wide && "wide"].filter(Boolean).join(" ")}
+      className={["note-button", pressed && "pressed", wide && "wide", primary && "primary"].filter(Boolean).join(" ")}
       aria-label={label}
       aria-pressed={pressed}
       title={label}
