@@ -6,6 +6,7 @@ import "@fortawesome/fontawesome-svg-core/styles.css";
 import "@fontsource-variable/atkinson-hyperlegible-next/wght.css";
 import { App } from "./App";
 import { initAppUpdates } from "./appUpdate";
+import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import "./styles.css";
 
 // Font Awesome's styles are bundled (imported above) rather than added to the page at run time.
@@ -15,6 +16,8 @@ initAppUpdates();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <RenderErrorBoundary>
+      <App />
+    </RenderErrorBoundary>
   </StrictMode>,
 );
