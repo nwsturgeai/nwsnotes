@@ -57,7 +57,8 @@ test("Download backup gives every note in the save-file format", async ({ page }
   const content = JSON.parse(await (await import("node:fs/promises")).readFile((await file.path())!, "utf8")) as Record<string, unknown>;
   expect(content.version).toBe(2);
   expect((content.notes as unknown[]).length).toBe(9);
-  expect(content.lastNoteId).toBe(9);
+  // Note ids come from the database, unique across all users, so the file no longer says the last one given.
+  expect(content).not.toHaveProperty("lastNoteId");
   expect((content.tabs as unknown[]).length).toBe(3);
   expect((content.categories as unknown[]).length).toBe(2);
   expect(content.noteOrder).toEqual([]);

@@ -34,10 +34,16 @@ import { databaseUnreachable, type Db } from "./db.js";
 import { RequestError } from "./errors.js";
 import {
   emptyNotebook,
+  idList,
+  idsOfOtherUsers,
   listChanges,
   loadSnapshot,
+  markSetUp,
+  nextNoteId,
+  nextTagIds,
   oldTabOrders,
   revertedSnapshot,
+  syncIdSequences,
   withoutNoteOrder,
   writeChange,
   type ChangeRecord,
@@ -59,7 +65,10 @@ interface SaveFile {
   categories: Category[];
   /** Missing in files saved before tabs existed. */
   tabs?: Tab[];
-  /** The highest note id ever given, so ids are never reused. Missing in older files. */
+  /**
+   * Files saved before note ids were unique across all users: the highest note id that notebook had given.
+   * Ignored now (ids come from the database's sequence), and no longer written.
+   */
   lastNoteId?: number;
   /** Where the built-in "All" tab shows. Missing in older files (and then "top"). */
   allTabPlacement?: TabPlacement;
@@ -155,8 +164,11 @@ function fileNameFor(date: Date): string {
   return `notes-${date.toISOString().replace(/[:.]/g, "-")}.json`;
 }
 
+/** A save-file's contents, as the store reads them. */
+type ParsedSaveFile = Required<Omit<SaveFile, "lastNoteId">>;
+
 /** Reads a save-file of either version as the current version. */
-function parseSaveFile(name: string, text: string): Required<SaveFile> {
+function parseSaveFile(name: string, text: string): ParsedSaveFile {
   const content = JSON.parse(text) as SaveFile | SaveFileV1;
   if (!Array.isArray(content.notes)) {
     throw new Error(`Save-file ${name} has no "notes" list.`);
@@ -168,7 +180,6 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
       notes: content.notes.map((note) => ({ ...note, tagIds: [] })),
       categories: [],
       tabs: [],
-      lastNoteId: Math.max(0, ...content.notes.map((n) => n.id)),
       allTabPlacement: "top",
       noteOrder: [],
     };
@@ -179,22 +190,21 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
   // Files saved before tabs existed have no "tabs" list.
   const tabs = Array.isArray(content.tabs) ? content.tabs : [];
   const ids = new Set(content.notes.map((n) => n.id));
+  const { lastNoteId: _ignored, ...rest } = content;
   return {
-    ...content,
+    ...rest,
     tabs: tabs.map(withoutNoteOrder),
     // Files from before the order was shared have the tabs' own orders instead: one is made from them.
     noteOrder: (Array.isArray(content.noteOrder)
       ? [...new Set(content.noteOrder.filter((id) => Number.isInteger(id)))]
       : mergeNoteOrders(oldTabOrders(tabs))
     ).filter((id) => ids.has(id)),
-    // Files saved before notes could be deleted have no "lastNoteId"; the highest id present is right for them.
-    lastNoteId: typeof content.lastNoteId === "number" ? content.lastNoteId : Math.max(0, ...content.notes.map((n) => n.id)),
     allTabPlacement: content.allTabPlacement === "left" ? "left" : "top",
   };
 }
 
 /** A save-file's contents as the store's data, with notes from before Lifetime and tag-change times brought up to date. */
-function snapshotOf(content: Required<SaveFile>): Snapshot {
+function snapshotOf(content: ParsedSaveFile): Snapshot {
   return {
     // Notes saved before Lifetime existed become Active, and notes saved before tag-change times
     // existed get their created time.
@@ -205,12 +215,19 @@ function snapshotOf(content: Required<SaveFile>): Snapshot {
     })),
     categories: content.categories,
     tabs: content.tabs,
-    lastNoteId: content.lastNoteId,
     allTabPlacement: content.allTabPlacement,
     noteOrder: content.noteOrder,
   };
 }
 
+
+/** An empty notebook. */
+const EMPTY: Snapshot = { notes: [], categories: [], tabs: [], allTabPlacement: "top", noteOrder: [] };
+
+/** Every tag id in the categories. */
+function tagIdsOf(categories: Category[]): number[] {
+  return categories.flatMap((category) => category.tags.map((tag) => tag.id));
+}
 
 /** Options for saving a change. */
 interface SaveOptions {
@@ -229,8 +246,6 @@ export class NoteStore {
   private notes: Note[] = [];
   private categories: Category[] = [];
   private tabs: Tab[] = [];
-  /** The highest note id ever given; new notes get the next one, so ids are never reused. */
-  private lastNoteId = 0;
   /** Where the built-in "All" tab shows. */
   private allTabPlacement: TabPlacement = "top";
   /** The shared order of the notes, for every tab. */
@@ -265,9 +280,9 @@ export class NoteStore {
         `Loaded user ${this.userId}'s ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from the database.`,
       );
     } else {
-      // A new notebook: marks it as set up (lastNoteId is stored), so later starts load it.
-      const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0, allTabPlacement: "top", noteOrder: [] };
-      await writeChange(this.db, this.userId, { ...empty, lastNoteId: -1 }, empty, this.nextSaveTime(), undefined);
+      // A new notebook: marks it as set up, so later starts load it.
+      await this.db.transaction((query) => markSetUp(query, this.userId));
+      this.apply(EMPTY);
       console.log(`User ${this.userId} has no notes yet.`);
     }
     this.ready = true;
@@ -278,7 +293,6 @@ export class NoteStore {
       notes: this.notes,
       categories: this.categories,
       tabs: this.tabs,
-      lastNoteId: this.lastNoteId,
       allTabPlacement: this.allTabPlacement,
       noteOrder: this.noteOrder,
     };
@@ -288,7 +302,6 @@ export class NoteStore {
     this.notes = snapshot.notes;
     this.categories = snapshot.categories;
     this.tabs = snapshot.tabs;
-    this.lastNoteId = snapshot.lastNoteId;
     this.allTabPlacement = snapshot.allTabPlacement;
     this.noteOrder = snapshot.noteOrder;
   }
@@ -318,7 +331,6 @@ export class NoteStore {
       notes: this.notes,
       categories: this.categories,
       tabs: this.tabs,
-      lastNoteId: this.lastNoteId,
       allTabPlacement: this.allTabPlacement,
       noteOrder: this.noteOrder,
     };
@@ -367,9 +379,18 @@ export class NoteStore {
   restore(name: string, text: string): Promise<number> {
     return this.enqueue(async () => {
       const content = snapshotOf(parseSaveFile(name, text));
-      await this.save(this.nextSaveTime(), { ...content, lastNoteId: Math.max(content.lastNoteId, this.lastNoteId) }, {
-        record: { summary: `Restored from ${name}` },
-      });
+      // Ids are unique across all users, so a file holding someone else's ids is from another notebook.
+      const others = await idsOfOtherUsers(this.db, this.userId, content.notes.map((note) => note.id), tagIdsOf(content.categories));
+      if (others.notes.length > 0 || others.tags.length > 0) {
+        const which = [
+          others.notes.length > 0 && idList("note", others.notes.slice(0, 10)),
+          others.tags.length > 0 && idList("tag", others.tags.slice(0, 10)),
+        ].filter(Boolean).join(" and ");
+        throw new Error(`${name} has ${which}, which belong${others.notes.length + others.tags.length === 1 ? "s" : ""} to another user, so it isn't this user's backup. Nothing was restored.`);
+      }
+      await this.save(this.nextSaveTime(), content, { record: { summary: `Restored from ${name}` } });
+      // New ids must come after the restored ones.
+      await this.db.transaction((query) => syncIdSequences(query));
       return this.notes.length;
     });
   }
@@ -454,7 +475,7 @@ export class NoteStore {
       const timestamp = now.toISOString();
       const createdDateTime = offlineTime(options.createdDateTime, now) ?? timestamp;
       const note: Note = {
-        id: this.lastNoteId + 1,
+        id: await nextNoteId(this.db),
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
@@ -466,7 +487,7 @@ export class NoteStore {
         tagIds: [...tagIds.value, LIFETIME_NEW],
         ...(clientId !== undefined && { clientId }),
       };
-      await this.save(now, { notes: [...this.notes, note], lastNoteId: note.id }, {
+      await this.save(now, { notes: [...this.notes, note] }, {
         record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}${options.source === "sms" ? " by text message" : ""}` },
       });
       return { note, created: true };
@@ -781,7 +802,7 @@ export class NoteStore {
         id: this.categories.reduce((max, c) => Math.max(max, c.id), 0) + 1,
         name: check.category.name,
         multiSelect: check.category.multiSelect,
-        tags: this.withTagIds(check.category.tags),
+        tags: await this.withTagIds(check.category.tags),
       };
       await this.save(this.nextSaveTime(), { categories: [...this.categories, category] }, {
         record: { summary: `Added category "${category.name}"` },
@@ -803,7 +824,7 @@ export class NoteStore {
         name: check.category.name,
         multiSelect: check.category.multiSelect,
         // The tags keep the order they were sent in: that is the category's tag order.
-        tags: this.withTagIds(check.category.tags),
+        tags: await this.withTagIds(check.category.tags),
       };
       const categories = this.categories.map((c) => (c.id === id ? category : c));
       const record = { summary: `Changed category "${category.name}"` };
@@ -927,10 +948,10 @@ export class NoteStore {
     });
   }
 
-  /** Gives new tags the next ids; tag ids are unique across all categories. */
-  private withTagIds(tags: CategoryRequest["tags"]): Category["tags"] {
-    let nextId = this.categories.flatMap((c) => c.tags).reduce((max, t) => Math.max(max, t.id), 0) + 1;
-    return tags.map((tag) => ({ id: tag.id ?? nextId++, name: tag.name, ...(tag.hue !== undefined && { hue: tag.hue }) }));
+  /** Gives new tags new ids, which are unique across all users' categories and never reused. */
+  private async withTagIds(tags: CategoryRequest["tags"]): Promise<Category["tags"]> {
+    const ids = await nextTagIds(this.db, tags.filter((tag) => tag.id === undefined).length);
+    return tags.map((tag) => ({ id: tag.id ?? ids.shift()!, name: tag.name, ...(tag.hue !== undefined && { hue: tag.hue }) }));
   }
 
   private enqueue<T>(change: () => Promise<T>): Promise<T> {
@@ -948,10 +969,15 @@ export class NoteStore {
   resetTo(seedText: string): Promise<void> {
     return this.enqueue(async () => {
       const seed = snapshotOf(parseSaveFile("seed", seedText));
-      await this.db.transaction((query) => emptyNotebook(query, this.userId));
-      this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1, allTabPlacement: "top", noteOrder: [] });
+      await this.db.transaction(async (query) => {
+        await emptyNotebook(query, this.userId);
+        await markSetUp(query, this.userId);
+      });
+      this.apply(EMPTY);
       this.lastLongFormUpdate = undefined;
       await this.save(this.nextSaveTime(), seed, { record: { summary: "Imported the test data" } });
+      // Every other notebook has just been removed, so new ids start again straight after the seed's.
+      await this.db.transaction((query) => syncIdSequences(query, true));
     });
   }
 

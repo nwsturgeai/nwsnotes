@@ -111,7 +111,8 @@ export class Notebooks {
       for (const id of removed) await emptyNotebook(query, id);
       // Anything else left by a user no longer there.
       for (const table of ["changes", "notes", "categories", "tabs", "meta"]) {
-        await query(`DELETE FROM nwsnotes.${table} WHERE user_id <> $1`, [ADMIN_ID]);
+        // (`meta` rows of user 0 belong to no user, and are kept.)
+        await query(`DELETE FROM nwsnotes.${table} WHERE user_id <> $1${table === "meta" ? " AND user_id <> 0" : ""}`, [ADMIN_ID]);
       }
     });
     for (const id of removed) this.stores.delete(id);

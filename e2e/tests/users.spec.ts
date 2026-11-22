@@ -105,14 +105,18 @@ test("the admin adds a user, whose password is shown once, and who starts with a
   await sam.context().close();
 });
 
-test("two users' notebooks are separate, and each one's ids start at 1", async ({ page, browser }) => {
+test("two users' notebooks are separate; note and tag ids are unique across users, category and tab ids are each user's own", async ({
+  page,
+  browser,
+}) => {
   const { password } = await addUser(page.request, "Robin", "robin@example.com");
   const robin = await loggedIn(browser, "robin@example.com", password);
 
   await addNote(robin, "Robin's own note");
   const category = await robin.request.post("/api/categories", { data: { name: "Hobbies", multiSelect: false, tags: [{ name: "Chess" }] } });
   expect(category.ok()).toBe(true);
-  const tab = await robin.request.post("/api/tabs", { data: { name: "Fun", categories: [{ categoryId: 1, tagIds: [1] }] } });
+  const chess = ((await category.json()) as { tags: { id: number }[] }).tags[0]!.id;
+  const tab = await robin.request.post("/api/tabs", { data: { name: "Fun", categories: [{ categoryId: 1, tagIds: [chess] }] } });
   expect(tab.ok(), await tab.text()).toBe(true);
 
   const robinData = (await (await robin.request.get("/api/notes")).json()) as {
@@ -120,10 +124,12 @@ test("two users' notebooks are separate, and each one's ids start at 1", async (
     categories: { id: number; name: string; system?: boolean; tags: { id: number }[] }[];
     tabs: { id: number; name: string }[];
   };
-  expect(robinData.notes.map((note) => [note.id, note.titleText])).toEqual([[1, "Robin's own note"]]);
+  // The seed's notes are 1 to 9 and its tags 1 to 5, so Robin's are the next ones given out.
+  expect(robinData.notes.map((note) => [note.id, note.titleText])).toEqual([[10, "Robin's own note"]]);
   const hobbies = robinData.categories.find((c) => !c.system)!;
-  expect([hobbies.id, hobbies.name, hobbies.tags[0]!.id]).toEqual([1, "Hobbies", 1]);
+  expect([hobbies.id, hobbies.name, hobbies.tags[0]!.id]).toEqual([1, "Hobbies", 6]);
   expect(robinData.tabs.map((t) => [t.id, t.name])).toEqual([[1, "Fun"]]);
+
 
   // The admin's notebook is unchanged, and Robin's things aren't in it.
   const adminData = (await (await page.request.get("/api/notes")).json()) as typeof robinData;
@@ -150,6 +156,15 @@ test("two users' notebooks are separate, and each one's ids start at 1", async (
   expect(adminHistory.changes.map((c) => c.summary)).toEqual(["Imported the test data"]);
   // Going back to one of the admin's changes isn't possible from Robin's notebook.
   expect((await robin.request.post("/api/history/revert", { data: { toChangeId: adminHistory.changes[0]!.id } })).status()).toBe(404);
+
+  // The admin's next note and tag come after Robin's: no id is used twice.
+  const adminNote = await page.request.post("/api/notes", { data: { titleText: "After Robin's", tagIds: [] } });
+  expect(((await adminNote.json()) as { id: number }).id).toBe(11);
+  const adminCategory = await page.request.post("/api/categories", { data: { name: "Places", multiSelect: false, tags: [{ name: "Paris" }, { name: "Rome" }] } });
+  expect(adminCategory.ok(), await adminCategory.text()).toBe(true);
+  expect(((await adminCategory.json()) as { id: number; tags: { id: number }[] }).tags.map((tag) => tag.id)).toEqual([7, 8]);
+  // A tag id from someone else's notebook isn't one of Robin's.
+  expect((await robin.request.post("/api/notes", { data: { titleText: "Borrowed tag", tagIds: [7] } })).status()).toBe(400);
   await robin.context().close();
 });
 

@@ -16,7 +16,6 @@ export interface Snapshot {
   notes: Note[];
   categories: Category[];
   tabs: Tab[];
-  lastNoteId: number;
   /** Where the built-in "All" tab shows. */
   allTabPlacement: TabPlacement;
   /** The shared order of the notes (every tab's, "All" included). */
@@ -91,7 +90,138 @@ const TABLES = [
    )`,
   "CREATE INDEX IF NOT EXISTS changes_time ON nwsnotes.changes (time)",
   "CREATE INDEX IF NOT EXISTS changes_user ON nwsnotes.changes (user_id, id)",
+  // Note ids and tag ids are unique across all users, and never reused: new ones come from these.
+  "CREATE SEQUENCE IF NOT EXISTS nwsnotes.note_ids",
+  "CREATE SEQUENCE IF NOT EXISTS nwsnotes.tag_ids",
 ];
+
+/**
+ * The `meta` row marking a notebook as set up (so an empty one isn't mistaken for one never set up).
+ * Notebooks set up before ids were global have a `lastNoteId` row instead, which counts the same.
+ */
+const SET_UP = "setUp";
+const OLD_SET_UP = "lastNoteId";
+
+/** `meta` rows that belong to no user have this user id. */
+const NO_USER = 0;
+/** The `meta` row (of NO_USER) saying the check that no id is used by two users has been passed. */
+const GLOBAL_IDS_CHECKED = "globalIdsChecked";
+
+/** Every note id each user has, or has had (in their History), as `(user_id, id)` rows. */
+const NOTE_IDS_SQL = `
+  SELECT user_id, id FROM nwsnotes.notes
+  UNION SELECT c.user_id, ci.item_id FROM nwsnotes.change_items ci JOIN nwsnotes.changes c ON c.id = ci.change_id WHERE ci.kind = 'note'`;
+
+/** Every tag id each user has, or has had (in their History), as `(user_id, id)` rows. */
+const TAG_IDS_SQL = `
+  SELECT user_id, (t->>'id')::int AS id FROM nwsnotes.categories, jsonb_array_elements(data->'tags') t
+  UNION SELECT c.user_id, (t->>'id')::int FROM nwsnotes.change_items ci JOIN nwsnotes.changes c ON c.id = ci.change_id,
+    jsonb_array_elements(ci."before"->'data'->'tags') t
+  WHERE ci.kind = 'category' AND jsonb_typeof(ci."before"->'data'->'tags') = 'array'`;
+
+/** "note id 4" or "note ids 4, 7": for messages naming ids. */
+export function idList(kind: string, ids: number[]): string {
+  return `${kind} id${ids.length === 1 ? "" : "s"} ${ids.join(", ")}`;
+}
+
+/** Marks a new notebook as set up, and empty. */
+export async function markSetUp(query: Query, userId: number): Promise<void> {
+  await query(
+    `INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($1, '${SET_UP}', 'true'::jsonb) ON CONFLICT (user_id, name) DO NOTHING`,
+    [userId],
+  );
+}
+
+/**
+ * Once, when ids first become global: refuses to go on if any note id or tag id is used by more than one
+ * user (now or in their History), since sharing would then mix up their notebooks. In test mode it's only
+ * reported: the tests' reset removes every other user anyway.
+ */
+async function checkGlobalIds(query: Query, testMode: boolean): Promise<void> {
+  const done = await query("SELECT 1 FROM nwsnotes.meta WHERE user_id = $1 AND name = $2", [NO_USER, GLOBAL_IDS_CHECKED]);
+  if (done.length > 0) return;
+  const shared = async (sql: string) =>
+    (await query<{ id: number }>(`SELECT id FROM (${sql}) ids GROUP BY id HAVING count(DISTINCT user_id) > 1 ORDER BY id LIMIT 10`)).map((row) =>
+      Number(row.id),
+    );
+  const notes = await shared(NOTE_IDS_SQL);
+  const tags = await shared(TAG_IDS_SQL);
+  if (notes.length > 0 || tags.length > 0) {
+    const problem =
+      "Note and tag ids must each belong to only one user, but " +
+      [notes.length > 0 && idList("note", notes), tags.length > 0 && idList("tag", tags)].filter(Boolean).join(" and ") +
+      ` ${notes.length + tags.length === 1 ? "is" : "are"} used by more than one.`;
+    if (!testMode) throw new Error(`${problem} The server won't start until that's sorted out.`);
+    console.warn(problem);
+    return;
+  }
+  await query("INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($1, $2, 'true'::jsonb)", [NO_USER, GLOBAL_IDS_CHECKED]);
+}
+
+/**
+ * Moves the note and tag id sequences past every id in use (notes, tags, their History copies, and the
+ * old per-user `lastNoteId`s, which cover notes deleted since). They're never moved back, apart from with
+ * `exact` (the tests' reset), which sets them to just past what's there.
+ */
+export async function syncIdSequences(query: Query, exact = false): Promise<void> {
+  const highest = async (sql: string) => Number((await query<{ max: number | null }>(`SELECT max(id)::int AS max FROM (${sql}) ids`))[0]?.max ?? 0);
+  const notes = Math.max(
+    await highest(NOTE_IDS_SQL),
+    await highest(`SELECT 0 AS user_id, (value #>> '{}')::int AS id FROM nwsnotes.meta WHERE name = '${OLD_SET_UP}' AND jsonb_typeof(value) = 'number'`),
+  );
+  const tags = Math.max(
+    await highest(TAG_IDS_SQL),
+    // Tags on notes (and their History copies), in case a deleted tag is still on an old copy.
+    await highest(`SELECT 0 AS user_id, (t #>> '{}')::int AS id FROM nwsnotes.notes, jsonb_array_elements(data->'tagIds') t`),
+    await highest(
+      `SELECT 0 AS user_id, (t #>> '{}')::int AS id FROM nwsnotes.change_items ci, jsonb_array_elements(ci."before"->'tagIds') t
+       WHERE ci.kind = 'note' AND jsonb_typeof(ci."before"->'tagIds') = 'array'`,
+    ),
+  );
+  for (const [sequence, used] of [["note_ids", notes], ["tag_ids", tags]] as const) {
+    const [state] = await query<{ last_value: number; is_called: boolean }>(`SELECT last_value::int AS last_value, is_called FROM nwsnotes.${sequence}`);
+    const given = state!.is_called ? Number(state!.last_value) : Number(state!.last_value) - 1;
+    const target = exact ? used : Math.max(used, given);
+    if (target === given) continue;
+    // setval(seq, n, true): the next id is n + 1. An empty database starts again at 1.
+    if (target > 0) await query(`SELECT setval('nwsnotes.${sequence}', $1, true)`, [target]);
+    else await query(`SELECT setval('nwsnotes.${sequence}', 1, false)`);
+  }
+}
+
+/** New ids from a sequence: `count` of them, in order. */
+async function nextIds(db: Db, sequence: "note_ids" | "tag_ids", count: number): Promise<number[]> {
+  if (count === 0) return [];
+  const rows = await db.query<{ id: number }>(`SELECT nextval('nwsnotes.${sequence}')::int AS id FROM generate_series(1, $1)`, [count]);
+  return rows.map((row) => Number(row.id)).sort((a, b) => a - b);
+}
+
+/** A new note id, unique across all users. */
+export async function nextNoteId(db: Db): Promise<number> {
+  return (await nextIds(db, "note_ids", 1))[0]!;
+}
+
+/** `count` new tag ids, unique across all users. */
+export function nextTagIds(db: Db, count: number): Promise<number[]> {
+  return nextIds(db, "tag_ids", count);
+}
+
+/**
+ * The given note and tag ids that belong to a user other than `userId`, now or in their History (for
+ * refusing to restore a backup into the wrong notebook).
+ */
+export async function idsOfOtherUsers(db: Db, userId: number, noteIds: number[], tagIds: number[]): Promise<{ notes: number[]; tags: number[] }> {
+  const others = async (sql: string, ids: number[]) =>
+    ids.length === 0
+      ? []
+      : (
+          await db.query<{ id: number }>(
+            `SELECT DISTINCT id FROM (${sql}) ids WHERE user_id <> $1 AND id IN (SELECT (jsonb_array_elements_text($2::jsonb))::int) ORDER BY id`,
+            [userId, JSON.stringify(ids)],
+          )
+        ).map((row) => Number(row.id));
+  return { notes: await others(NOTE_IDS_SQL, noteIds), tags: await others(TAG_IDS_SQL, tagIds) };
+}
 
 /** The users: `data` holds everything apart from the id and login name (see users.ts). */
 const USERS_TABLE = [
@@ -106,13 +236,15 @@ const USERS_TABLE = [
  * Creates the schema and tables if they don't exist yet, and with `firstUser` makes user 1 when there
  * are no users yet, all in one transaction.
  */
-export async function ensureSchema(db: Db, firstUser: (query: Query) => Promise<void>): Promise<void> {
+export async function ensureSchema(db: Db, firstUser: (query: Query) => Promise<void>, testMode = false): Promise<void> {
   await db.query("CREATE SCHEMA IF NOT EXISTS nwsnotes");
   await db.transaction(async (query) => {
     for (const sql of USERS_TABLE) await query(sql);
     for (const sql of TABLES) await query(sql);
     const [{ count } = { count: 0 }] = await query<{ count: number }>("SELECT count(*)::int AS count FROM nwsnotes.users");
     if (Number(count) === 0) await firstUser(query);
+    await checkGlobalIds(query, testMode);
+    await syncIdSequences(query);
   });
 }
 
@@ -124,8 +256,8 @@ export async function ensureSchema(db: Db, firstUser: (query: Query) => Promise<
 export async function loadSnapshot(db: Db, userId: number): Promise<{ snapshot: Snapshot; stored?: Snapshot } | undefined> {
   const metaValue = (name: string) =>
     db.query<{ value: unknown }>("SELECT value FROM nwsnotes.meta WHERE user_id = $1 AND name = $2", [userId, name]);
-  const meta = await metaValue("lastNoteId");
-  if (meta.length === 0) return undefined;
+  const setUp = await db.query("SELECT 1 FROM nwsnotes.meta WHERE user_id = $1 AND name IN ($2, $3)", [userId, SET_UP, OLD_SET_UP]);
+  if (setUp.length === 0) return undefined;
   const [placement] = await metaValue("allTabPlacement");
   const [order] = await metaValue("noteOrder");
   const notes = await db.query<{ data: Note }>("SELECT data FROM nwsnotes.notes WHERE user_id = $1 ORDER BY id", [userId]);
@@ -135,7 +267,6 @@ export async function loadSnapshot(db: Db, userId: number): Promise<{ snapshot: 
     notes: notes.map((row) => row.data),
     categories: categories.map((row) => row.data),
     tabs: tabs.map((row) => withoutNoteOrder(row.data)),
-    lastNoteId: Number(meta[0]!.value),
     allTabPlacement: placement?.value === "left" ? "left" : "top",
     noteOrder: readOrder(order?.value),
   };
@@ -208,7 +339,7 @@ export async function writeChange(
   // Written whenever it differs, or isn't stored yet (`stored` from loadSnapshot has an empty one).
   const orderChanged = JSON.stringify(before.noteOrder) !== JSON.stringify(after.noteOrder);
   if (orderChanged) befores.push({ kind: "setting", id: NOTE_ORDER_ID, before: { value: before.noteOrder } });
-  if (befores.length === 0 && before.lastNoteId === after.lastNoteId) return joinChangeId;
+  if (befores.length === 0) return joinChangeId;
 
   return db.transaction(async (query) => {
     for (const [table, changes] of Object.entries(tables)) {
@@ -236,14 +367,6 @@ export async function writeChange(
         );
       }
     }
-    if (before.lastNoteId !== after.lastNoteId) {
-      await query(
-        `INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($2, 'lastNoteId', $1::jsonb)
-         ON CONFLICT (user_id, name) DO UPDATE SET value = excluded.value`,
-        [JSON.stringify(after.lastNoteId), userId],
-      );
-    }
-
     if (placementChanged) {
       await query(
         `INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($2, 'allTabPlacement', $1::jsonb)
@@ -361,8 +484,6 @@ export async function revertedSnapshot(db: Db, userId: number, toId: number, cur
       categories: ordered(positioned.category) as Category[],
       // Tabs from before the order was shared come back without their own order.
       tabs: (ordered(positioned.tab) as Tab[]).map(withoutNoteOrder),
-      // Ids are never reused, so this isn't taken back.
-      lastNoteId: current.lastNoteId,
       allTabPlacement,
       // Notes that have gone (going back to before they were added) are left out.
       noteOrder: noteOrder.filter((id) => notes.has(id)),

@@ -48,7 +48,8 @@ Bulk changes (such as Empty Bin, or changing the tags of several notes at once) 
 - **Tables:**
   - `notes`: `id` (the note id) and `data`, the note as `jsonb`, exactly as the API sends it.
   - `categories` and `tabs`: `id`, `position` (their order on the settings page) and `data` as `jsonb`. A category's tags, in their order, are in its JSON, as now.
-  - `meta`: small values by name, such as `lastNoteId`, so ids are still never reused.
+  - `meta`: small values by name, such as the All tab's placement and the note order. Each notebook has a `setUp` row once it's set up (older notebooks have a `lastNoteId` row instead, which counts the same). Rows with `user_id` 0 belong to no user.
+  - Two sequences, `note_ids` and `tag_ids`, give out new note and tag ids, unique across all users and never reused (see "Global note and tag ids" in [sharing.md](sharing.md)).
   - `changes` and `change_items`: the history (see "History and revert").
   - Storing each item as JSON keeps it in exactly the shape the API and the app already use, so nothing else has to change. The server keeps everything in memory, as now, and reads the database only at start-up.
   - The server creates the schema and tables itself when they don't exist yet, so setting up needs only an empty Supabase project.
@@ -58,8 +59,8 @@ Bulk changes (such as Empty Bin, or changing the tags of several notes at once) 
   - If a free project has been paused after a week without activity, it needs "Restore" pressing in the Supabase dashboard; the app then carries on by itself.
 - **Daily activity:** once a day the server runs a small query, so the project counts as in use and isn't paused while the app is idle. Supabase may not count this as activity, in which case a pause after a long break is accepted (see above).
 - **Moving the data across (done, and since removed):** the first start with the database imported the most recent save-file from the data folder. Production has made that move, so the code for it is gone: a new database starts empty (or from `--restore`).
-- **Download backup:** `GET /api/notes/download` still returns one file in the save-file format (version 2, with `notes`, `categories`, `tabs`, `lastNoteId` and `noteOrder`), built from the data and named with the time, e.g. `notes-2026-11-18T09-40-12-345Z.json`.
-- **Several users** (see [users.md](users.md)): everything in this file is per user. Each table row has a `user_id`, ids start at 1 in each notebook, and backups, restoring and the history are per user.
+- **Download backup:** `GET /api/notes/download` still returns one file in the save-file format (version 2, with `notes`, `categories`, `tabs`, `allTabPlacement` and `noteOrder`; older files also have `lastNoteId`, which is now ignored), built from the data and named with the time, e.g. `notes-2026-11-18T09-40-12-345Z.json`.
+- **Several users** (see [users.md](users.md)): everything in this file is per user. Each table row has a `user_id`, category and tab ids start at 1 in each notebook (note and tag ids are unique across all users), and backups, restoring and the history are per user.
 - **Daily backup file:** once a day the server also writes that same file to `backups/` in the data folder on the VM, e.g. `backups/notes-2026-11-18.json`. Seven are kept. They're a copy away from Supabase, as the free plan has no backups of its own.
 - **Restoring a backup by hand** (if ever needed): on the VM, `node server.cjs --restore <file>` replaces all the notes, categories and tabs with the file's, in one transaction, recorded in the history as "Restored from <file>" (so even that can be undone). The app is restarted afterwards.
 - **Push devices** stay in `push-keys.json` and `push-subscriptions.json` on the VM: they belong to each device, aren't part of the notes, and aren't in the history.

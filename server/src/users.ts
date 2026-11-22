@@ -16,7 +16,7 @@ import {
 import { generatePassword, hashPassword, verifyPassword } from "./auth.js";
 import { databaseUnreachable, type Db, type Query } from "./db.js";
 import { RequestError } from "./errors.js";
-import { ensureSchema } from "./persist.js";
+import { ensureSchema, markSetUp } from "./persist.js";
 
 /** What the `users` table's `data` column holds. */
 export interface UserData {
@@ -109,11 +109,13 @@ export class Users {
     private readonly db: Db,
     /** Used only when there are no users yet, to make user 1. */
     private readonly firstAdmin: { loginName?: string; passwordHash?: string },
+    /** The end-to-end tests' server: an id used by two users (left by an earlier run) is only reported. */
+    private readonly testMode = false,
   ) {}
 
   /** Sets up the tables (making the admin if there are no users yet), then loads the users. */
   async init(): Promise<void> {
-    await ensureSchema(this.db, (query) => this.insertFirstAdmin(query));
+    await ensureSchema(this.db, (query) => this.insertFirstAdmin(query), this.testMode);
     await this.load();
     this.ready = true;
   }
@@ -209,7 +211,7 @@ export class Users {
       };
       await this.db.transaction(async (query) => {
         await query("INSERT INTO nwsnotes.users (id, login_name, data) VALUES ($1, $2, $3)", [userId, user.loginName, JSON.stringify(dataOf(user))]);
-        await query("INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($1, 'lastNoteId', '0'::jsonb)", [userId]);
+        await markSetUp(query, userId);
         await query("DELETE FROM nwsnotes.account_requests WHERE id = $1", [id]);
       });
       this.requests.delete(id);
@@ -376,7 +378,7 @@ export class Users {
       await this.db.transaction(async (query) => {
         await query("INSERT INTO nwsnotes.users (id, login_name, data) VALUES ($1, $2, $3)", [id, loginName, JSON.stringify(dataOf(user))]);
         // The notebook is set up, and empty.
-        await query("INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($1, 'lastNoteId', '0'::jsonb)", [id]);
+        await markSetUp(query, id);
       });
       this.users.set(id, user);
       return { user, password };
