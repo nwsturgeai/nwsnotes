@@ -154,7 +154,7 @@ If the VM was set up when the site was at nwsnotes.duckdns.org:
 ## Day-to-day
 
 - **Deploying changes:** push or merge to `main`.
-- **Viewing the app's logs:** `sudo -iu nwsnotes pm2 logs nwsnotes`
+- **Viewing the app's logs:** `sudo -iu nwsnotes pm2 logs nwsnotes`. Each text sent to the nwsnotes number gets a line saying what happened to it (saved, phone not linked, wrong signature…), without its content.
 - **Restarting the app:** `sudo -iu nwsnotes pm2 restart nwsnotes`
 - **Adding someone:** Settings → **Manage users** → **Add user**. The app makes a password and shows it once, for you to send them. The same page resets a password or turns an account off and on. Each person has their own notebook, which nobody else (you included) can see.
 - **Changing your password:** Settings → **Change password**. Your other devices are logged out.

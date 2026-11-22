@@ -39,6 +39,10 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **Sent twice:** Twilio can deliver the same text again if an answer is slow. The last 1,000 `MessageSid`s are remembered in memory, and a repeat gets an empty `<Response/>` and adds nothing.
 - **Fields used:** `From` (the sender's number), `Body` (the text) and `MessageSid`. Long texts arrive as one `Body`, as Twilio joins their parts.
 
+### Logging
+- **One line in the server's log for each text** (seen with `pm2 logs nwsnotes`), so it's clear what happened when a note doesn't appear: e.g. `Text SM… from …258: saved as user 1's note 42, in tab 3.` The outcomes: refused (wrong or missing signature, naming the addresses checked), already received, empty, a linking code used, a code that isn't waiting, a phone that isn't linked, an opt-out word, too many texts, a turned-off account, only a tab's name, the note limit, an error, or saved.
+- **Never the text itself,** and only the last 3 digits of the sender's number. Users are named by their id.
+
 ### Phone numbers
 - **Stored as E.164,** e.g. `+447700900123`. Twilio sends `From` in this form already.
 - **Shown in UK form,** e.g. `07700 900123`, for UK numbers, and as E.164 otherwise.
