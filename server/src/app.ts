@@ -12,7 +12,7 @@ import {
   type LoginRequest,
 } from "@nwsnotes/shared";
 import { RequestError } from "./errors.js";
-import { DEV_PASSWORD } from "./config.js";
+import { DEV_ADMIN_LOGIN_NAME, DEV_PASSWORD } from "./config.js";
 import { SESSION_COOKIE, SESSION_LENGTH_MS, createSessionToken, hashPassword, requireSession, userOf } from "./auth.js";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
@@ -75,7 +75,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
   app.post("/api/login", loginLimiter, async (req: Request<object, object, Partial<LoginRequest>>, res) => {
     const result = users.checkLogin(req.body?.loginName, req.body?.password);
     if (result === "incorrect") {
-      res.status(401).json({ error: "Incorrect name or password." });
+      res.status(401).json({ error: "Incorrect email or password." });
       return;
     }
     if (result === "disabled") {
@@ -450,7 +450,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
     const testSession = [requireSession(users, config.sessionSecret), withNotebook];
     app.post("/api/test/reset", async (req, res) => {
       db.simulateOutage = false;
-      await notebooks.resetForTests(config.adminLoginName, hashPassword(DEV_PASSWORD));
+      await notebooks.resetForTests(config.adminLoginName ?? DEV_ADMIN_LOGIN_NAME, hashPassword(DEV_PASSWORD));
       await (await notebooks.for(ADMIN_ID)).resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
       sms?.resetForTests();

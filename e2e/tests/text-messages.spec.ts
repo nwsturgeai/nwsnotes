@@ -272,11 +272,11 @@ test("a text signed for another name the site is reached by (e.g. the old addres
 
 test("texts go to the linked user's own notebook, and a turned-off account gets a text back", async ({ page, browser }) => {
   // A second user, who links their own phone.
-  const added = await page.request.post("/api/users", { data: { displayName: "Sam", loginName: "sam" } });
+  const added = await page.request.post("/api/users", { data: { displayName: "Sam", loginName: "sam@example.com" } });
   const { user, password } = (await added.json()) as { user: { id: number }; password: string };
   const sam = await browser.newContext({ baseURL: test.info().project.use.baseURL, storageState: { cookies: [], origins: [] } });
   try {
-    expect((await sam.request.post("/api/login", { data: { loginName: "sam", password } })).ok()).toBe(true);
+    expect((await sam.request.post("/api/login", { data: { loginName: "sam@example.com", password } })).ok()).toBe(true);
     await linkPhone(sam.request, "+447700900456");
     await linkPhone(page.request);
 

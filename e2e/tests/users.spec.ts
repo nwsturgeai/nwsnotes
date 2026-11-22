@@ -40,7 +40,7 @@ async function loggedIn(browser: Browser, loginName: string, password: string): 
 
 /** Waits for a page to be sent back to the login page. */
 async function expectLoggedOut(page: Page) {
-  await expect(page.getByLabel("Name")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel("Email")).toBeVisible({ timeout: 15_000 });
 }
 
 async function addNote(page: Page, title: string) {
@@ -68,7 +68,7 @@ test("the admin adds a user, whose password is shown once, and who starts with a
   await expect(userRow(page, ADMIN)).toContainText("9 of 1000 notes");
 
   await page.getByLabel("Display name").fill("Sam Smith");
-  await page.getByLabel("Login name").fill("sam");
+  await page.getByLabel("Email (to log in with)").fill("sam@example.com");
   await page.getByRole("button", { name: "Add", exact: true }).click();
 
   const dialog = page.getByRole("dialog");
@@ -80,13 +80,13 @@ test("the admin adds a user, whose password is shown once, and who starts with a
   await expect(page.getByRole("dialog")).toHaveCount(0);
   // Shown once only: it's nowhere on the page now, or after a reload.
   await expect(page.getByText(password)).toHaveCount(0);
-  await expect(userRow(page, "sam")).toContainText("Sam Smith");
-  await expect(userRow(page, "sam")).toContainText("Last logged in Never");
-  await expect(userRow(page, "sam")).toContainText("0 of 1000 notes");
+  await expect(userRow(page, "sam@example.com")).toContainText("Sam Smith");
+  await expect(userRow(page, "sam@example.com")).toContainText("Last logged in Never");
+  await expect(userRow(page, "sam@example.com")).toContainText("0 of 1000 notes");
   await page.reload();
   await expect(page.getByText(password)).toHaveCount(0);
 
-  const sam = await loggedIn(browser, "sam", password);
+  const sam = await loggedIn(browser, "sam@example.com", password);
   // Only the built-in "All" tab, no categories, and no notes.
   await expect(tabStrip(sam).getByRole("tab")).toHaveText(["All"]);
   await expect(sam.locator(".note-list li[data-note-id]")).toHaveCount(0);
@@ -98,16 +98,16 @@ test("the admin adds a user, whose password is shown once, and who starts with a
   expect(((await (await sam.request.get("/api/history")).json()) as { changes: unknown[] }).changes).toEqual([]);
 
   await sam.goto("/settings");
-  await expect(sam.getByText("Logged in as Sam Smith (sam)")).toBeVisible();
+  await expect(sam.getByText("Logged in as Sam Smith (sam@example.com)")).toBeVisible();
 
   await page.reload();
-  await expect(userRow(page, "sam")).not.toContainText("Last logged in Never");
+  await expect(userRow(page, "sam@example.com")).not.toContainText("Last logged in Never");
   await sam.context().close();
 });
 
 test("two users' notebooks are separate, and each one's ids start at 1", async ({ page, browser }) => {
-  const { password } = await addUser(page.request, "Robin", "robin");
-  const robin = await loggedIn(browser, "robin", password);
+  const { password } = await addUser(page.request, "Robin", "robin@example.com");
+  const robin = await loggedIn(browser, "robin@example.com", password);
 
   await addNote(robin, "Robin's own note");
   const category = await robin.request.post("/api/categories", { data: { name: "Hobbies", multiSelect: false, tags: [{ name: "Chess" }] } });
@@ -154,7 +154,7 @@ test("two users' notebooks are separate, and each one's ids start at 1", async (
 });
 
 test("live updates reach only the same user's other windows", async ({ page, context, browser }) => {
-  const { password } = await addUser(page.request, "Kim", "kim");
+  const { password } = await addUser(page.request, "Kim", "kim@example.com");
   const kim = await (await newDevice(browser)).newPage();
   let kimMessages = 0;
   kim.on("websocket", (ws) =>
@@ -163,7 +163,7 @@ test("live updates reach only the same user's other windows", async ({ page, con
     }),
   );
   await kim.goto("/");
-  await logIn(kim, "kim", password);
+  await logIn(kim, "kim@example.com", password);
   await expect(kim.getByRole("link", { name: "Settings" })).toBeVisible();
 
   await openNotes(page);
@@ -195,9 +195,9 @@ test("changing your own password: the old one stops working, this window stays l
   page,
   browser,
 }) => {
-  const { password } = await addUser(page.request, "Alex", "alex");
-  const alex = await loggedIn(browser, "alex", password);
-  const alexElsewhere = await loggedIn(browser, "alex", password);
+  const { password } = await addUser(page.request, "Alex", "alex@example.com");
+  const alex = await loggedIn(browser, "alex@example.com", password);
+  const alexElsewhere = await loggedIn(browser, "alex@example.com", password);
 
   await alex.getByRole("link", { name: "Settings" }).click();
   await alex.getByRole("button", { name: "Change password" }).click();
@@ -234,15 +234,15 @@ test("changing your own password: the old one stops working, this window stays l
   // The other device is logged out; this one stays logged in, even after a reload.
   await expectLoggedOut(alexElsewhere);
   await alex.reload();
-  await expect(alex.getByText("Logged in as Alex (alex)")).toBeVisible();
+  await expect(alex.getByText("Logged in as Alex (alex@example.com)")).toBeVisible();
   await alex.goto("/");
   await addNote(alex, "Still logged in");
 
   // The old password no longer works; the new one does.
   await alexElsewhere.reload();
-  await logIn(alexElsewhere, "alex", password);
-  await expect(alexElsewhere.getByRole("alert")).toHaveText("Incorrect name or password.");
-  await logIn(alexElsewhere, "alex", "a long new password");
+  await logIn(alexElsewhere, "alex@example.com", password);
+  await expect(alexElsewhere.getByRole("alert")).toHaveText("Incorrect email or password.");
+  await logIn(alexElsewhere, "alex@example.com", "a long new password");
   await expect(noteRow(alexElsewhere, "Still logged in")).toBeVisible();
   await alex.context().close();
   await alexElsewhere.context().close();
@@ -252,10 +252,10 @@ test("resetting a password and turning an account off log that user out; turned 
   page,
   browser,
 }) => {
-  const { password } = await addUser(page.request, "Jo Bloggs", "jody");
-  const jo = await loggedIn(browser, "jody", password);
+  const { password } = await addUser(page.request, "Jo Bloggs", "jody@example.com");
+  const jo = await loggedIn(browser, "jody@example.com", password);
   await openUsersPage(page);
-  const row = userRow(page, "jody");
+  const row = userRow(page, "jody@example.com");
 
   // The admin's own row has only Edit.
   await expect(userRow(page, ADMIN).getByRole("button")).toHaveText(["Edit"]);
@@ -272,9 +272,9 @@ test("resetting a password and turning an account off log that user out; turned 
   await dialog.getByRole("button", { name: "Done" }).click();
 
   await expectLoggedOut(jo);
-  await logIn(jo, "jody", password);
-  await expect(jo.getByRole("alert")).toHaveText("Incorrect name or password.");
-  await logIn(jo, "jody", newPassword);
+  await logIn(jo, "jody@example.com", password);
+  await expect(jo.getByRole("alert")).toHaveText("Incorrect email or password.");
+  await logIn(jo, "jody@example.com", newPassword);
   await expect(jo.getByRole("link", { name: "Settings" })).toBeVisible();
 
   // Turn off.
@@ -285,16 +285,16 @@ test("resetting a password and turning an account off log that user out; turned 
   await page.getByRole("dialog").getByRole("button", { name: "Turn off" }).click();
   await expect(row).toContainText("Turned off");
   await expectLoggedOut(jo);
-  await logIn(jo, "jody", newPassword);
+  await logIn(jo, "jody@example.com", newPassword);
   await expect(jo.getByRole("alert")).toHaveText("This account is turned off.");
   // A wrong password doesn't say whether the account exists or is off.
-  await logIn(jo, "jody", "not the password");
-  await expect(jo.getByRole("alert")).toHaveText("Incorrect name or password.");
+  await logIn(jo, "jody@example.com", "not the password");
+  await expect(jo.getByRole("alert")).toHaveText("Incorrect email or password.");
 
   // Turn on again.
   await row.getByRole("button", { name: "Turn on" }).click();
   await expect(row).not.toContainText("Turned off");
-  await logIn(jo, "jody", newPassword);
+  await logIn(jo, "jody@example.com", newPassword);
   await expect(jo.getByRole("link", { name: "Settings" })).toBeVisible();
 
   // Edit: the names change, the notebook doesn't depend on them.
@@ -303,14 +303,14 @@ test("resetting a password and turning an account off log that user out; turned 
   // While editing, the row is a form (its names are in the boxes, not its text).
   const editForm = page.getByRole("list", { name: "Users" }).locator("form");
   await editForm.getByLabel("Display name").fill("Joanna Bloggs");
-  await editForm.getByLabel("Login name").fill("joanna");
+  await editForm.getByLabel("Email (to log in with)").fill("joanna@example.com");
   await editForm.getByRole("button", { name: "Save" }).click();
-  await expect(userRow(page, "joanna")).toContainText("Joanna Bloggs");
-  await expect(userRow(page, "joanna")).toContainText("1 of 1000 notes");
+  await expect(userRow(page, "joanna@example.com")).toContainText("Joanna Bloggs");
+  await expect(userRow(page, "joanna@example.com")).toContainText("1 of 1000 notes");
   // The session still works (it belongs to the user id), and the new login name logs in.
   await jo.reload();
   await expect(noteRow(jo, "Jo's note")).toBeVisible();
-  const joAgain = await loggedIn(browser, "joanna", newPassword);
+  const joAgain = await loggedIn(browser, "joanna@example.com", newPassword);
   await expect(noteRow(joAgain, "Jo's note")).toBeVisible();
 
   // The admin can't turn off or reset their own account through the API either.
@@ -320,37 +320,57 @@ test("resetting a password and turning an account off log that user out; turned 
   await joAgain.context().close();
 });
 
+test("login names must be email addresses, when adding a user and when editing one", async ({ page }) => {
+  await openUsersPage(page);
+  await page.getByLabel("Display name").fill("Max");
+  await page.getByLabel("Email (to log in with)").fill("max");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("A login name must be an email address, e.g. pat@example.com.");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  for (const loginName of ["max", "max@", "@example.com", "max@example", "max smith@example.com", "max@example.com."]) {
+    const response = await page.request.post("/api/users", { data: { displayName: "Max", loginName } });
+    expect(response.status(), loginName).toBe(400);
+  }
+  const { id } = await addUser(page.request, "Max", "max.smith+notes@example.co.uk");
+  expect((await page.request.put(`/api/users/${id}`, { data: { loginName: "max" } })).status()).toBe(400);
+  // Saving the same name again (e.g. while changing only the note limit) is fine.
+  expect((await page.request.put(`/api/users/${id}`, { data: { loginName: "max.smith+notes@example.co.uk", noteLimit: 500 } })).ok()).toBe(true);
+  // An email that's already used, in any case, is refused.
+  expect((await page.request.post("/api/users", { data: { displayName: "Admin 2", loginName: ADMIN.toUpperCase() } })).status()).toBe(400);
+});
+
 test("a user who isn't the admin sees no Users section, and the users API refuses them", async ({ page, browser }) => {
-  const { id, password } = await addUser(page.request, "Pat", "pat");
-  const pat = await loggedIn(browser, "pat", password);
+  const { id, password } = await addUser(page.request, "Pat", "pat@example.com");
+  const pat = await loggedIn(browser, "pat@example.com", password);
   await pat.getByRole("link", { name: "Settings" }).click();
   await expect(pat.getByRole("heading", { name: "Account" })).toBeVisible();
   await expect(pat.getByRole("heading", { name: "Users" })).toHaveCount(0);
   await expect(pat.getByRole("link", { name: "Manage users" })).toHaveCount(0);
 
   expect((await pat.request.get("/api/users")).status()).toBe(403);
-  expect((await pat.request.post("/api/users", { data: { displayName: "Sneaky", loginName: "sneaky" } })).status()).toBe(403);
+  expect((await pat.request.post("/api/users", { data: { displayName: "Sneaky", loginName: "sneaky@example.com" } })).status()).toBe(403);
   expect((await pat.request.put(`/api/users/${id}`, { data: { displayName: "Boss" } })).status()).toBe(403);
   expect((await pat.request.put("/api/users/1", { data: { disabled: true } })).status()).toBe(403);
   expect((await pat.request.post("/api/users/1/reset-password")).status()).toBe(403);
   // Who they are.
-  expect(await (await pat.request.get("/api/me")).json()).toEqual({ id, loginName: "pat", displayName: "Pat", admin: false });
+  expect(await (await pat.request.get("/api/me")).json()).toEqual({ id, loginName: "pat@example.com", displayName: "Pat", admin: false });
   expect(await (await page.request.get("/api/me")).json()).toEqual({ id: 1, loginName: ADMIN, displayName: "Admin", admin: true });
   await pat.context().close();
 });
 
 test("the login form refuses a wrong name or password", async ({ page, browser }) => {
-  const { password } = await addUser(page.request, "Lee", "lee");
+  const { password } = await addUser(page.request, "Lee", "lee@example.com");
   const device = await (await newDevice(browser)).newPage();
   await device.goto("/");
   // Lee's name with the admin's password, and the admin's name with Lee's.
-  await logIn(device, "lee", PASSWORD);
-  await expect(device.getByRole("alert")).toHaveText("Incorrect name or password.");
+  await logIn(device, "lee@example.com", PASSWORD);
+  await expect(device.getByRole("alert")).toHaveText("Incorrect email or password.");
   await logIn(device, ADMIN, password);
-  await expect(device.getByRole("alert")).toHaveText("Incorrect name or password.");
+  await expect(device.getByRole("alert")).toHaveText("Incorrect email or password.");
   await logIn(device, "nobody-here", password);
-  await expect(device.getByRole("alert")).toHaveText("Incorrect name or password.");
-  await logIn(device, "LEE", password);
+  await expect(device.getByRole("alert")).toHaveText("Incorrect email or password.");
+  await logIn(device, "LEE@EXAMPLE.COM", password);
   await expect(device.getByRole("link", { name: "Settings" })).toBeVisible();
   await device.context().close();
 });
@@ -403,8 +423,8 @@ test("Settings shows how many notes you have and the space they take; the users 
   );
 
   // Another user, with one note: their own figures, and both on the users page with the total.
-  const { password } = await addUser(page.request, "Sam Smith", "sam");
-  const sam = await loggedIn(browser, "sam", password);
+  const { password } = await addUser(page.request, "Sam Smith", "sam@example.com");
+  const sam = await loggedIn(browser, "sam@example.com", password);
   await addNote(sam, "Sam's note");
   await sam.getByRole("link", { name: "Settings" }).click();
   const samStats = (await (await sam.request.get("/api/me/stats")).json()) as Stats;
@@ -417,7 +437,7 @@ test("Settings shows how many notes you have and the space they take; the users 
   await expect(userRow(page, ADMIN)).toContainText(
     `9 of 1000 notes · 1 of 50 stylus notes · ${shownSize(stats.noteBytes)} · ${shownSize(stats.historyBytes)} History`,
   );
-  await expect(userRow(page, "sam")).toContainText(`1 of 1000 notes · 0 of 50 stylus notes · ${shownSize(samStats.noteBytes)} · ${shownSize(samStats.historyBytes)} History`);
+  await expect(userRow(page, "sam@example.com")).toContainText(`1 of 1000 notes · 0 of 50 stylus notes · ${shownSize(samStats.noteBytes)} · ${shownSize(samStats.historyBytes)} History`);
   const all = stats.noteBytes + stats.historyBytes + samStats.noteBytes + samStats.historyBytes;
   await expect(page.locator(".note-stats").first()).toHaveText(`All users: 10 notes, ${shownSize(all)} with their History.`);
   // The whole database, from pg_database_size: more than the notes and History alone.
@@ -431,19 +451,19 @@ test("Settings shows how many notes you have and the space they take; the users 
 });
 
 test("each user has a note limit, set by the admin, shown to them only when they're near it", async ({ page, browser }) => {
-  const { id, password } = await addUser(page.request, "Sam Smith", "sam");
+  const { id, password } = await addUser(page.request, "Sam Smith", "sam@example.com");
 
   // The admin sets Sam's limit to 2 on the users page.
   await openUsersPage(page);
-  await userRow(page, "sam").getByRole("button", { name: "Edit" }).click();
+  await userRow(page, "sam@example.com").getByRole("button", { name: "Edit" }).click();
   await expect(page.getByLabel("Note limit")).toHaveValue("1000");
   await page.getByLabel("Note limit").fill("2");
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(userRow(page, "sam")).toContainText("0 of 2 notes");
+  await expect(userRow(page, "sam@example.com")).toContainText("0 of 2 notes");
   // Out of range is refused.
   expect((await page.request.put(`/api/users/${id}`, { data: { noteLimit: 0 } })).status()).toBe(400);
 
-  const sam = await loggedIn(browser, "sam", password);
+  const sam = await loggedIn(browser, "sam@example.com", password);
   await addNote(sam, "First");
   // 1 of 2 isn't within 20% of the limit, so it isn't mentioned.
   await sam.getByRole("link", { name: "Settings" }).click();
@@ -467,17 +487,17 @@ test("each user has a note limit, set by the admin, shown to them only when they
 const INK = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 
 test("stylus notes are limited to 5% of the note limit", async ({ page, browser }) => {
-  const { password } = await addUser(page.request, "Sam Smith", "sam");
+  const { password } = await addUser(page.request, "Sam Smith", "sam@example.com");
   await openUsersPage(page);
-  await userRow(page, "sam").getByRole("button", { name: "Edit" }).click();
+  await userRow(page, "sam@example.com").getByRole("button", { name: "Edit" }).click();
   await expect(page.getByText("5% of them can be stylus notes: 50 stylus notes.")).toBeVisible();
   // 5% of 40 is 2.
   await page.getByLabel("Note limit").fill("40");
   await expect(page.getByText("5% of them can be stylus notes: 2 stylus notes.")).toBeVisible();
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(userRow(page, "sam")).toContainText("0 of 40 notes · 0 of 2 stylus notes");
+  await expect(userRow(page, "sam@example.com")).toContainText("0 of 40 notes · 0 of 2 stylus notes");
 
-  const sam = await loggedIn(browser, "sam", password);
+  const sam = await loggedIn(browser, "sam@example.com", password);
   const add = (data: object) => sam.request.post("/api/notes", { data: { tagIds: [], ...data } });
   // A handwritten note, and a long-form note with handwritten details (still empty): the 2 allowed.
   expect((await add({ titleImage: INK })).status()).toBe(201);
@@ -505,5 +525,5 @@ test("stylus notes are limited to 5% of the note limit", async ({ page, browser 
   await sam.goto("/settings");
   await expect(sam.locator(".note-stats")).toHaveText(/^You have 4 notes, taking up .+\. You have 2 of your 2 stylus notes\.$/);
   await openUsersPage(page);
-  await expect(userRow(page, "sam")).toContainText("4 of 40 notes · 2 of 2 stylus notes");
+  await expect(userRow(page, "sam@example.com")).toContainText("4 of 40 notes · 2 of 2 stylus notes");
 });

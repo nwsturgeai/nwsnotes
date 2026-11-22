@@ -23,14 +23,14 @@ async function main() {
   const users = new Users(db, { loginName: config.adminLoginName, passwordHash: config.passwordHash });
   const notebooks = new Notebooks(db, config.dataDir, users);
 
-  // `node server.cjs --restore <file> --user <login name>`: replaces that user's notebook with a backup
+  // `node server.cjs --restore <file> --user <login email>`: replaces that user's notebook with a backup
   // file's, then stops.
   if (process.argv.includes("--restore")) {
     const file = option("--restore");
     const loginName = option("--user");
-    if (!file || file.startsWith("--")) throw new Error("Give the backup file to restore: --restore <file> --user <login name>");
+    if (!file || file.startsWith("--")) throw new Error("Give the backup file to restore: --restore <file> --user <login email>");
     if (!loginName || loginName.startsWith("--")) {
-      throw new Error("Give whose notebook to restore it into: --restore <file> --user <login name>. Nothing was restored.");
+      throw new Error("Give whose notebook to restore it into: --restore <file> --user <login email>. Nothing was restored.");
     }
     await notebooks.init({ dailyJobs: false });
     const user = users.byLoginName(loginName);
@@ -41,11 +41,11 @@ async function main() {
     process.exit(0);
   }
 
-  // `node server.cjs --reset-password <login name>`: prints a new generated password for that user and
+  // `node server.cjs --reset-password <login email>`: prints a new generated password for that user and
   // logs them out everywhere, then stops.
   if (process.argv.includes("--reset-password")) {
     const loginName = option("--reset-password");
-    if (!loginName || loginName.startsWith("--")) throw new Error("Give whose password to reset: --reset-password <login name>");
+    if (!loginName || loginName.startsWith("--")) throw new Error("Give whose password to reset: --reset-password <login email>");
     await notebooks.init({ dailyJobs: false });
     const user = users.byLoginName(loginName);
     if (!user) throw new Error(`There is no user "${loginName}".`);

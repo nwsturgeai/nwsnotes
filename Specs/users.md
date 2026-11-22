@@ -6,7 +6,7 @@ The app can be used by several people, each with their own completely separate n
 
 ### Accounts
 - The owner of the app (the "admin") creates every account. There is no sign-up page.
-- Accounts have no email address for now. A person logs in with a login name and a password.
+- A person logs in with their email address and a password: every login name is an email address. (Emails aren't sent yet.)
 - When the admin creates an account, the app generates a password and shows it to the admin once, so the admin can send it to the person.
 - Each person can change their own password in Settings, once logged in.
 - The admin can reset a person's password (the app generates a new one and shows it once), and can turn an account off and on again. A turned-off account can't log in, and any devices it's logged in on are logged out.
@@ -17,7 +17,7 @@ The app can be used by several people, each with their own completely separate n
 - A new account starts empty: no notes, no categories and no tabs (only the built-in "All" tab and the built-in Lifetime category). An introduction guide, written separately later, will explain how to start.
 
 ### Later, not now
-- Email addresses: logging in with an email, people choosing their own password from an emailed invitation, and "forgot password" emails. The accounts are designed so this can be added without reworking them: data belongs to a user's id, never to their login name, and an email can be added to each user.
+- People choosing their own password from an emailed invitation, and "forgot password" emails, sent to their login email. Data belongs to a user's id, never to their login name, so this needs no reworking.
 - iPhone support.
 - Encryption.
 - Deleting an account and its data (an account can be turned off instead).
@@ -32,14 +32,15 @@ The app can be used by several people, each with their own completely separate n
   - `disabled` (turned off);
   - `sessionVersion`, a number that goes up whenever this user's existing logins must stop working (see Sessions);
   - `createdDateTime` and `lastLoginDateTime`.
-- **Login names:** 3 to 32 characters, letters, digits, `.`, `-` and `_`, unique ignoring case. They can be changed by the admin; data never depends on them.
+- **Login names are email addresses:** something before an `@`, then a domain with at least one dot (e.g. `pat@example.com`), with no spaces, at most 254 characters, unique ignoring case. Otherwise: "A login name must be an email address, e.g. pat@example.com." They can be changed by the admin; data never depends on them.
+- **Names from before this rule** (such as `admin`) still log in, so nobody is locked out, and the users page marks each one "Not an email address" until the admin changes it to an email. Saving an Edit that leaves such a name as it is (e.g. changing only the note limit) is allowed; any new or changed name must be an email.
 - **Display names:** 1 to 60 characters, any text.
 - **Users aren't in the History,** and aren't in the save-files or backups (those hold one notebook each).
 - **Generated passwords:** 16 characters from lowercase letters and digits, leaving out ones easily confused (`0`, `o`, `1`, `l`, `i`), shown in four groups of four with dashes, e.g. `kq7m-x4tp-9wfd-hr3c`. The dashes are part of the password. They're made with a cryptographically secure random generator, shown once, and only their hash is kept.
 - **Passwords people choose:** at least 10 characters, at most 200.
 
 ### Logging in
-- **The login page** has two boxes, "Name" (the login name) and "Password", and "Log in". Wrong name or password: "Incorrect name or password." A turned-off account: "This account is turned off." The browser's password manager can fill both in.
+- **The login page** has two boxes, "Email" (the login name) and "Password", and "Log in". The Email box is a text box with an email keyboard, not an email-only box, so names from before the rule can still be typed. Wrong email or password: "Incorrect email or password." A turned-off account: "This account is turned off." The browser's password manager can fill both in.
 - **Rate limited** as now (10 attempts per 15 minutes from one address).
 - **Sessions** stay as signed cookies that last 30 days, but now say who is logged in: the cookie holds `<user id>.<session version>.<expiry ms>.<signature>`. A request is accepted only if the signature is right, it hasn't expired, the user exists and isn't turned off, and the session version matches the user's. The user is then known for the rest of the request.
 - **Logging everyone out of one account** is done by raising its `sessionVersion`: resetting its password, turning it off, or the person changing their own password (the device they changed it on gets a fresh cookie, so it stays logged in; their other devices are logged out).
@@ -54,9 +55,9 @@ The app can be used by several people, each with their own completely separate n
 ### The users page (admin only)
 - **Where:** a "Users" section in Settings, shown only to the admin, just above Account, with a "Manage users" link to `/settings/users`.
 - **The list:** every user, in id order: display name, login name, "Admin" or "Turned off" labels, when it was created, and when it last logged in ("Never" if not yet).
-- **Add user:** display name and login name, then "Add". The new password is then shown in a pop-up, "Send this password to <display name>. It won't be shown again.", with a "Copy" button and "Done". `POST /api/users` with `{ loginName, displayName }` returns `{ user, password }`.
+- **Add user:** display name and "Email (to log in with)", then "Add". The new password is then shown in a pop-up, "Send this password to <display name>. It won't be shown again.", with a "Copy" button and "Done". `POST /api/users` with `{ loginName, displayName }` returns `{ user, password }`.
 - **For each user** (other than the admin's own row, which only has Edit):
-  - **Edit:** change the display name or login name (`PUT /api/users/:id`).
+  - **Edit:** change the display name or login email (`PUT /api/users/:id`).
   - **Reset password:** after "Reset <display name>'s password? They'll be logged out everywhere.", a new password is shown in the same pop-up as when adding (`POST /api/users/:id/reset-password` returns `{ password }`).
   - **Turn off / Turn on:** turning off asks first, "Turn off <display name>'s account? They'll be logged out everywhere and can't log in until it's turned on again." (`PUT /api/users/:id` with `{ disabled: true }`).
 - **The admin can't** turn their own account off or reset their own password here (they change it like anyone else).
@@ -77,15 +78,15 @@ The app can be used by several people, each with their own completely separate n
 - **The test endpoints** (`/api/test/*`, test mode only) act on the logged-in user's notebook. `/api/test/reset` also removes every user but user 1 and puts user 1's password back to the test password.
 
 ### The first user
-- **On the first start with a new database** (the `users` table is empty), user 1 is created, as the admin, with the login name from `adminLoginName` in the config (default `admin`), the display name `Admin` (changeable on the users page), and the `passwordHash` from the config. After that, the config's `passwordHash` is no longer used.
-- **In development,** the admin's login name is `admin` and its password `dev`.
+- **On the first start with a new database** (the `users` table is empty), user 1 is created, as the admin, with the login name from `adminLoginName` in the config (an email address; `setup-vm.sh you@example.com` writes it, and the app won't make user 1 without it), the display name `Admin` (changeable on the users page), and the `passwordHash` from the config. After that, the config's `passwordHash` is no longer used.
+- **In development and the tests,** the admin's login name is `admin@example.com` and its password `dev`.
 - **Moving the single-user data to user 1 (done, and since removed):** the first start of the version with users gave every existing row `user_id` 1, moved the backup files and push devices to user 1, and handed each device's offline copy to user 1. Production has made that move, so the code for it is gone.
 
 ### Backups, restore and daily jobs
 - **Daily backup files** go to `backups/<user id>/notes-YYYY-MM-DD.json`, seven kept for each user.
 - **"Download backup"** gives the logged-in user's own notebook, as now.
-- **Restoring by hand:** `node server.cjs --restore <file> --user <login name>`. Without `--user` it refuses.
-- **A forgotten admin password:** `node server.cjs --reset-password <login name>` on the VM prints a new generated password for that user and logs them out everywhere. This works for any user.
+- **Restoring by hand:** `node server.cjs --restore <file> --user <login email>`. Without `--user` it refuses.
+- **A forgotten admin password:** `node server.cjs --reset-password <login email>` (or `setup-vm.sh --new-password <login email>`) on the VM prints a new generated password for that user and logs them out everywhere. This works for any user.
 - **The daily jobs** run once a day for all users: one keep-alive query, each user's backup, and pruning every user's history older than 30 days (each user's history is also kept to their newest 500 changes, as each change is saved).
 
 ### Offline copy on a device
@@ -127,5 +128,6 @@ The app can be used by several people, each with their own completely separate n
   - Resetting a password and turning an account off log that user out; a turned-off account can't log in, with "This account is turned off."; turning it on again lets them log in.
   - A non-admin sees no Users section, and `/api/users` answers 403.
   - The login form refuses a wrong name or password.
-- The existing tests log in as the admin (`admin` / `dev`), so they keep working.
+  - Login names must be email addresses when adding or editing a user (in the page and the API); saving an unchanged name is allowed.
+- The existing tests log in as the admin (`admin@example.com` / `dev`).
 - `database.spec.ts`: a database from before users (no `users` table and no `user_id` columns) is moved to user 1 on start, with its notes, history and order unchanged, and the old password still logs in.

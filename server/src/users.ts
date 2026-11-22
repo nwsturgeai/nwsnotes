@@ -1,7 +1,7 @@
 import {
   DISPLAY_NAME_MAX_LENGTH,
-  LOGIN_NAME_PATTERN,
   LOGIN_NAME_RULE,
+  isValidLoginName,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   NOTE_LIMIT_DEFAULT,
@@ -67,7 +67,7 @@ export function meOf(user: User): Me {
 
 function validLoginName(raw: unknown): string {
   const name = typeof raw === "string" ? raw.trim() : "";
-  if (!LOGIN_NAME_PATTERN.test(name)) throw new RequestError(400, LOGIN_NAME_RULE);
+  if (!isValidLoginName(name)) throw new RequestError(400, LOGIN_NAME_RULE);
   return name;
 }
 
@@ -92,7 +92,7 @@ export class Users {
   constructor(
     private readonly db: Db,
     /** Used only when there are no users yet, to make user 1. */
-    private readonly firstAdmin: { loginName: string; passwordHash?: string },
+    private readonly firstAdmin: { loginName?: string; passwordHash?: string },
   ) {}
 
   /** Sets up the tables (making the admin if there are no users yet), then loads the users. */
@@ -105,6 +105,9 @@ export class Users {
   private async insertFirstAdmin(query: Query): Promise<void> {
     const { loginName, passwordHash } = this.firstAdmin;
     if (!passwordHash) throw new Error('There are no users yet, so the config needs "passwordHash" for the admin\'s first password.');
+    if (!loginName || !isValidLoginName(loginName)) {
+      throw new Error('There are no users yet, so the config needs "adminLoginName": the admin\'s email address, to log in with.');
+    }
     const data: UserData = {
       displayName: "Admin",
       passwordHash,
@@ -113,7 +116,7 @@ export class Users {
       sessionVersion: FIRST_SESSION_VERSION,
       createdDateTime: new Date().toISOString(),
     };
-    await query("INSERT INTO nwsnotes.users (id, login_name, data) VALUES ($1, $2, $3)", [ADMIN_ID, validLoginName(loginName), JSON.stringify(data)]);
+    await query("INSERT INTO nwsnotes.users (id, login_name, data) VALUES ($1, $2, $3)", [ADMIN_ID, loginName.trim(), JSON.stringify(data)]);
     console.log(`Made user ${ADMIN_ID}, the admin, with the login name "${loginName}".`);
   }
 
@@ -272,7 +275,9 @@ export class Users {
       const existing = this.required(id);
       const body = (raw ?? {}) as { loginName?: unknown; displayName?: unknown; disabled?: unknown; noteLimit?: unknown };
       const next: User = { ...existing };
-      if (body.loginName !== undefined) next.loginName = this.unusedLoginName(body.loginName, id);
+      // A name made before login names had to be email addresses can be kept as it is, so the rest can still be edited.
+      const unchanged = typeof body.loginName === "string" && body.loginName.trim() === existing.loginName;
+      if (body.loginName !== undefined && !unchanged) next.loginName = this.unusedLoginName(body.loginName, id);
       if (body.displayName !== undefined) next.displayName = validDisplayName(body.displayName);
       if (body.noteLimit !== undefined) {
         const limit = body.noteLimit;

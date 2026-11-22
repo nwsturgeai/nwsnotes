@@ -2,8 +2,8 @@
 #
 # One-time setup of the Ubuntu VM for nwsnotes. Safe to run again.
 #
-#   sudo bash setup-vm.sh                               # first-time setup
-#   sudo bash setup-vm.sh --new-password [login name]   # a new password for a user (default: admin)
+#   sudo bash setup-vm.sh you@example.com               # first-time setup (your email is the admin's login)
+#   sudo bash setup-vm.sh --new-password <login email>  # a new password for a user
 #
 # See README.md for the full list of steps.
 set -euo pipefail
@@ -23,9 +23,15 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 NEW_PASSWORD=false
-[[ "${1:-}" == "--new-password" ]] && NEW_PASSWORD=true
-# The admin's login name (user 1), unless the config's "adminLoginName" says otherwise.
-LOGIN_NAME=${2:-admin}
+if [[ "${1:-}" == "--new-password" ]]; then
+  NEW_PASSWORD=true
+  # Whose password: their login name (an email address).
+  LOGIN_NAME=${2:-}
+  [[ -n $LOGIN_NAME ]] || { echo "Usage: sudo bash $0 --new-password <login email>" >&2; exit 1; }
+else
+  # The admin's login name (user 1): an email address, kept as "adminLoginName" in the config.
+  ADMIN_EMAIL=${1:-}
+fi
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -50,7 +56,7 @@ generate_password_and_hash() {
 # settings already in it (such as the database's, from set-database.sh).
 write_config() {
   local hash=$1
-  HASH="$hash" CONFIG_FILE="$CONFIG_FILE" DATA_DIR="$DATA_DIR" CERT_DIR="$CERT_DIR" ACME_DIR="$ACME_DIR" node -e '
+  HASH="$hash" ADMIN_EMAIL="$ADMIN_EMAIL" CONFIG_FILE="$CONFIG_FILE" DATA_DIR="$DATA_DIR" CERT_DIR="$CERT_DIR" ACME_DIR="$ACME_DIR" node -e '
     const fs = require("node:fs");
     const crypto = require("node:crypto");
     const file = process.env.CONFIG_FILE;
@@ -59,6 +65,7 @@ write_config() {
     const config = {
       ...existing,
       passwordHash: process.env.HASH,
+      adminLoginName: process.env.ADMIN_EMAIL,
       sessionSecret: existing.sessionSecret || crypto.randomBytes(32).toString("base64url"),
       dataDir: process.env.DATA_DIR,
       certDir: process.env.CERT_DIR,
@@ -78,7 +85,7 @@ show_password() {
   ================================================================
     Your nwsnotes login (the password is shown only once):
 
-        Name:     admin
+        Email:    $ADMIN_EMAIL
         Password: $1
 
     Save it in your password manager now.
@@ -100,6 +107,11 @@ if $NEW_PASSWORD; then
   runuser -u "$APP_USER" -- env NODE_ENV=production LOGIN_NAME="$LOGIN_NAME" bash -c 'cd '"$APP_DIR"' && node server.cjs --reset-password "$LOGIN_NAME"'
   restart_app_if_running
   exit 0
+fi
+
+if [[ ! -f $CONFIG_FILE && ! $ADMIN_EMAIL =~ ^[^[:space:]@]+@[^[:space:]@.]+(\.[^[:space:]@.]+)+$ ]]; then
+  echo "Give your email address, which you'll log in with as the admin: sudo bash $0 you@example.com" >&2
+  exit 1
 fi
 
 step "Installing system packages"
@@ -170,7 +182,7 @@ fi
 step "Creating the app configuration"
 if [[ -f $CONFIG_FILE ]]; then
   echo "$CONFIG_FILE already exists; keeping the current password."
-  echo "(To get a new password: sudo bash $0 --new-password <login name>)"
+  echo "(To get a new password: sudo bash $0 --new-password <login email>)"
 else
   mapfile -t secrets < <(generate_password_and_hash)
   write_config "${secrets[1]}"

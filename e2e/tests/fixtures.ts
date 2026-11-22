@@ -9,12 +9,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const seed = JSON.parse(readFileSync(path.join(here, "..", "fixtures", "seed.json"), "utf8")) as unknown;
 
 /** The admin's login name and the dev password: the test server runs outside production, so they're the same as with `npm run dev`. */
-export const ADMIN = "admin";
+export const ADMIN = "admin@example.com";
 export const PASSWORD = "dev";
 
 /** Fills in the login page and logs in (or tries to). */
 export async function logIn(page: Page, loginName: string, password: string) {
-  await page.getByLabel("Name").fill(loginName);
+  await page.getByLabel("Email").fill(loginName);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Log in" }).click();
 }
