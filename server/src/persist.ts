@@ -90,6 +90,17 @@ const TABLES = [
    )`,
   "CREATE INDEX IF NOT EXISTS changes_time ON nwsnotes.changes (time)",
   "CREATE INDEX IF NOT EXISTS changes_user ON nwsnotes.changes (user_id, id)",
+  // Tags shared with other users (see sharing.ts): who with, what they may do, and the recipient's own
+  // order (position) and colour (hue) for the tag. Not in the History.
+  `CREATE TABLE IF NOT EXISTS nwsnotes.shares (
+     tag_id integer NOT NULL,
+     recipient_id integer NOT NULL,
+     owner_id integer NOT NULL,
+     permission text NOT NULL,
+     position integer NOT NULL,
+     hue integer,
+     PRIMARY KEY (tag_id, recipient_id)
+   )`,
   // Note ids and tag ids are unique across all users, and never reused: new ones come from these.
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.note_ids",
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.tag_ids",

@@ -24,3 +24,7 @@ A Tag can have a colour. On a Category's page, tap the small box next to a Tag's
 ## The Lifetime Category
 
 There's one Category you don't create yourself: **Lifetime**. It records where each note is in its life: New, Active, Waiting, Archived or in the Bin. See [Lifetime](lifetime.md).
+
+## Sharing
+
+You can share a Tag with other people who use nwsnotes, and Tags others share with you appear in a Category called **Shared with me**. See [Sharing Tags with other people](sharing.md).

@@ -17,6 +17,8 @@ const RETRY_START_MS = 30_000;
  */
 export class Notebooks {
   private readonly stores = new Map<number, Promise<NoteStore>>();
+  /** Called after any notebook saves a change, with whose notebook it is (to tell the pages of users it's shared with). */
+  onNotebookSaved?: (userId: number) => void;
 
   constructor(
     private readonly db: Db,
@@ -58,6 +60,7 @@ export class Notebooks {
     let store = this.stores.get(userId);
     if (!store) {
       const made = new NoteStore(this.db, userId);
+      made.onSaved = () => this.onNotebookSaved?.(userId);
       store = made.load().then(() => made);
       this.stores.set(userId, store);
       // If it couldn't be loaded (e.g. the database is unreachable), the next request tries again.

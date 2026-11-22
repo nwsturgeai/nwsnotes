@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
-import { LIFETIME_CATEGORY_ID, type Category, type Note, type TabFilter } from "@nwsnotes/shared";
+import { LIFETIME_CATEGORY_ID, tagLabel, type Category, type Note, type TabFilter } from "@nwsnotes/shared";
 
 /** The tags chosen in each category's dropdown: category id -> tag ids. */
 export type TagSelection = Record<number, number[]>;
@@ -161,7 +161,7 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
   const open = position !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const names = category.tags.filter((tag) => chosen.includes(tag.id)).map((tag) => tag.name);
+  const names = category.tags.filter((tag) => chosen.includes(tag.id)).map(tagLabel);
   const listId = `tag-dropdown-${category.id}`;
 
   /** A one-tag tab filter fixes this tag. */
@@ -286,7 +286,7 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
                     disabled={locked}
                     onChange={(event) => toggle(tag.id, event.target.checked)}
                   />
-                  {tag.name}
+                  {tagLabel(tag)}
                   <TagCount count={counts?.byTag.get(tag.id)} />
                   {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
                 </label>
@@ -299,7 +299,7 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
                 <Option label={category.name} unset chosen={chosen.length === 0} onChoose={() => choose(undefined)} />
               )}
               {options.map((tag) => (
-                <Option key={tag.id} label={tag.name} chosen={chosen.includes(tag.id)} onChoose={() => choose(tag.id)} />
+                <Option key={tag.id} label={tagLabel(tag)} chosen={chosen.includes(tag.id)} onChoose={() => choose(tag.id)} />
               ))}
             </>
           )}
@@ -366,12 +366,12 @@ export function TagPillPicker({ categories, selection, onChange, disabled, const
                   type="button"
                   className={classes.filter(Boolean).join(" ")}
                   aria-pressed={isChosen}
-                  title={locked ? `${tag.name} (${lockHint})` : unavailable ? `${tag.name} (not shown in this tab)` : tag.name}
+                  title={locked ? `${tagLabel(tag)} (${lockHint})` : unavailable ? `${tagLabel(tag)} (not shown in this tab)` : tagLabel(tag)}
                   disabled={disabled || locked || unavailable}
                   onClick={() => toggle(tag.id)}
                 >
                   {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
-                  {tag.name}
+                  {tagLabel(tag)}
                 </button>
               );
             })}

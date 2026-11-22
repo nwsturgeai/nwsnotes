@@ -2461,3 +2461,82 @@ body:has(.dragging) {
   font-size: 1.3rem;
   letter-spacing: 0.15em;
 }
+
+/* ---- Sharing tags --------------------------------------------------------- */
+
+/* In "Shared with me", a tag's name (with its owner's) can't be changed, so it's plain text. */
+.tag-row .shared-tag-name {
+  flex: 1;
+  padding: 0.35rem 0;
+}
+
+/* A read-only shared note has no buttons: just an eye, where they would be. */
+.read-only-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--muted);
+}
+
+.share-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  max-width: none;
+}
+
+.share-dialog .hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.share-dialog .share-none {
+  margin-bottom: 0.75rem;
+  color: var(--muted);
+}
+
+.share-list {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.share-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.share-person {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.share-person > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.share-email {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.share-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.share-add select,
+.share-add input {
+  flex: 1 1 10rem;
+  min-width: 0;
+}

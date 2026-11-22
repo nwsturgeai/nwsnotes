@@ -74,10 +74,46 @@ Before sharing is built, note ids and tag ids become unique across all users. It
 - **Restoring a backup** (`--restore <file> --user <email>`) is refused if any of the file's note or tag ids belong to another user. After a restore, both sequences move past the highest id restored. A backup file's `lastNoteId` is ignored, and downloaded backups no longer need it.
 - **Tests:** tests stop assuming particular ids (for example, a new account's first note being id 1). `POST /api/test/reset` also resets both sequences.
 
+### Shares (built)
+- **Stored** in a `shares` table: `tag_id`, `recipient_id` (together the key), `owner_id`, `permission` (`read`, `edit` or `delete`), and the recipient's own `position` and `hue` for the tag. Shares aren't in the History, the backups or the save-files. The server keeps them in memory, loaded the first time they're needed (`server/src/sharing.ts`).
+- **API:**
+  - `GET /api/tags/:id/shares`: who one of your tags is shared with (`TagShare[]`: user id, display name, login email, permission). 404 for a tag that isn't yours.
+  - `PUT /api/tags/:id/shares` with `{ shares: [{ loginName, permission }] }`: replaces the whole list. Refused (400) for an address with no account ("There's no nwsnotes account for <address>."), your own account, or anyone listed twice. A new recipient's tag goes at the end of their "Shared with me".
+  - `GET /api/shares/people`: the people for the share dialog's list (`SharePerson[]`).
+  - `PUT /api/shared-tags` with `{ tags: [{ id, hue? }] }`: the recipient's order and colours for every tag shared with them, once each.
+- **Deleted tags:** after a category is saved, or the owner goes back in the History, shares of the owner's tags that no longer exist are removed.
+
+### A recipient's view
+- `GET /api/notes` returns the recipient's own notebook plus, for each owner, the owner's notes with a tag shared with them. Each such note has `tagIds` holding only its shared tags and its Lifetime, and `shared: { ownerId, ownerName, permission }`, its permission being the highest of its shared tags'. `reminderSentFor` is left out.
+- "Shared with me" is a category with id `-2` and `shared: true`, multi-select, sent after the user's own categories and before Lifetime, only when something is shared with them. Its tags carry `ownerName`, `ownerId`, `permission`, and the recipient's own `hue` (never the owner's).
+- The recipient's tabs can filter on it. A filter on a tag no longer shared with them is left out of the tabs sent (a filter left with no tags is dropped), and comes back if the tag is shared again.
+- The recipient's note order (`PUT /api/notes/order`) keeps their own notes' ids and those of the shared notes they can see.
+
+### Changes a recipient makes
+- Every note route finds the note among the user's own, then among the notes shared with them. Anything else is 404. Too low a permission is 403: "Pat has shared this note with you to read only." or "Only Pat can move their notes to the bin."
+- **Editing** (`PUT /api/notes/:id`) needs edit. The tags sent must be the ones the recipient sees, and the due date the note's own, or it's refused (400, "You can't change the tags of Pat's notes." / "Only Pat can change the due dates of their notes."). The owner's note keeps all its tags, including those the recipient can't see.
+- **Lifetime:** Waiting, Archive and Reinstate need edit; Bin needs edit and delete.
+- **Adding** (`POST /api/notes`) with any shared tag goes to the owner's notebook. It's refused if the note also has the user's own tags, has shared tags from two owners, has a tag shared read-only (403), or has a due date. A child note of a shared long-form note must have one of its owner's shared tags. The owner's note and stylus-note limits apply: "Pat's notebook is full, so this note can't be added."
+- **Deleting** a shared note (`DELETE /api/notes/:id`) is only for cancelling a new long-form note: it needs edit, and the note's details must still be empty.
+- **Bulk changes:** multi-select (`PUT /api/notes/bulk-tags`) refuses shared notes. Reset New covers the user's own New notes and the shared ones they may edit. With `noteIds`, Waiting → Archive includes shared notes they may edit, and Archived → Bin those they may also delete. Without `noteIds` (Settings), Archived to Bin is only the user's own notes, as is Empty Bin.
+- **"By <name>" in the History:** each request runs as its user (Node's `AsyncLocalStorage`, `server/src/context.ts`). A change saved in someone else's notebook adds " (by <display name>)" to its History summary. A long-form note's autosaves only join the previous change if the same person made it.
+- **Texts:** a texted note on a tab with one shared tag goes to its owner's notebook, under the same rules. A tab with several shared tags is refused with a text back. "Email tab" uses the recipient's view.
+
+### The app
+- **Settings:** "Shared with me" is listed with the built-in categories (it can't be moved). Its page (`/settings/categories/-2`) shows its tags as "Shopping (Pat)" with their colour boxes, grips and arrows, but no name boxes, delete buttons or Add tag; Save sends `PUT /api/shared-tags`.
+- **A category's page:** each saved tag has a share button (`fa-share-nodes`, "Share <tag>"), greyed out until the tag is saved. It opens the share dialog: the people it's shared with, each with a Read-only / Edit / Edit and delete choice and a remove button (`fa-xmark`); then a list of linked people not yet in it, with "Someone else…" for typing an email address, and **Add**. **Save** sends the whole list.
+- **Labels:** dropdowns, full-tag-list pills and Settings show a shared tag as "Shopping (Pat)", the owner's display name cut to 10 characters and "…". On notes the pill shows just "Shopping" unless another tag shared with the user has the same name (ignoring case).
+- **Notes shared with you:** read-only notes have no buttons: an eye (`fa-eye`, "Shared by Pat, to read only") in their place. Edit adds Edit, Waiting/Reinstate and Archive. Edit and delete also adds Move to bin. Edit-order mode's Move to top / Move to bottom work on every note.
+- **Editing one:** the tag dropdowns (or pills) are greyed out, in the long-form editor too (and its Match the tab button), and there's no due-date button.
+- **New notes:** the app checks a note with shared tags before sending it, with the server's messages.
+- **Multi-select:** shared notes can't be selected (All selects only your own), and "Shared with me" pills aren't offered.
+- **Settings' Lifetime counts:** Reset New counts your own New notes and the shared ones you may edit. Archived to Bin and Empty Bin count only your own.
+
+### Live updates
+- Any change saved in a notebook tells the pages of everyone it's shared with, and of its owner when someone else made it (the page that made it isn't told, as for any change).
+- Changing a tag's shares tells the people added, changed or removed. Ending shares of deleted tags tells those recipients.
+
 ### Access checks
 - With global ids, a request can name another user's note. Every route that takes a note id checks that the note is the logged-in user's own, or is shared with them at a level that allows the action. Anything else is answered as if the note didn't exist (404), so nobody can find out which ids exist.
 - Tests cover every note route at each level (none, read-only, edit, edit-and-delete), including trying other users' ids directly.
 
-### Live updates
-- A change to a note sends "data changed" to the owner's pages and to the pages of every recipient who can see the note, before and after the change. So a recipient sees a note appear or disappear when the owner adds or removes a shared tag.
-- Starting, changing or ending a share also tells that recipient's pages to reload.

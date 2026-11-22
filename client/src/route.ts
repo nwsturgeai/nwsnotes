@@ -40,7 +40,8 @@ function pageFromPath(pathname: string): Page {
   if (pathname === "/settings/password") return { name: "password" };
   if (pathname === "/settings/users") return { name: "users" };
   if (pathname === "/settings/tabs/all") return { name: "tab", id: "all" };
-  const match = /^\/settings\/(categories|tabs)\/(new|\d+)$/.exec(pathname);
+  // Category -2 is "Shared with me" (its tags' order and colours).
+  const match = /^\/settings\/(categories|tabs)\/(new|-?\d+)$/.exec(pathname);
   if (match) {
     const id = match[2] === "new" ? "new" : Number(match[2]);
     return match[1] === "tabs" ? { name: "tab", id } : { name: "category", id };

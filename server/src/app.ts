@@ -5,7 +5,6 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import {
   CONNECTION_ID_HEADER,
-  stylusNoteLimitOf,
   validateDueDate,
   validateNoteDetails,
   validateNoteTitle,
@@ -22,8 +21,10 @@ import type { Notebooks } from "./notebooks.js";
 import { accountConfirmedEmail } from "./accountEmail.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
+import { actingUser } from "./context.js";
 import type { NoteStore } from "./store.js";
-import { ADMIN_ID, noteLimitOf, noteStatsOf, type User } from "./users.js";
+import type { Sharing } from "./sharing.js";
+import { ADMIN_ID, noteStatsOf, type User } from "./users.js";
 
 /** The logged-in user's notebook (after requireSession and withNotebook). */
 function notebookOf(res: Response): NoteStore {
@@ -37,18 +38,35 @@ export function createApp(
   live: LiveUpdates,
   push: PushReminders,
   db: Db,
+  sharing: Sharing,
   sms?: SmsNotes,
   mailer?: Mailer,
 ) {
   const users = notebooks.users;
 
-  /** Loads the logged-in user's notebook (after requireSession): every data route works on it. */
-  const withNotebook = async (_req: Request, res: Response, next: NextFunction) => {
+  /**
+   * Loads the logged-in user's notebook (after requireSession): every data route works on it, or (for
+   * notes shared with them) on their owners'. Everything the request does runs as this user, so a change
+   * they make in someone else's notebook says so in its History.
+   */
+  const withNotebook = async (req: Request, res: Response, next: NextFunction) => {
     res.locals.notebook = await notebooks.for(userOf(res).id);
-    next();
+    const user = userOf(res);
+    actingUser.run({ userId: user.id, displayName: user.displayName, senderId: req.get(CONNECTION_ID_HEADER) }, next);
   };
   /** Tells the user's other pages to reload, after a change. */
   const notifyChanged = (req: { get(name: string): string | undefined }, res: Response) => live.notifyChanged(userOf(res).id, req.get(CONNECTION_ID_HEADER));
+  /** Tells these users' pages to reload (their view of someone else's notes changed). */
+  const notifyUsers = (ids: number[]) => {
+    for (const id of ids) live.notifyChanged(id, undefined);
+  };
+  // A change to a notebook reloads the pages of everyone it's shared with, and of its owner when someone
+  // else made it. The person who made it has their own pages told by the route, as for any change.
+  notebooks.onNotebookSaved = (ownerId) => {
+    const acting = actingUser.getStore();
+    const others = [...sharing.recipientsOf(ownerId), ownerId].filter((id) => id !== (acting?.userId ?? ownerId));
+    for (const id of new Set(others)) live.notifyChanged(id, acting?.senderId);
+  };
 
   const app = express();
   app.disable("x-powered-by");
@@ -256,8 +274,8 @@ export function createApp(
   const notesRouter = express.Router();
   notesRouter.use(requireSession(users, config.sessionSecret), withNotebook);
 
-  notesRouter.get("/", (_req, res) => {
-    res.json(notebookOf(res).getAll());
+  notesRouter.get("/", async (_req, res) => {
+    res.json(await sharing.dataFor(userOf(res).id));
   });
 
   // A small request the app sends while offline, to find out when the server can be reached again
@@ -284,13 +302,11 @@ export function createApp(
         res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : !due.ok ? due.error : "" });
         return;
       }
-      const { note, created } = await notebookOf(res).add(check.title, req.body?.tagIds, details.details, req.body?.parentId, {
+      const { note, created } = await sharing.addNote(userOf(res), check.title, req.body?.tagIds, details.details, req.body?.parentId, {
         dueDateTime: due.dueDateTime,
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
-        noteLimit: noteLimitOf(userOf(res)),
-        stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(userOf(res))),
       });
       // An add sent again (its reply was lost) changes nothing, so there's nothing to tell other pages.
       if (created) notifyChanged(req, res);
@@ -301,13 +317,13 @@ export function createApp(
   // Multi-select: add and remove tags on several notes at once. (Before "/:id", which would match it.)
   // The shared note order (moving notes in edit-order mode, or adding at the top). Before "/:id".
   notesRouter.put("/order", async (req, res) => {
-    const noteOrder = await notebookOf(res).setNoteOrder(req.body);
+    const noteOrder = await sharing.setNoteOrder(userOf(res), req.body);
     notifyChanged(req, res);
     res.json({ noteOrder });
   });
 
   notesRouter.put("/bulk-tags", async (req, res) => {
-    const notes = await notebookOf(res).bulkTags(req.body);
+    const notes = await sharing.bulkTags(userOf(res), req.body);
     notifyChanged(req, res);
     res.json(notes);
   });
@@ -325,10 +341,9 @@ export function createApp(
       res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : !due.ok ? due.error : "" });
       return;
     }
-    const note = await notebookOf(res).updateNote(id, check.title, req.body?.tagIds, details.details, {
+    const note = await sharing.updateNote(userOf(res), id, check.title, req.body?.tagIds, details.details, {
       dueDateTime: due.dueDateTime,
       tagsChangedDateTime: req.body?.tagsChangedDateTime,
-      stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(userOf(res))),
     });
     notifyChanged(req, res);
     res.json(note);
@@ -341,7 +356,7 @@ export function createApp(
       res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
       return;
     }
-    await notebookOf(res).deleteNote(id);
+    await sharing.deleteNote(userOf(res), id);
     notifyChanged(req, res);
     res.json({ ok: true });
   });
@@ -355,23 +370,18 @@ export function createApp(
         res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
         return;
       }
-      const note = await notebookOf(res).setLifetime(id, req.body?.lifetime, req.body?.tagsChangedDateTime);
+      const note = await sharing.setLifetime(userOf(res), id, req.body?.lifetime, req.body?.tagsChangedDateTime);
       notifyChanged(req, res);
       res.json(note);
     },
   );
 
   // The Settings page's Lifetime buttons, and edit-order mode's (which send `noteIds`: only the notes
-  // listed). Each returns how many notes it changed or deleted.
-  const bulkLifetime = {
-    "reset-new": (store: NoteStore) => store.resetNew(),
-    "archived-to-bin": (store: NoteStore, noteIds: unknown) => store.archivedToBin(noteIds),
-    "waiting-to-archived": (store: NoteStore, noteIds: unknown) => store.waitingToArchived(noteIds),
-    "empty-bin": (store: NoteStore) => store.emptyBin(),
-  };
-  for (const [action, run] of Object.entries(bulkLifetime)) {
+  // listed). Each returns how many notes it changed or deleted. (Shared notes are included as the
+  // user's permissions allow: see Sharing.bulkLifetime.)
+  for (const action of ["reset-new", "archived-to-bin", "waiting-to-archived", "empty-bin"] as const) {
     notesRouter.post(`/${action}`, async (req: Request<object, object, { noteIds?: unknown } | undefined>, res) => {
-      const count = await run(notebookOf(res), req.body?.noteIds);
+      const count = await sharing.bulkLifetime(userOf(res), action, req.body?.noteIds);
       if (count > 0) notifyChanged(req, res);
       res.json({ count });
     });
@@ -413,10 +423,53 @@ export function createApp(
     }
     const category = await notebookOf(res).updateCategory(id, req.body);
     notifyChanged(req, res);
+    // Deleted tags are no longer shared.
+    notifyUsers(await sharing.pruneDeletedTags(userOf(res).id));
     res.json(category);
   });
 
   app.use("/api/categories", categoriesRouter);
+
+  // --- Sharing tags ---------------------------------------------------------------
+
+  // Mounted at /api, so the session check is on each route (a router-wide one would catch every /api request).
+  const sharingRouter = express.Router();
+  const signedIn = [requireSession(users, config.sessionSecret), withNotebook];
+
+  /** The tag id in the address. */
+  const tagIdOf = (req: Request<{ id: string }>): number => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) throw new RequestError(404, `There is no tag with id ${req.params.id}.`);
+    return id;
+  };
+
+  // Who one of your tags is shared with.
+  sharingRouter.get("/tags/:id/shares", ...signedIn, async (req: Request<{ id: string }>, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(await sharing.sharesOfTag(userOf(res).id, tagIdOf(req)));
+  });
+
+  // Replaces who one of your tags is shared with. Their pages reload to show the change.
+  sharingRouter.put("/tags/:id/shares", ...signedIn, async (req: Request<{ id: string }>, res) => {
+    const { shares, changed } = await sharing.setSharesOfTag(userOf(res), tagIdOf(req), req.body);
+    notifyUsers(changed);
+    res.json(shares);
+  });
+
+  // People you're linked with by sharing (either way), for choosing who to share with.
+  sharingRouter.get("/shares/people", ...signedIn, async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(await sharing.people(userOf(res).id));
+  });
+
+  // Your own order and colours for the tags shared with you.
+  sharingRouter.put("/shared-tags", ...signedIn, async (req, res) => {
+    const category = await sharing.setSharedTagLayout(userOf(res).id, req.body);
+    notifyChanged(req, res);
+    res.json(category ?? null);
+  });
+
+  app.use("/api", sharingRouter);
 
   // --- Tabs (saved filters) -------------------------------------------------
 
@@ -424,7 +477,7 @@ export function createApp(
   tabsRouter.use(requireSession(users, config.sessionSecret), withNotebook);
 
   tabsRouter.post("/", async (req, res) => {
-    const tab = await notebookOf(res).addTab(req.body);
+    const tab = await notebookOf(res).addTab(req.body, await sharing.sharedCategories(userOf(res).id));
     notifyChanged(req, res);
     res.status(201).json(tab);
   });
@@ -449,7 +502,7 @@ export function createApp(
       res.status(404).json({ error: `There is no tab with id ${req.params.id}.` });
       return;
     }
-    const tab = await notebookOf(res).updateTab(id, req.body);
+    const tab = await notebookOf(res).updateTab(id, req.body, await sharing.sharedCategories(userOf(res).id));
     notifyChanged(req, res);
     res.json(tab);
   });
@@ -508,6 +561,8 @@ export function createApp(
   historyRouter.post("/revert", async (req, res) => {
     const result = await notebookOf(res).revert(req.body);
     notifyChanged(req, res);
+    // Going back past a tag's creation ends its shares.
+    notifyUsers(await sharing.pruneDeletedTags(userOf(res).id));
     res.json(result);
   });
 
@@ -524,6 +579,7 @@ export function createApp(
     app.post("/api/test/reset", async (req, res) => {
       db.simulateOutage = false;
       await notebooks.resetForTests(config.adminLoginName ?? DEV_ADMIN_LOGIN_NAME, hashPassword(DEV_PASSWORD));
+      await sharing.resetForTests();
       await (await notebooks.for(ADMIN_ID)).resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
       sms?.resetForTests();
