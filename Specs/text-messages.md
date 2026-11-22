@@ -25,6 +25,11 @@ People want to add notes by voice while driving. Their Android phone connects to
 - A text can start with either the tab's name or its spoken name.
 - The spoken name is only used for text messages. It isn't shown on the notes page.
 
+### Commands: texts starting "App"
+- A text whose first word is "App" is a command to the app, not a note. Nothing is added as a note.
+- So a tab whose name starts with the word "App" (e.g. "App" or "App ideas") can't be sent notes by its name; it can be given a spoken name to use instead.
+- **The first command, "App reset new":** every note tagged New becomes Active, the same as Settings' "Reset New" button.
+
 ### Costs
 - Twilio charges in US dollars: about $2.50 a month for the UK mobile number, about $0.0075 for each text received, and about $0.05 for each text sent. So the cost is mostly the number, plus under 1 cent per note, plus 5 cents per failure reply. Notifications are free.
 
@@ -65,6 +70,21 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **From an unlinked number:** nothing is saved and nothing is sent back, apart from the linking codes above.
 - **Opt-out words:** a text that's only `STOP`, `START`, `UNSTOP`, `HELP`, `INFO`, `CANCEL`, `END`, `QUIT`, `UNSUBSCRIBE` or `STOPALL` (any case, trimmed) isn't saved as a note, as Twilio may act on these words itself.
 - **Empty texts** (e.g. only spaces) are ignored.
+
+### Commands
+- **Recognised** when the normalised text's first word is "app" (any case, a whole word, punctuation after it allowed: "App: reset new", "app, Reset New."). This is checked before choosing a tab, so it wins over a tab called "App". "Apple juice" is a note, as "app" isn't a whole word there.
+- **The command** is the rest of the text, normalised as for tab names (see Choosing the tab), so case and punctuation don't matter. No slips are allowed: a command is only carried out when it's exactly right.
+- **Commands so far:**
+  - `reset new`: every New note becomes Active, exactly as Settings' "Reset New" does (one change in the History, "Reset New (3 notes made Active)", and live updates to the person's open devices).
+- **Afterwards, as for notes,** a notification and no text back, to keep the cost down:
+  - heading "App: reset new", text "3 notes changed to Active." (or "There were no New notes.");
+  - nothing is texted back, as it worked.
+- **Failures get a text back,** and a notification, as for notes:
+  - **An unknown command** (including "App" alone): "Unknown command "<command>". Commands: reset new." Kept to one text, cutting the quoted command short if need be.
+  - **A turned-off account,** the database being unreachable, and too many texts give the same replies as for notes, with "Not done" in place of "Not saved".
+- **Counted as texts** for "too many texts", as notes are.
+- **Spoken names** can't start with the word "app" ("app", "app ideas"), as a text starting with it would never reach that tab.
+- **Logged** like notes, e.g. `Text SM… from …258: command "reset new" for user 1: 3 notes made Active.` or `unknown command for user 1.` (the command's words aren't logged, as they could be a mistyped note).
 
 ### Choosing the tab
 - **Normalising for comparison:** both the text and the names are lower-cased, `&` becomes "and", everything that isn't a letter or digit becomes a space (accents are kept: "café" stays "café"), and runs of spaces become one. So "Kids' stuff", "kids stuff" and "Kids, stuff." all compare the same.
@@ -120,7 +140,7 @@ People want to add notes by voice while driving. Their Android phone connects to
 
 ### Spoken names
 - **Stored on the tab:** a new optional `spokenName` field on `Tab`, sent and checked with the tab's name, filters and placement (`POST` and `PUT /api/tabs`). Tabs without it have no spoken name.
-- **Rules:** trimmed; empty means none; at most 40 characters; it must have at least one letter or digit. Normalised as above, it can't be the same as "all", as "tab", as its own tab's name, or as any other tab's name or spoken name. Error: "Another tab already uses that name." (or "…can't be "All"").
+- **Rules:** trimmed; empty means none; at most 40 characters; it must have at least one letter or digit. Normalised as above, it can't start with the word "app" (see Commands), and it can't be the same as "all", as "tab", as its own tab's name, or as any other tab's name or spoken name. Error: "Another tab already uses that name." (or "…can't be "All"").
 - **The same check for names:** a tab's name now also can't be the same as another tab's spoken name once normalised, so a text can never match two tabs exactly.
 - **In the tab editor,** under the name box: a "Spoken name (optional)" box, with the hint "An easier name to say when sending notes by text message, e.g. "do it yourself" for "DIY"." It's shown whether or not text messages are set up, as it's harmless.
 - **In Settings,** the tab list shows the spoken name in grey after the tab's name, e.g. "DIY (do it yourself)".
