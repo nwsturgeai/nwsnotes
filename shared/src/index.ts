@@ -248,7 +248,7 @@ export interface CategoryRequest {
 
 /** Body of POST /api/login. */
 export interface LoginRequest {
-  /** The login name, compared ignoring case. */
+  /** The login name (an email address), compared ignoring case. */
   loginName: string;
   password: string;
 }
@@ -349,9 +349,19 @@ export interface UserUpdateRequest {
   noteLimit?: number;
 }
 
-/** Login names: 3 to 32 letters, digits, ".", "-" and "_". */
-export const LOGIN_NAME_PATTERN = /^[A-Za-z0-9._-]{3,32}$/;
-export const LOGIN_NAME_RULE = 'A login name must be 3 to 32 characters: letters, digits, ".", "-" and "_".';
+/**
+ * Login names are email addresses: something before an "@", and a domain with a dot after it, with no
+ * spaces, at most 254 characters. (Accounts made before this rule may still have other names until the
+ * admin changes them; those still log in.)
+ */
+export const LOGIN_NAME_MAX_LENGTH = 254;
+export const LOGIN_NAME_PATTERN = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+export const LOGIN_NAME_RULE = "A login name must be an email address, e.g. pat@example.com.";
+
+/** Whether a login name follows the rule (it's an email address). */
+export function isValidLoginName(name: string): boolean {
+  return name.length <= LOGIN_NAME_MAX_LENGTH && LOGIN_NAME_PATTERN.test(name);
+}
 export const DISPLAY_NAME_MAX_LENGTH = 60;
 /** Passwords people choose. */
 export const PASSWORD_MIN_LENGTH = 10;

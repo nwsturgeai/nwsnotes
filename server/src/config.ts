@@ -10,8 +10,11 @@ export interface Config {
    * user 1 on the first start with a new database; after that, passwords are kept with the users.
    */
   passwordHash?: string;
-  /** User 1's (the admin's) login name when user 1 is made. Default "admin". */
-  adminLoginName: string;
+  /**
+   * User 1's (the admin's) login name, an email address, used only when user 1 is made (on the first
+   * start with a new database) and by the tests' reset. Development and the tests: "admin@example.com".
+   */
+  adminLoginName?: string;
   /** Random secret used to sign session cookies. */
   sessionSecret: string;
   /** Folder holding the backups, push keys and devices (and PGlite's database, locally). */
@@ -66,11 +69,12 @@ const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
 
 /** The admin's password in development and the tests. */
 export const DEV_PASSWORD = "dev";
-const DEFAULT_ADMIN_LOGIN_NAME = "admin";
+/** The admin's login name in development and the tests. */
+export const DEV_ADMIN_LOGIN_NAME = "admin@example.com";
 
 /**
  * Production reads /etc/nwsnotes/config.json (or the file named by NWSNOTES_CONFIG).
- * Development uses local defaults: the admin is "admin", with the password "dev".
+ * Development uses local defaults: the admin is "admin@example.com", with the password "dev".
  */
 export function loadConfig(): Config {
   const production = process.env.NODE_ENV === "production";
@@ -86,7 +90,7 @@ export function loadConfig(): Config {
     return {
       production,
       passwordHash: hashPassword(DEV_PASSWORD),
-      adminLoginName: DEFAULT_ADMIN_LOGIN_NAME,
+      adminLoginName: DEV_ADMIN_LOGIN_NAME,
       sessionSecret: "development-only-secret",
       // The end-to-end tests keep their data in their own folder, never with real or dev notes.
       dataDir: path.resolve(process.env.NWSNOTES_DATA_DIR ?? "dev-data"),
@@ -124,7 +128,7 @@ export function loadConfig(): Config {
   return {
     production,
     passwordHash: raw.passwordHash,
-    adminLoginName: raw.adminLoginName ?? DEFAULT_ADMIN_LOGIN_NAME,
+    adminLoginName: raw.adminLoginName,
     sessionSecret: raw.sessionSecret!,
     dataDir: raw.dataDir ?? "/var/lib/nwsnotes/data",
     certDir: raw.certDir ?? "/etc/nwsnotes/certs",

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   DISPLAY_NAME_MAX_LENGTH,
+  LOGIN_NAME_MAX_LENGTH,
   NOTE_LIMIT_MAX,
   STYLUS_NOTE_SHARE,
+  isValidLoginName,
   stylusNoteLimitOf,
   type Me,
   type UserSummary,
@@ -78,7 +80,7 @@ function PasswordDialog({ displayName, password, onDone }: { displayName: string
   );
 }
 
-/** The display name and login name boxes, for adding a user and for editing one. */
+/** The display name and login name (email) boxes, for adding a user and for editing one. */
 function NameFields({
   idPrefix,
   displayName,
@@ -106,12 +108,13 @@ function NameFields({
         disabled={disabled}
         onChange={(event) => onDisplayName(event.target.value)}
       />
-      <label htmlFor={`${idPrefix}-login-name`}>Login name</label>
+      <label htmlFor={`${idPrefix}-login-name`}>Email (to log in with)</label>
       <input
         id={`${idPrefix}-login-name`}
         type="text"
+        inputMode="email"
         value={loginName}
-        maxLength={32}
+        maxLength={LOGIN_NAME_MAX_LENGTH}
         autoComplete="off"
         autoCapitalize="none"
         autoCorrect="off"
@@ -290,6 +293,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                   <div className="user-names">
                     <strong>{user.displayName}</strong> <span className="user-login">{user.loginName}</span>
                     {user.admin && <span className="user-label">Admin</span>}
+                    {!isValidLoginName(user.loginName) && <span className="user-label off">Not an email address</span>}
                     {user.disabled && <span className="user-label off">Turned off</span>}
                     {user.smsLinked && <span className="user-label">Phone</span>}
                   </div>

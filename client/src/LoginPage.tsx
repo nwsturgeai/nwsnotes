@@ -34,11 +34,13 @@ export function LoginPage({ onLoggedIn }: Props) {
     <main className="login-page">
       <form onSubmit={submit} className="login-card">
         <h1>nwsnotes</h1>
-        <label htmlFor="login-name">Name</label>
+        <label htmlFor="login-name">Email</label>
+        {/* Not type="email": accounts made before login names had to be emails still log in with their old names. */}
         <input
           id="login-name"
           name="username"
           type="text"
+          inputMode="email"
           value={loginName}
           autoComplete="username"
           autoCapitalize="none"

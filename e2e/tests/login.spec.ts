@@ -6,14 +6,14 @@ test.use({ storageState: { cookies: [], origins: [] } });
 test("a wrong password is refused", async ({ page }) => {
   await page.goto("/");
   await logIn(page, ADMIN, "not the password");
-  await expect(page.getByRole("alert")).toHaveText("Incorrect name or password.");
+  await expect(page.getByRole("alert")).toHaveText("Incorrect email or password.");
   await expect(page.getByLabel("Password")).toBeVisible();
 });
 
 test("a wrong name is refused, with the same message", async ({ page }) => {
   await page.goto("/");
-  await logIn(page, "nobody", PASSWORD);
-  await expect(page.getByRole("alert")).toHaveText("Incorrect name or password.");
+  await logIn(page, "nobody@example.com", PASSWORD);
+  await expect(page.getByRole("alert")).toHaveText("Incorrect email or password.");
 });
 
 test("the name is compared ignoring case", async ({ page }) => {
@@ -26,11 +26,11 @@ test("the Log in button needs a name and a password", async ({ page }) => {
   await page.goto("/");
   const button = page.getByRole("button", { name: "Log in" });
   await expect(button).toBeDisabled();
-  await page.getByLabel("Name").fill(ADMIN);
+  await page.getByLabel("Email").fill(ADMIN);
   await expect(button).toBeDisabled();
   await page.getByLabel("Password").fill(PASSWORD);
   await expect(button).toBeEnabled();
-  await page.getByLabel("Name").fill("");
+  await page.getByLabel("Email").fill("");
   await expect(button).toBeDisabled();
 });
 

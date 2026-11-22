@@ -25,7 +25,7 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5173 and log in as `admin` with the password `dev`. Notes are saved in `server/dev-data/` (ignored by Git), in PGlite, a local copy of Postgres that runs inside Node, so you don't need Supabase or anything else installed.
+Then open http://localhost:5173 and log in as `admin@example.com` with the password `dev` (or as `admin`, if your `server/dev-data/` was made before login names became email addresses). Notes are saved in `server/dev-data/` (ignored by Git), in PGlite, a local copy of Postgres that runs inside Node, so you don't need Supabase or anything else installed.
 
 `npm run build` produces the deployable app in `dist/`, and `npm run typecheck` checks the TypeScript.
 
@@ -56,13 +56,15 @@ From a copy of this repository on your computer, copy the two scripts to the VM 
 ```bash
 scp deploy/setup-vm.sh deploy/get-certificate.sh root@nwsnotes.com:
 ssh root@nwsnotes.com
-sudo bash setup-vm.sh
+sudo bash setup-vm.sh you@example.com
 ```
+
+Use your own email address: it's what you'll log in with, as the admin.
 
 The script installs Node.js 24, pm2 and certbot, creates an `nwsnotes` user and the app folders, sets up the firewall, and makes pm2 start the app on boot. Near the end it prints two things you need:
 
 - **A private SSH key**, used by GitHub to deploy. You'll paste it into GitHub in the next step. It isn't stored on the VM, so copy it before closing the window.
-- **Your login**: the name `admin` and a password (32 random characters). Save them in your password manager. Only a hash of the password is kept. You are the admin (user 1), who adds everyone else's accounts in the app.
+- **Your login**: your email address and a password (32 random characters). Save them in your password manager. Only a hash of the password is kept. You are the admin (user 1), who adds everyone else's accounts in the app.
 
 ### 2. Add the GitHub secrets
 
@@ -156,12 +158,12 @@ If the VM was set up when the site was at nwsnotes.duckdns.org:
 - **Deploying changes:** push or merge to `main`.
 - **Viewing the app's logs:** `sudo -iu nwsnotes pm2 logs nwsnotes`. Each text sent to the nwsnotes number gets a line saying what happened to it (saved, phone not linked, wrong signature…), without its content.
 - **Restarting the app:** `sudo -iu nwsnotes pm2 restart nwsnotes`
-- **Adding someone:** Settings → **Manage users** → **Add user**. The app makes a password and shows it once, for you to send them. The same page resets a password or turns an account off and on. Each person has their own notebook, which nobody else (you included) can see.
+- **Adding someone:** Settings → **Manage users** → **Add user**, with their email address, which they log in with. The app makes a password and shows it once, for you to send them. The same page resets a password or turns an account off and on. Each person has their own notebook, which nobody else (you included) can see.
 - **Changing your password:** Settings → **Change password**. Your other devices are logged out.
-- **A forgotten password (yours or anyone's):** `sudo bash setup-vm.sh --new-password <login name>` (or `sudo -iu nwsnotes bash -c 'cd /opt/nwsnotes/app && NODE_ENV=production node server.cjs --reset-password <login name>'`, then restart the app). It prints a new password and logs that person out everywhere.
+- **A forgotten password (yours or anyone's):** `sudo bash setup-vm.sh --new-password <login email>` (or `sudo -iu nwsnotes bash -c 'cd /opt/nwsnotes/app && NODE_ENV=production node server.cjs --reset-password <login email>'`, then restart the app). It prints a new password and logs that person out everywhere.
 - **Taking a backup:** click the cog at the top right, then **Download backup**. This downloads a file with all your notes, categories, tags and tabs. The app also writes one every day for each person, to `/var/lib/nwsnotes/data/backups/<user id>/` (you are user 1), keeping the last seven.
 - **Going back to an earlier state:** Settings → **History** lists the last 30 days of changes; **Go back to here** undoes everything after one (and can itself be undone).
-- **Restoring a backup file** (replaces all of one person's notes, as one change in their History, so it can be undone): `sudo -iu nwsnotes bash -c 'cd /opt/nwsnotes/app && NODE_ENV=production node server.cjs --restore /path/to/notes-….json --user <login name>'`, then restart the app. It refuses without `--user`, so a backup can't go into the wrong notebook.
+- **Restoring a backup file** (replaces all of one person's notes, as one change in their History, so it can be undone): `sudo -iu nwsnotes bash -c 'cd /opt/nwsnotes/app && NODE_ENV=production node server.cjs --restore /path/to/notes-….json --user <login email>'`, then restart the app. It refuses without `--user`, so a backup can't go into the wrong notebook.
 
 ## Installing it as an Android app
 
@@ -175,7 +177,7 @@ Open https://nwsnotes.com in Chrome on the phone, log in, then choose **⋮ → 
 | Supabase | The users, and each one's notes, categories, tabs and their 30-day history |
 | `/var/lib/nwsnotes/data/backups/<user id>` | A backup file a day for each user, the last seven, e.g. `backups/1/notes-2026-11-18.json` |
 | `/var/lib/nwsnotes/data` | Push-notification keys and devices (and any old save-files from before the database, which the app no longer reads) |
-| `/etc/nwsnotes/config.json` | Session secret, the database's connection string, and the admin's first password hash (only used to make user 1) |
+| `/etc/nwsnotes/config.json` | Session secret, the database's connection string, and the admin's email (`adminLoginName`) and first password hash (both only used to make user 1) |
 | `/etc/nwsnotes/supabase-ca.crt` | Supabase's SSL certificate, to check the database connection |
 | `/etc/nwsnotes/certs` | The app's copy of the HTTPS certificate |
 
