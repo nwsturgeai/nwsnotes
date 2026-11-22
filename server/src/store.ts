@@ -30,6 +30,7 @@ import {
   type TabPlacement,
   withoutMarkers,
 } from "@nwsnotes/shared";
+import { actingUser } from "./context.js";
 import { databaseUnreachable, type Db } from "./db.js";
 import { RequestError } from "./errors.js";
 import {
@@ -257,9 +258,11 @@ export class NoteStore {
    * Set when the latest change was an update of this long-form note: the next autosave of the same note
    * joins that change. Anything else (creating it, other changes, a restart) clears it.
    */
-  private lastLongFormUpdate: { noteId: number; changeId: number } | undefined;
+  private lastLongFormUpdate: { noteId: number; changeId: number; userId: number } | undefined;
   /** Changes run one at a time, in order. */
   private queue: Promise<unknown> = Promise.resolve();
+  /** Called after each change is saved (Notebooks uses it to tell the pages of users this notebook shares tags with). */
+  onSaved?: () => void;
 
   constructor(
     private readonly db: Db,
@@ -435,6 +438,8 @@ export class NoteStore {
       stylusNoteLimit?: number;
       /** "sms": texted in, which the History says. */
       source?: "sms";
+      /** Set when someone a tag is shared with adds the note: this notebook's owner, for the limits' messages. */
+      ownerName?: string;
     } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
@@ -451,10 +456,12 @@ export class NoteStore {
       if (options.noteLimit !== undefined && this.notes.length >= options.noteLimit) {
         throw new RequestError(
           409,
-          `You've reached your limit of ${options.noteLimit} notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
+          options.ownerName !== undefined
+            ? `${options.ownerName}'s notebook is full, so this note can't be added.`
+            : `You've reached your limit of ${options.noteLimit} notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
         );
       }
-      if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
+      if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       if (details && title.titleText === undefined) {
@@ -498,11 +505,13 @@ export class NoteStore {
    * Refuses a new stylus note when the notebook already has `limit` of them (archived and Bin included).
    * Called in the queue of changes, so two at once can't both slip under it.
    */
-  private checkStylusNoteLimit(limit: number | undefined): void {
+  private checkStylusNoteLimit(limit: number | undefined, ownerName?: string): void {
     if (limit === undefined || this.notes.filter(isStylusNote).length < limit) return;
     throw new RequestError(
       409,
-      `You've reached your limit of ${limit} stylus notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
+      ownerName !== undefined
+        ? `${ownerName}'s notebook has no room for more stylus notes, so this one can't be saved.`
+        : `You've reached your limit of ${limit} stylus notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
     );
   }
 
@@ -519,7 +528,7 @@ export class NoteStore {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; stylusNoteLimit?: number } = {},
+    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; stylusNoteLimit?: number; ownerName?: string } = {},
   ): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
@@ -557,7 +566,7 @@ export class NoteStore {
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       // A typed note converted to a long-form note with handwritten details becomes a stylus note.
-      if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
+      if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
 
       const now = this.nextSaveTime();
       // Editing keeps the note's Lifetime.
@@ -671,9 +680,9 @@ export class NoteStore {
     });
   }
 
-  /** The Settings "Reset New" button: every New note becomes Active. Returns how many changed. */
-  resetNew(): Promise<number> {
-    return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE);
+  /** The Settings "Reset New" button: every New note becomes Active (with `rawNoteIds`, only those). Returns how many changed. */
+  resetNew(rawNoteIds?: unknown): Promise<number> {
+    return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE, rawNoteIds);
   }
 
   /**
@@ -874,10 +883,10 @@ export class NoteStore {
     });
   }
 
-  /** Checks and adds a new tab, then saves. */
-  addTab(raw: unknown): Promise<Tab> {
+  /** Checks and adds a new tab, then saves. `shared`: the user's "Shared with me" category, if they have one. */
+  addTab(raw: unknown, shared: Category[] = []): Promise<Tab> {
     return this.enqueue(async () => {
-      const check = validateTab(raw, this.tabs, this.allCategories());
+      const check = validateTab(raw, this.tabs, [...this.categories, ...shared, LIFETIME_CATEGORY]);
       if (!check.ok) throw new RequestError(400, check.error);
 
       const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab };
@@ -887,11 +896,11 @@ export class NoteStore {
   }
 
   /** Checks and replaces a tab's name and filters, then saves. */
-  updateTab(id: number, raw: unknown): Promise<Tab> {
+  updateTab(id: number, raw: unknown, shared: Category[] = []): Promise<Tab> {
     return this.enqueue(async () => {
       const existing = this.tabs.find((t) => t.id === id);
       if (!existing) throw new RequestError(404, `There is no tab with id ${id}.`);
-      const check = validateTab(raw, this.tabs, this.allCategories(), existing);
+      const check = validateTab(raw, this.tabs, [...this.categories, ...shared, LIFETIME_CATEGORY], existing);
       if (!check.ok) throw new RequestError(400, check.error);
 
       const tab: Tab = { id, ...check.tab };
@@ -902,15 +911,18 @@ export class NoteStore {
     });
   }
 
-  /** Replaces the shared note order (moving notes in any tab), keeping only existing notes' ids, once each. */
-  setNoteOrder(raw: unknown): Promise<number[]> {
+  /**
+   * Replaces the shared note order (moving notes in any tab), keeping only existing notes' ids, once each:
+   * this notebook's, and `sharedIds` (other users' notes this user can see, which they order too).
+   */
+  setNoteOrder(raw: unknown, sharedIds: ReadonlySet<number> = new Set()): Promise<number[]> {
     return this.enqueue(async () => {
       const order = (raw as { noteOrder?: unknown } | undefined)?.noteOrder;
       if (!Array.isArray(order) || !order.every((n) => Number.isInteger(n))) {
         throw new RequestError(400, '"noteOrder" must be an array of note ids.');
       }
       const ids = new Set(this.notes.map((n) => n.id));
-      const noteOrder = [...new Set(order as number[])].filter((noteId) => ids.has(noteId));
+      const noteOrder = [...new Set(order as number[])].filter((noteId) => ids.has(noteId) || sharedIds.has(noteId));
       await this.save(this.nextSaveTime(), { noteOrder }, { record: { summary: "Changed the order of the notes" } });
       return noteOrder;
     });
@@ -993,16 +1005,26 @@ export class NoteStore {
    * previous change if it was an update of the same note, so a long editing session is one change.
    */
   private async save(now: Date, change: Partial<Snapshot>, options: SaveOptions = {}): Promise<void> {
+    // A change made by someone a tag is shared with says who, in this notebook's History.
+    const acting = actingUser.getStore();
+    if (options.record && acting && acting.userId !== this.userId) {
+      options = { ...options, record: { ...options.record, summary: `${options.record.summary} (by ${acting.displayName})` } };
+    }
     const before = this.snapshot();
     const after: Snapshot = { ...before, ...change };
+    // Only the same person's autosaves join: someone else's start a change of their own.
+    const actingId = acting?.userId ?? this.userId;
     const join =
-      options.longFormUpdateId !== undefined && this.lastLongFormUpdate?.noteId === options.longFormUpdateId
+      options.longFormUpdateId !== undefined &&
+      this.lastLongFormUpdate?.noteId === options.longFormUpdateId &&
+      this.lastLongFormUpdate.userId === actingId
         ? this.lastLongFormUpdate.changeId
         : undefined;
     const changeId = await writeChange(this.db, this.userId, before, after, now, options.record, join);
     this.apply(after);
     this.lastSaveMs = now.getTime();
     this.lastLongFormUpdate =
-      options.longFormUpdateId !== undefined && changeId !== undefined ? { noteId: options.longFormUpdateId, changeId } : undefined;
+      options.longFormUpdateId !== undefined && changeId !== undefined ? { noteId: options.longFormUpdateId, changeId, userId: actingId } : undefined;
+    this.onSaved?.();
   }
 }
