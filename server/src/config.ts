@@ -24,6 +24,12 @@ export interface Config {
   publicDir: string;
   httpPort: number;
   httpsPort: number;
+  /**
+   * The site's own address (production only, default "nwsnotes.com"). Pages asked for under any other
+   * name that points at the VM (www.nwsnotes.com, the old nwsnotes.duckdns.org) are redirected to it.
+   * Unset (development and the tests): no redirect.
+   */
+  siteHost?: string;
   /** The contact (a mailto: or https: address) that push services ask senders of reminders for. */
   pushContact: string;
   /**
@@ -48,13 +54,14 @@ export interface SmsConfig {
   authToken: string;
   /** The nwsnotes number, in E.164 (e.g. "+447700900123"). */
   number: string;
-  /** The site's address as Twilio sees it (e.g. "https://nwsnotes.duckdns.org"), part of what Twilio signs. */
+  /** The site's address as Twilio sees it (e.g. "https://nwsnotes.com"), part of what Twilio signs. */
   publicUrl: string;
 }
 
 /** Development and the tests: a made-up number, and a known token so the tests can sign their texts. */
 export const TEST_SMS = { authToken: "test-twilio-auth-token", number: "+447700900000" };
 
+const DEFAULT_SITE_HOST = "nwsnotes.com";
 const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
 
 /** The admin's password in development and the tests. */
@@ -125,6 +132,7 @@ export function loadConfig(): Config {
     publicDir,
     httpPort: raw.httpPort ?? 80,
     httpsPort: raw.httpsPort ?? 443,
+    siteHost: raw.siteHost ?? DEFAULT_SITE_HOST,
     pushContact: raw.pushContact ?? DEFAULT_PUSH_CONTACT,
     testMode: false,
     databaseUrl: raw.databaseUrl!,

@@ -9,7 +9,7 @@ The VM should serve the static content of my website and also include a rest API
 The server side API will be coded in typescript and will execute using nodejs.
 The browser code should be written in typescript and should use React.
 This site will be for a single user (me).  I should need a password to log in, this should be a string of 32 random characters.
-The site should be delivered over HTTPS - I have a domain "nwsnotes.duckdns.org" which has a DNS entry pointing to my VM.
+The site should be delivered over HTTPS - I have the domain "nwsnotes.com", which has a DNS entry pointing to my VM (it used to be "nwsnotes.duckdns.org", which still points there too).
 Use fontawesome icons.
 The app should always be rendered with black/dark text on white/light backgrounds.  In other words, ignore if the device is set to "dark mode".
 

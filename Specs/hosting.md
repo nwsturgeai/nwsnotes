@@ -6,7 +6,8 @@
 - App code lives in `/opt/nwsnotes`, run by a dedicated `nwsnotes` user under pm2. pm2 starts the app on boot.
 - Node serves the site directly: HTTPS on port 443; port 80 only redirects to HTTPS and answers Let's Encrypt certificate checks.
 - The VM allows normal users to listen on ports 80 and up (`net.ipv4.ip_unprivileged_port_start=80`), so the app doesn't run as root.
-- Certificate: Let's Encrypt via `certbot` (webroot mode), renewing automatically. On renewal a hook copies the certificate to `/etc/nwsnotes/certs` and restarts the app.
+- Address: `nwsnotes.com`. Pages asked for under any other name pointing at the VM (`www.nwsnotes.com`, the old `nwsnotes.duckdns.org`) are redirected there with a 301; the API (`/api/...`) answers under any name, so Twilio's webhook and an app installed from the old address keep working.
+- Certificate: Let's Encrypt via `certbot` (webroot mode), one certificate (named `nwsnotes`) for `nwsnotes.com` plus whichever of `www.nwsnotes.com` and `nwsnotes.duckdns.org` point at the VM, renewing automatically. On renewal a hook copies the certificate to `/etc/nwsnotes/certs` and restarts the app.
 - Firewall (ufw) allows only ports 22, 80 and 443.
 
 ### Deployment

@@ -43,6 +43,7 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
+  app.use(redirectToSiteHost(config));
   // Large enough for a long-form note's handwritten details (at most 2 MB).
   app.use(express.json({ limit: "3mb" }));
 
@@ -522,9 +523,27 @@ export function createHttpApp(config: Config, hasCertificate: boolean) {
       res.status(503).type("text").send("nwsnotes is running, but the HTTPS certificate hasn't been set up yet.");
       return;
     }
-    const host = (req.headers.host ?? "").replace(/:\d+$/, "");
+    // Straight to the site's own address where redirectToSiteHost() would send the page anyway.
+    const host = shouldMoveToSiteHost(config, req) ? config.siteHost! : (req.headers.host ?? "").replace(/:\d+$/, "");
     const port = config.httpsPort === 443 ? "" : `:${config.httpsPort}`;
     res.redirect(301, `https://${host}${port}${req.originalUrl}`);
   });
   return app;
+}
+
+/** True for a page (not the API) asked for under a name other than the site's own, e.g. the old nwsnotes.duckdns.org. */
+function shouldMoveToSiteHost(config: Config, req: Request) {
+  if (!config.siteHost) return false;
+  const host = (req.headers.host ?? "").replace(/:\d+$/, "").toLowerCase();
+  // Only pages: the API (Twilio's webhook, an app installed from the old address) keeps working under any name.
+  return host !== config.siteHost && (req.method === "GET" || req.method === "HEAD") && !req.path.startsWith("/api/");
+}
+
+/** Sends pages asked for under another name (www., the old duckdns address) to the site's own address. */
+function redirectToSiteHost(config: Config) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!shouldMoveToSiteHost(config, req)) return next();
+    const port = config.httpsPort === 443 ? "" : `:${config.httpsPort}`;
+    res.redirect(301, `https://${config.siteHost}${port}${req.originalUrl}`);
+  };
 }
