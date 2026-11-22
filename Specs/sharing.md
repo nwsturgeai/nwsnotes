@@ -64,8 +64,9 @@ A note's Lifetime is shared: if a recipient archives one of the owner's notes, i
 ## Agreed technical decisions
 
 ### Global note and tag ids (built and released first)
-Before sharing is built, note ids and tag ids become unique across all users. It's released on its own, ahead of sharing.
-- **No data moves:** only the admin has notes and tags in production, so existing ids stay as they are. On its first start, the new version checks that no note id and no tag id is used by more than one user, and refuses to start if one is.
+Before sharing is built, note ids and tag ids become unique across all users. It's released on its own, ahead of sharing. **Done.**
+- **No data moves:** only the admin has notes and tags in production, so existing ids stay as they are. On its first start, the new version checks that no note id and no tag id is used by more than one user, in their current data or their History, and refuses to start if one is. Once passed, the check is recorded (a `globalIdsChecked` row in `meta`, with `user_id` 0) and isn't run again. The tests' server only reports a clash, since its reset removes every other user anyway.
+- **On every start,** both sequences are moved past every id in use: in the notes and categories, in the History's copies, and in older notebooks' `lastNoteId`, which covers notes deleted since. They're never moved back.
 - **Ids are never reused:** new note ids and tag ids come from two database sequences, one for notes and one for tags, shared by all users. A sequence hands each number out once, even when two people add at the same moment. Each sequence starts above the highest id already in use.
   - This replaces the per-user `lastNoteId`, and the current way of choosing a new tag's id (the highest tag id in use + 1, in `server/src/store.ts`), which reuses a deleted tag's id. With sharing, a reused tag id could point a share, a recipient's colour or an old History copy at a different tag.
   - A user's note ids will have gaps where other people's notes took numbers. Nothing depends on ids being consecutive: the order comes from `noteOrder`, then creation time.

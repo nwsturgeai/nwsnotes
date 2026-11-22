@@ -21,7 +21,7 @@ function option(name: string): string | undefined {
 async function main() {
   const config = loadConfig();
   const db = await openDatabase(config);
-  const users = new Users(db, { loginName: config.adminLoginName, passwordHash: config.passwordHash });
+  const users = new Users(db, { loginName: config.adminLoginName, passwordHash: config.passwordHash }, config.testMode);
   const notebooks = new Notebooks(db, config.dataDir, users);
 
   // `node server.cjs --restore <file> --user <login email>`: replaces that user's notebook with a backup
