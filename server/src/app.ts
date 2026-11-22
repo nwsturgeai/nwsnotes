@@ -19,7 +19,6 @@ import type { Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
-import { makeSingleUserDatabaseForTests } from "./persist.js";
 import type { SmsNotes } from "./sms.js";
 import type { NoteStore } from "./store.js";
 import { ADMIN_ID, meOf, noteLimitOf, noteStatsOf, type User } from "./users.js";
