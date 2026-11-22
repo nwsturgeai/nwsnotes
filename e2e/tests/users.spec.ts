@@ -355,7 +355,7 @@ test("a user who isn't the admin sees no Users section, and the users API refuse
   expect((await pat.request.post("/api/users/1/reset-password")).status()).toBe(403);
   // Who they are.
   expect(await (await pat.request.get("/api/me")).json()).toEqual({ id, loginName: "pat@example.com", displayName: "Pat", admin: false });
-  expect(await (await page.request.get("/api/me")).json()).toEqual({ id: 1, loginName: ADMIN, displayName: "Admin", admin: true });
+  expect(await (await page.request.get("/api/me")).json()).toEqual({ id: 1, loginName: ADMIN, displayName: "Admin", admin: true, accountsWaiting: 0 });
   await pat.context().close();
 });
 

@@ -6,6 +6,7 @@ import {
   STYLUS_NOTE_SHARE,
   isValidLoginName,
   stylusNoteLimitOf,
+  type AccountRequest,
   type Me,
   type UserSummary,
 } from "@nwsnotes/shared";
@@ -138,6 +139,11 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
   /** The user being edited; the note limit as typed in its box. */
   const [editing, setEditing] = useState<{ id: number; displayName: string; loginName: string; noteLimit: string }>();
   const [confirming, setConfirming] = useState<{ user: UserSummary; action: "reset" | "turn-off" }>();
+  /** Account requests from the sign-up page, waiting to be confirmed or declined. */
+  const [requests, setRequests] = useState<AccountRequest[]>();
+  const [declining, setDeclining] = useState<AccountRequest>();
+  /** What happened after confirming a request. */
+  const [notice, setNotice] = useState<string>();
 
   const failed = useCallback(
     (err: unknown) => {
@@ -157,7 +163,9 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
     // Fetched alongside the list; if it fails, the line is just left out.
     void api.databaseSize().then(({ bytes }) => setDatabaseBytes(bytes), () => setDatabaseBytes(undefined));
     try {
-      setUsers(await api.users());
+      const [list, waiting] = await Promise.all([api.users(), api.accountRequests()]);
+      setUsers(list);
+      setRequests(waiting);
     } catch (err) {
       failed(err);
     }
@@ -166,6 +174,38 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A request made (or dealt with elsewhere) while this page is open changes the count: list them again.
+  const waitingCount = me.accountsWaiting;
+  const firstCount = useRef(waitingCount);
+  useEffect(() => {
+    if (waitingCount === firstCount.current) return;
+    firstCount.current = waitingCount;
+    void api.accountRequests().then(setRequests, failed);
+  }, [waitingCount, failed]);
+
+  function confirmRequest(request: AccountRequest) {
+    void run(async () => {
+      const { user, emailed } = await api.confirmAccountRequest(request.id);
+      setRequests((list) => list?.filter((r) => r.id !== request.id));
+      setUsers((list) => [...(list ?? []), user]);
+      setNotice(
+        emailed
+          ? `${user.displayName}'s account is confirmed. They've been emailed at ${user.loginName} with the link to log in.`
+          : `${user.displayName}'s account is confirmed, but they couldn't be emailed: tell them they can log in now.`,
+      );
+    });
+  }
+
+  function declineRequest() {
+    if (!declining) return;
+    const request = declining;
+    setDeclining(undefined);
+    void run(async () => {
+      await api.declineAccountRequest(request.id);
+      setRequests((list) => list?.filter((r) => r.id !== request.id));
+    });
+  }
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -245,6 +285,38 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
             </p>
           )}
         </>
+      )}
+      {notice && (
+        <p className="lifetime-result" role="status">
+          {notice}
+        </p>
+      )}
+      {requests && requests.length > 0 && (
+        <section className="account-requests">
+          <h2>Waiting to be confirmed</h2>
+          <p className="hint">
+            These people asked for an account on the sign-up page ({window.location.origin}/signup). They can log in once
+            you confirm them.
+          </p>
+          <ul className="user-list" aria-label="Waiting to be confirmed">
+            {requests.map((request) => (
+              <li key={request.id}>
+                <div className="user-names">
+                  <strong>{request.displayName}</strong> <span className="user-login">{request.loginName}</span>
+                </div>
+                <p className="user-details">Asked {when(request.requestedDateTime)}</p>
+                <div className="lifetime-buttons">
+                  <button type="button" className="button primary" disabled={busy} onClick={() => confirmRequest(request)}>
+                    Confirm
+                  </button>
+                  <button type="button" className="button" disabled={busy} onClick={() => setDeclining(request)}>
+                    Decline
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       {users && (
         <ul className="user-list" aria-label="Users">
@@ -376,6 +448,14 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
           confirmLabel={confirming.action === "reset" ? "Reset password" : "Turn off"}
           onConfirm={confirmed}
           onCancel={() => setConfirming(undefined)}
+        />
+      )}
+      {declining && (
+        <ConfirmDialog
+          message={`Decline ${declining.displayName}'s request? It will be removed, and they won't be told.`}
+          confirmLabel="Decline"
+          onConfirm={declineRequest}
+          onCancel={() => setDeclining(undefined)}
         />
       )}
       {shown && <PasswordDialog displayName={shown.displayName} password={shown.password} onDone={() => setShown(undefined)} />}

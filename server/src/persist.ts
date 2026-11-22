@@ -97,6 +97,9 @@ const TABLES = [
 const USERS_TABLE = [
   "CREATE TABLE IF NOT EXISTS nwsnotes.users (id integer PRIMARY KEY, login_name text NOT NULL, data jsonb NOT NULL)",
   "CREATE UNIQUE INDEX IF NOT EXISTS users_login_name ON nwsnotes.users (lower(login_name))",
+  // People who asked for an account on the sign-up page, until an admin confirms (they become users) or declines.
+  "CREATE TABLE IF NOT EXISTS nwsnotes.account_requests (id integer PRIMARY KEY, login_name text NOT NULL, data jsonb NOT NULL)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS account_requests_login_name ON nwsnotes.account_requests (lower(login_name))",
 ];
 
 /**

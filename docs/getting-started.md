@@ -1,5 +1,9 @@
 # Getting started with nwsnotes
 
+## Getting an account
+
+Go to the [sign-up page](/signup) (or, on the login page, choose **No account yet? Ask for one**). Fill in your email address, your name and a password you choose (at least 10 characters), then **Ask for an account**. Once your account has been confirmed, you'll get an email with the link to log in: use your email and that password. Until then, logging in says it's still waiting to be confirmed.
+
 Once you've logged in, you're straight into the main app screen.  At the bottom is an area to type a new note.  Clicking ENTER saves the note, or you can click the "+" button.
 
 In the top-right, there is a cog icon.  Clicking this takes you to the Settings page.
@@ -31,6 +35,9 @@ Alongside the edit button, each note has 2 other buttons:
 You can choose when to set notes to Waiting or Archived as you like.  I think of Archived notes like notes that are crossed out on a paper to-do list.
 
 Once notes have been archived, you can choose when to remove them from your notes lists.
+
+To delete archived notes in your current tab, click the notes-ordering button just under the settings cog in the top-right.  Then a button saying "Archived -> Bin" should appear, which you can click.
+
 
 ## That's all you need to get started!
 

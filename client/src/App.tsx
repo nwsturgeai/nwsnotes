@@ -124,10 +124,13 @@ export function App() {
     const thisRefresh = ++latestRefresh.current;
     refreshInProgress.current = true;
     try {
+      // Who is logged in too, as an admin's count of account requests waiting may have changed.
+      const meRequest = api.me().catch(() => undefined);
       const data = await api.getNotes();
+      const me = await meRequest;
       if (thisRefresh !== latestRefresh.current) return;
       setRefreshError(undefined);
-      setState((prev) => (prev.screen === "notes" ? { ...prev, data: withPending(data) } : prev));
+      setState((prev) => (prev.screen === "notes" ? { ...prev, data: withPending(data), me: me ?? prev.me } : prev));
       markOnline();
     } catch (error) {
       if (thisRefresh !== latestRefresh.current) return;
@@ -314,6 +317,7 @@ export function App() {
             offline={offlineState.offline}
             pendingCount={offlineState.pendingCount}
             showUpdateNotice={updateReady && !notesUnsaved}
+            accountsWaiting={state.me.admin ? state.me.accountsWaiting : undefined}
           />
           {offlineState.offline && page.name !== "notes" ? (
             // Settings (and category and tab editing) need the server.
@@ -365,7 +369,7 @@ export function App() {
           ) : page.name === "users" && state.me.admin ? (
             <UsersPage
               me={state.me}
-              onMeChanged={(me) => setState((prev) => (prev.screen === "notes" ? { ...prev, me } : prev))}
+              onMeChanged={(me) => setState((prev) => (prev.screen === "notes" ? { ...prev, me: { ...prev.me, ...me } } : prev))}
               onClose={() => navigate({ name: "settings" })} onSessionExpired={sessionExpired} />
           ) : page.name === "history" ? (
             <HistoryPage onReverted={() => void refreshNotes()} onSessionExpired={sessionExpired} />

@@ -293,6 +293,22 @@ body:has(.app) {
   font-size: 1.2rem;
 }
 
+/* Account requests waiting for the admin: the stylus icon's size, in the error colour, as a link. */
+.accounts-waiting {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 6px;
+  color: var(--error);
+  font-size: 16px;
+}
+
+.accounts-waiting.blocked {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Smaller than the cog: the same 16px icon in a 24px box as the note buttons. */
 .stylus-indicator {
   width: 24px;
@@ -2251,6 +2267,24 @@ body:has(.dragging) {
 
 .login-help {
   margin: 1rem 0 0;
+  text-align: center;
+}
+
+.login-help + .login-help {
+  margin-top: 0;
+}
+
+.sign-up-heading {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.login-card p {
+  margin: 0;
+}
+
+.login-card a.button {
+  margin-top: 0.5rem;
   text-align: center;
 }
 
