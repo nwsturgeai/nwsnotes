@@ -19,6 +19,7 @@ import type { Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
+import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
 import type { NoteStore } from "./store.js";
 import { ADMIN_ID, meOf, noteLimitOf, noteStatsOf, type User } from "./users.js";
@@ -29,7 +30,15 @@ function notebookOf(res: Response): NoteStore {
 }
 
 /** The main website + API app. */
-export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdates, push: PushReminders, db: Db, sms?: SmsNotes) {
+export function createApp(
+  config: Config,
+  notebooks: Notebooks,
+  live: LiveUpdates,
+  push: PushReminders,
+  db: Db,
+  sms?: SmsNotes,
+  mailer?: Mailer,
+) {
   const users = notebooks.users;
 
   /** Loads the logged-in user's notebook (after requireSession): every data route works on it. */
@@ -454,7 +463,13 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
       await (await notebooks.for(ADMIN_ID)).resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
       sms?.resetForTests();
+      mailer?.resetForTests();
       res.json({ ok: true });
+    });
+    // The emails that would have been sent to the logged-in user's login email (Brevo isn't reached from the tests).
+    app.get("/api/test/emails", requireSession(users, config.sessionSecret), (_req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.json(mailer?.emailsForTests(userOf(res).loginName) ?? []);
     });
     // The notifications that would have been sent to the logged-in user (push services can't be reached from the tests).
     app.get("/api/test/notifications", requireSession(users, config.sessionSecret), (_req, res) => {

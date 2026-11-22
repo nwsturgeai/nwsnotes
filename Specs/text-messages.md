@@ -19,6 +19,11 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **A notification for every note:** each saved note sends a notification to the person's devices that have reminders turned on, e.g. "Saved to Shopping" with "Oat milk and bin bags" below it. Android Auto doesn't show these in the car; they're there to check afterwards. There's no setting to turn this off, for now.
 - **A text back only when it fails:** if a note couldn't be saved, the reply is a text message saying why, so the person hears it in the car (Android Auto reads incoming texts aloud). Saved notes get no text back, which keeps the cost down.
 
+### Emailing a tab
+- A text "App email tab <tab name>" emails the person a summary of the notes that tab shows, to their login email (see [users.md](users.md): login names are email addresses). E.g. "Hey Google, send a text to nwsnotes: App email tab Shopping" before going to the shop.
+- The tab is named as for notes: by its name or spoken name, with small slips allowed. "App email tab All" sends the All tab.
+- Nothing is saved as a note. As for notes, a notification says it worked, and a text comes back only when it didn't.
+
 ### Spoken names for tabs
 - Each tab can have an optional extra name, its "spoken name", which is easier to say or which dictation gets right more often than the tab's own name: e.g. a tab "DIY" with the spoken name "do it yourself", or "Kids' stuff" with "kids".
 - A text can start with either the tab's name or its spoken name.
@@ -40,7 +45,7 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **Fields used:** `From` (the sender's number), `Body` (the text) and `MessageSid`. Long texts arrive as one `Body`, as Twilio joins their parts.
 
 ### Logging
-- **One line in the server's log for each text** (seen with `pm2 logs nwsnotes`), so it's clear what happened when a note doesn't appear: e.g. `Text SM… from …258: saved as user 1's note 42, in tab 3.` The outcomes: refused (wrong or missing signature, naming the addresses checked), already received, empty, a linking code used, a code that isn't waiting, a phone that isn't linked, an opt-out word, too many texts, a turned-off account, only a tab's name, the note limit, an error, or saved.
+- **One line in the server's log for each text** (seen with `pm2 logs nwsnotes`), so it's clear what happened when a note doesn't appear: e.g. `Text SM… from …258: saved as user 1's note 42, in tab 3.` The outcomes: refused (wrong or missing signature, naming the addresses checked), already received, empty, a linking code used, a code that isn't waiting, a phone that isn't linked, an opt-out word, too many texts, a turned-off account, only a tab's name, the note limit, an error, or saved; and for the email command, emailed (naming the tab and the number of notes), or not emailed (email not set up, a login that isn't an email, the daily limit, no tab matched, or an error). Never the email's contents or address.
 - **Never the text itself,** and only the last 3 digits of the sender's number. Users are named by their id.
 
 ### Phone numbers
@@ -104,6 +109,26 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **One text per reply:** each reply fits in one SMS, as each part costs the same as a whole text. That's 160 characters when every character is in the standard SMS alphabet (GSM-7), or 70 when any isn't (e.g. an emoji or a curly quote, which make the whole text use a larger alphabet). So the fixed wording uses only plain characters (straight quotes, "..." and "-"), and the quoted start of the note is cut short to fit.
 - **Failure replies are also sent as a notification,** with the heading "Not saved" and the full text of the note, so it can be added by hand later. ("Nothing to save after the tab name." isn't, as there's no note to keep.)
 
+### Emailing a tab
+- **The command:** a text whose first words are "app" and "email" (or "e-mail" / "e mail", as dictation may write it), after normalising as in "Choosing the tab". What follows names the tab, optionally after the word "tab". Read by `emailTabCommand` and `emailTabTarget` in `shared/src/sms.ts`, unit tested with the tab matching. Any other text, including one that merely contains "app" or "email" later on (e.g. "App store review"), is a note as before.
+- **Which tab:** matched as for notes (name or spoken name, slips allowed, the longest name winning), but the whole rest of the text must be the tab's name: "App email tab work and home" names no tab. Only "all" (after the optional "tab") is the built-in All tab.
+- **Checked as other texts are:** the same signature check, repeats, linking, opt-out words, rate limit (it counts as one of the 20 texts in 10 minutes) and turned-off accounts, in the same order. Only after those is it read as a command.
+- **Which notes:** exactly those the notes page lists in that tab without any extra filter row ticks or search: matching the tab's filters (`noteMatchesFilters`), so Bin notes are left out unless the tab ticks Bin, in the shared note order (`orderNotes`). Long-form notes and the notes added inside them are listed as they are on the page.
+- **The email:**
+  - **To** the person's login email, with their display name. **From** `emailFrom` in the config (default `noreply@nwsnotes.com`), named "nwsnotes". Replies to it go nowhere, as no mailbox is set up for it.
+  - **Subject:** "nwsnotes: <tab name> (<n> notes)" ("1 note" for one).
+  - **Body,** as plain text and as simple HTML: "Your <tab name> tab on <day, e.g. Sunday, 22 November 2026>: <n> notes.", then one line per note, then a link to the site (`publicUrl`). A tab showing no notes says "This tab shows no notes."
+  - **Each note's line:** its title, without formatting markers (`withoutMarkers`). A handwritten title shows as "[Handwritten note]", as the picture isn't sent. In brackets after it, when they apply: "long-form note"; "in <long-form note's title>" for a note added inside one (as its pill on the notes page); "due <date, e.g. Tue, 5 Mar 2030, 14:30>" (or "was due" once past). Dates and times are UK time (Europe/London).
+- **Afterwards:** a notification, "Emailed <tab name>" with "<n> notes, sent to <login email>.". No text is sent back.
+- **When it can't be sent,** the reply is a text (one SMS, plain characters only) and the same reason goes in a notification headed "Not emailed":
+  - **No tab matched:** `Not emailed: no tab called "<what was heard>".` (the name cut short with "..." to fit one text); with no name at all: `Not emailed: say which tab, e.g. "App email tab Shopping".`
+  - **Email isn't set up** (no Brevo key on the VM): "Not emailed: email isn't set up on nwsnotes."
+  - **A login from before login names were emails:** "Not emailed: your login isn't an email address. Ask the admin to change it."
+  - **The daily limit:** at most 10 tab emails for each person in 24 hours (counted in memory, so a restart forgets them), which keeps everyone well within Brevo's free 300 a day: "Not emailed: you've had 10 tab emails in the last day. Try again later."
+  - **Brevo refused it or couldn't be reached** (within 8 seconds, as Twilio waits about 15 for the answer): "Not emailed: nwsnotes couldn't send the email. Please try again later." Brevo's answer goes in the log.
+- **Sending:** `server/src/email.ts` posts to Brevo's API (`https://api.brevo.com/v3/smtp/email`, with the key in the `api-key` header). This goes over HTTPS on port 443, as DigitalOcean blocks outgoing mail ports (25, 465, 587).
+- **Settings on the VM,** in `/etc/nwsnotes/config.json`: `brevoApiKey` (turns email on) and `emailFrom` (optional; must be an email address on a domain authenticated in Brevo), and optionally `emailFromName`. `deploy/set-email.sh` asks for them and restarts the app; the steps are in `README.md` ("Sending email"). Development and the tests never send: emails are kept in memory.
+
 ### Spoken names
 - **Stored on the tab:** a new optional `spokenName` field on `Tab`, sent and checked with the tab's name, filters and placement (`POST` and `PUT /api/tabs`). Tabs without it have no spoken name.
 - **Rules:** trimmed; empty means none; at most 40 characters; it must have at least one letter or digit. Normalised as above, it can't be the same as "all", as "tab", as its own tab's name, or as any other tab's name or spoken name. Error: "Another tab already uses that name." (or "…can't be "All"").
@@ -115,8 +140,10 @@ People want to add notes by voice while driving. Their Android phone connects to
 ### Tests
 - **A fake Twilio:** in test mode the SMS route is on, with a test auth token, number and public URL. Tests post made-up texts to `/api/sms/incoming` in Twilio's form format, signed with the test token, and check the TwiML in the answer.
 - **Notifications in test mode** are kept in memory instead of being sent, and `GET /api/test/notifications` returns the logged-in user's (test mode only), so tests can check the "Saved to…" notifications. A test registers a made-up device first (`POST /api/push/subscribe`), as only users with a device get notifications.
-- **The test reset** also forgets the waiting codes, the remembered `MessageSid`s and the counts of texts, and puts user 1 back without a linked phone or a note limit of its own.
+- **Emails in test mode** are kept in memory instead of being sent, and `GET /api/test/emails` returns those sent to the logged-in user's login email (test mode only).
+- **The test reset** also forgets the waiting codes, the remembered `MessageSid`s, the counts of texts and emails, and the kept emails, and puts user 1 back without a linked phone or a note limit of its own.
 - **New `text-messages.spec.ts`:** linking from Settings (and a wrong, expired or reused code); unlinking; a text from an unlinked number adds nothing and gets no reply; a note goes into the right user's notebook only; a tab's name and its spoken name put the note in that tab, with its tags; slips and punctuation still match; the longest name wins; no match goes to All; a several-tag filter takes the first tag; the notification for each note; each failure reply (only a tab name, the note limit, a turned-off account, too many texts); a repeated `MessageSid` adds one note; opt-out words are ignored; a wrong signature is refused; the note appears on an open page straight away.
+- **Emailing a tab** (`text-messages.spec.ts`): the email's address, subject and note lines for a tab, its order, Bin left out, handwritten, long-form and child notes, due dates; a spoken name, All, and an empty tab; no tab matched (with a long name cut to fit), no name; only the texting user's tabs and email; the daily limit, with notes still saved after it.
 - **Tab tests** gain: saving a spoken name, its rules and errors, and it showing in the Settings tab list.
 - **Unit tests** in `sms-matching.spec.ts` (run once, in the desktop project, with no browser): the tab matching, spoken names' rules, fitting replies into one text, and showing phone numbers. The signature check is tested end to end: correctly signed texts are accepted, and wrongly signed or unsigned ones refused.
 
@@ -125,3 +152,4 @@ People want to add notes by voice while driving. Their Android phone connects to
 - Editing or archiving notes by text.
 - A choice, per tab, of which tag to use when its filter has several in one category.
 - Other messaging apps (WhatsApp).
+- Other "App" commands, and handwritten titles shown as pictures in the tab email.

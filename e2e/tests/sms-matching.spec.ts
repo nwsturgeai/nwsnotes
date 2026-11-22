@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fitsOneSms, formatPhoneNumber, matchSpokenTab, normaliseSpoken, notSavedReply, spokenNameError } from "../../shared/src/sms";
+import { emailTabCommand, emailTabTarget, fitsOneSms, formatPhoneNumber, matchSpokenTab, normaliseSpoken, notSavedReply, spokenNameError } from "../../shared/src/sms";
 
 // Unit tests of the shared text-message code: no browser or server needed, so they run once (desktop).
 test.beforeEach(() => {
@@ -96,4 +96,37 @@ test("a not-saved reply fits in one text, cutting the quoted note short", () => 
 test("UK numbers are shown in the usual form", () => {
   expect(formatPhoneNumber("+447700900123")).toBe("07700 900123");
   expect(formatPhoneNumber("+12025550123")).toBe("+12025550123");
+});
+
+test('"App email tab <name>" is the email command, however it is dictated', () => {
+  expect(emailTabCommand("App email tab Shopping")).toBe("tab Shopping");
+  expect(emailTabCommand("app e-mail tab shopping.")).toBe("tab shopping.");
+  expect(emailTabCommand("App, e mail: tab Home jobs")).toBe("tab Home jobs");
+  expect(emailTabCommand("App email")).toBe("");
+  // Anything else is a note, as before.
+  expect(emailTabCommand("Apple email tab Shopping")).toBeUndefined();
+  expect(emailTabCommand("App store review")).toBeUndefined();
+  expect(emailTabCommand("Email tab Shopping")).toBeUndefined();
+  expect(emailTabCommand("Shopping, app email")).toBeUndefined();
+});
+
+test("the email command names a tab by its name or spoken name, or All", () => {
+  const target = (named: string) => {
+    const tab = emailTabTarget(named, tabs);
+    return tab === "all" ? "all" : tab?.id;
+  };
+  expect(target("tab Shopping")).toBe(1);
+  expect(target("Shopping")).toBe(1);
+  expect(target("tab shoping.")).toBe(1);
+  expect(target("tab home jobs")).toBe(3);
+  expect(target("tab home")).toBe(2);
+  expect(target("tab do it yourself")).toBe(4);
+  expect(target("tab kids")).toBe(5);
+  expect(target("tab all")).toBe("all");
+  expect(target("All")).toBe("all");
+  // No such tab, no name, or more words after the name.
+  expect(target("tab holidays")).toBeUndefined();
+  expect(target("tab")).toBeUndefined();
+  expect(target("")).toBeUndefined();
+  expect(target("tab shopping and work")).toBeUndefined();
 });
