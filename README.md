@@ -148,7 +148,7 @@ If the VM was set up when the site was at nwsnotes.duckdns.org:
 
    It gets one certificate for nwsnotes.com, www.nwsnotes.com and nwsnotes.duckdns.org, updates the renewal hook, restarts the app and removes the old certificate.
 4. In GitHub, change the `VM_HOST` secret to `nwsnotes.com`.
-5. If text messages are turned on: run `sudo bash set-sms.sh` again (copy the new one across first) and accept the new address, then change the Twilio webhook to `https://nwsnotes.com/api/sms/incoming`. Until you do, texts keep working at the old address.
+5. If text messages are turned on: change the Twilio webhook to `https://nwsnotes.com/api/sms/incoming`, then run `sudo bash set-sms.sh` again (copy the new one across first) and accept the new address. Texts keep working throughout, whichever address the webhook uses.
 6. On each phone, open https://nwsnotes.com, log in (logins don't carry over to a new address), install it again (**⋮ → Add to Home screen → Install**), turn reminders back on in Settings if you use them, and remove the old app's icon. The old app keeps working until then.
 
 ## Day-to-day
