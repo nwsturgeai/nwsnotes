@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { hashPassword } from "./auth.js";
+import type { EmailConfig } from "./email.js";
 
 export interface Config {
   /** True on the VM; false when running locally with `npm run dev`. */
@@ -49,6 +50,8 @@ export interface Config {
   databaseCaFile?: string;
   /** Adding notes by text message (Twilio). Missing: turned off. */
   sms?: SmsConfig;
+  /** Sending email through Brevo (production only; development and the tests keep emails in memory). Missing: turned off. */
+  email?: EmailConfig;
 }
 
 /** The Twilio number that texts are sent to, and what's needed to check that requests come from Twilio. */
@@ -66,6 +69,9 @@ export const TEST_SMS = { authToken: "test-twilio-auth-token", number: "+4477009
 
 const DEFAULT_SITE_HOST = "nwsnotes.com";
 const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
+/** The sender of nwsnotes' emails, on the domain authenticated in Brevo. */
+const DEFAULT_EMAIL_FROM = "noreply@nwsnotes.com";
+const DEFAULT_EMAIL_FROM_NAME = "nwsnotes";
 
 /** The admin's password in development and the tests. */
 export const DEV_PASSWORD = "dev";
@@ -113,11 +119,17 @@ export function loadConfig(): Config {
     twilioAuthToken?: string;
     smsNumber?: string;
     publicUrl?: string;
+    brevoApiKey?: string;
+    emailFrom?: string;
+    emailFromName?: string;
   };
   const smsKeys = ["twilioAuthToken", "smsNumber", "publicUrl"] as const;
   const smsSet = smsKeys.filter((key) => raw[key]);
   if (smsSet.length > 0 && smsSet.length < smsKeys.length) {
     throw new Error(`${file} needs all of ${smsKeys.map((key) => `"${key}"`).join(", ")} for text messages, or none of them.`);
+  }
+  if (raw.emailFrom && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(raw.emailFrom)) {
+    throw new Error(`${file}: "emailFrom" must be an email address, e.g. "noreply@nwsnotes.com".`);
   }
   if (raw.smsNumber && !/^\+[1-9]\d{6,14}$/.test(raw.smsNumber)) {
     throw new Error(`${file}: "smsNumber" must be in international form, e.g. "+447700900123".`);
@@ -144,5 +156,8 @@ export function loadConfig(): Config {
     ...(raw.twilioAuthToken &&
       raw.smsNumber &&
       raw.publicUrl && { sms: { authToken: raw.twilioAuthToken, number: raw.smsNumber, publicUrl: raw.publicUrl.replace(/\/+$/, "") } }),
+    ...(raw.brevoApiKey && {
+      email: { brevoApiKey: raw.brevoApiKey, from: raw.emailFrom ?? DEFAULT_EMAIL_FROM, fromName: raw.emailFromName ?? DEFAULT_EMAIL_FROM_NAME },
+    }),
   };
 }

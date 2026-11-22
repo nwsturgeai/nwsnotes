@@ -40,6 +40,16 @@ Some tab names are hard to say, or Google keeps mishearing them. Give such a tab
 - **Each saved note sends a notification** to your devices that have reminders turned on (see [Due dates and reminders](due-dates.md)), e.g. "Saved to Shopping" with the note below it. It tells you if no tab matched. These don't show in the car; they're there to check afterwards.
 - **If a note couldn't be saved, you get a text back** saying why, which Android Auto reads out to you. For example, the text was only a tab's name, you've reached your limit of notes, or nwsnotes couldn't be reached. The note's text is still in your sent messages, to send again later.
 
+## Emailing yourself a tab
+
+To get a list of the notes in a tab, for example before going to the shop, text:
+
+> "Hey Google, send a text to nwsnotes: **App email tab Shopping**"
+
+nwsnotes emails you the notes the Shopping tab shows, in the same order, with any due dates, to the email address you log in with. Use a tab's name or its spoken name, or "App email tab All" for everything. Nothing is added as a note.
+
+A notification tells you it's been sent. If it couldn't be sent, for example no tab has that name, you get a text back saying why. You can have up to 10 of these emails a day.
+
 ## Unlinking
 
 In **Settings**, under **Text messages**, tap **Unlink**. Texts from that phone then stop adding notes.

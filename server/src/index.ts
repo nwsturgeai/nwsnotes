@@ -8,6 +8,7 @@ import { openDatabase } from "./db.js";
 import { LiveUpdates } from "./live.js";
 import { PushReminders } from "./push.js";
 import { Notebooks } from "./notebooks.js";
+import { Mailer } from "./email.js";
 import { SmsNotes } from "./sms.js";
 import { Users } from "./users.js";
 
@@ -59,9 +60,11 @@ async function main() {
   const push = new PushReminders(config.dataDir, config.pushContact, notebooks, config.testMode);
   await push.init();
   const live = new LiveUpdates(users, config.sessionSecret);
-  const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret);
+  const mailer = new Mailer(config.email, !config.production);
+  if (config.email) console.log(`Emails are sent from ${config.email.from}, through Brevo.`);
+  const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, mailer);
   if (config.sms) console.log(`Notes can be texted to ${config.sms.number}.`);
-  const app = createApp(config, notebooks, live, push, db, sms);
+  const app = createApp(config, notebooks, live, push, db, sms, mailer);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {

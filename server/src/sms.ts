@@ -4,7 +4,11 @@ import {
   LIFETIME_CATEGORY_ID,
   LIFETIME_NEW,
   TITLE_MAX_LENGTH,
+  emailTabCommand,
+  emailTabTarget,
+  fitsOneSms,
   formatPhoneNumber,
+  isValidLoginName,
   matchSpokenTab,
   notSavedReply,
   type SmsLinkCode,
@@ -13,9 +17,11 @@ import {
 } from "@nwsnotes/shared";
 import { requireSession, userOf } from "./auth.js";
 import type { SmsConfig } from "./config.js";
+import type { Mailer } from "./email.js";
 import type { LiveUpdates } from "./live.js";
 import type { Notebooks } from "./notebooks.js";
 import type { PushReminders } from "./push.js";
+import { tabSummaryEmail } from "./tabEmail.js";
 import { noteLimitOf, type User } from "./users.js";
 
 /** Where Twilio sends each text that arrives at the nwsnotes number. */
@@ -28,6 +34,9 @@ const SIDS_REMEMBERED = 1000;
 /** At most this many notes in RATE_WINDOW_MS from one number. */
 const RATE_LIMIT = 20;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
+/** At most this many tab emails a day for each user, as Brevo's free plan sends 300 a day for everyone. */
+const EMAILS_PER_DAY = 10;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Texts that are only one of these words aren't notes: Twilio may act on them itself (opting out of texts). */
 const OPT_OUT_WORDS = new Set(["stop", "start", "unstop", "help", "info", "cancel", "end", "quit", "unsubscribe", "stopall"]);
@@ -92,6 +101,8 @@ export class SmsNotes {
   private readonly sids: string[] = [];
   /** Each number's recent notes' times, and whether it's been told it's sending too many. */
   private readonly recent = new Map<string, { times: number[]; warned: boolean }>();
+  /** Each user's tab emails' times in the last day. Memory only. */
+  private readonly emailed = new Map<number, number[]>();
 
   constructor(
     private readonly config: SmsConfig,
@@ -99,6 +110,7 @@ export class SmsNotes {
     private readonly live: LiveUpdates,
     private readonly push: PushReminders,
     private readonly sessionSecret: string,
+    private readonly mailer: Mailer,
   ) {}
 
   /** The webhook (signed by Twilio, no session) and the logged-in user's routes under /api/me/sms. */
@@ -247,6 +259,8 @@ export class SmsNotes {
       log(`not saved: user ${user.id}'s account is turned off.`);
       return this.failed(user.id, text, "your nwsnotes account is turned off.");
     }
+    const named = emailTabCommand(text);
+    if (named !== undefined) return this.emailTab(user, named, log);
     return this.addNote(user, text, log);
   }
 
@@ -292,6 +306,73 @@ export class SmsNotes {
     }
   }
 
+  /** "App email tab <name>": emails the user a summary of the notes that tab shows. Texts back only if it couldn't. */
+  private async emailTab(user: User, named: string, log: (outcome: string) => void): Promise<string | undefined> {
+    if (!this.mailer.enabled) {
+      log(`not emailed: email isn't set up, for user ${user.id}.`);
+      return this.notEmailed(user.id, "email isn't set up on nwsnotes.");
+    }
+    if (!isValidLoginName(user.loginName)) {
+      log(`not emailed: user ${user.id}'s login isn't an email address.`);
+      return this.notEmailed(user.id, "your login isn't an email address. Ask the admin to change it.");
+    }
+    const now = Date.now();
+    const sent = (this.emailed.get(user.id) ?? []).filter((time) => time > now - DAY_MS);
+    this.emailed.set(user.id, sent);
+    if (sent.length >= EMAILS_PER_DAY) {
+      log(`not emailed: user ${user.id} has had ${EMAILS_PER_DAY} tab emails today.`);
+      return this.notEmailed(user.id, `you've had ${EMAILS_PER_DAY} tab emails in the last day. Try again later.`);
+    }
+    try {
+      const store = await this.notebooks.for(user.id);
+      const data = store.getAll();
+      const tab = emailTabTarget<Tab>(named, data.tabs);
+      if (!tab) {
+        log(`not emailed: no tab matched, for user ${user.id}.`);
+        return this.notEmailed(user.id, undefined, named);
+      }
+      const email = tabSummaryEmail(tab, data, { email: user.loginName, name: user.displayName }, this.config.publicUrl);
+      await this.mailer.send(email);
+      sent.push(now);
+      const tabName = tab === "all" ? "All" : tab.name;
+      log(`emailed ${tab === "all" ? "the All tab" : `tab ${tab.id}`} (${email.noteCount} notes) to user ${user.id}.`);
+      await this.push.notify(user.id, {
+        title: `Emailed ${tabName}`,
+        body: `${email.noteCount === 1 ? "1 note" : `${email.noteCount} notes`}, sent to ${user.loginName}.`,
+        tag: `sms-emailed-${now}`,
+      });
+      return undefined;
+    } catch (error) {
+      log(`not emailed: an error (below) emailing user ${user.id}'s tab.`);
+      console.error(`Couldn't email user ${user.id}'s tab:`, error);
+      return this.notEmailed(user.id, "nwsnotes couldn't send the email. Please try again later.");
+    }
+  }
+
+  /**
+   * A tab email that wasn't sent: a notification saying why, and the reply to text back (one SMS). With
+   * `named` (no tab matched), the reply quotes the name heard, cut short to fit.
+   */
+  private async notEmailed(userId: number, reason: string | undefined, named = ""): Promise<string> {
+    // The name as heard, without the optional word "tab" in front.
+    const heard = named.trim().replace(/\s+/g, " ").replace(/^tab\b[\s,:;.-]*/i, "");
+    const make = (quoted: string) => `Not emailed: no tab called "${quoted}".`;
+    let reply =
+      reason !== undefined ? `Not emailed: ${reason}` : heard === "" ? 'Not emailed: say which tab, e.g. "App email tab Shopping".' : make(heard);
+    if (reason === undefined && heard !== "" && !fitsOneSms(reply)) {
+      const chars = [...heard];
+      let length = chars.length - 1;
+      while (length > 0 && !fitsOneSms(make(`${chars.slice(0, length).join("").trimEnd()}...`))) length--;
+      reply = length > 0 ? make(`${chars.slice(0, length).join("").trimEnd()}...`) : "Not emailed: no tab has that name.";
+    }
+    try {
+      await this.push.notify(userId, { title: "Not emailed", body: reply.replace(/^Not emailed: /, ""), tag: `sms-not-emailed-${Date.now()}` });
+    } catch (error) {
+      console.error("Couldn't send a notification:", error);
+    }
+    return reply;
+  }
+
   /** A note that wasn't saved: the reply to text back, and a notification with all of its text. */
   private async failed(userId: number, text: string, reason: string): Promise<string> {
     try {
@@ -307,5 +388,6 @@ export class SmsNotes {
     this.codes.clear();
     this.sids.length = 0;
     this.recent.clear();
+    this.emailed.clear();
   }
 }

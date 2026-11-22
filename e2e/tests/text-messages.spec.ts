@@ -293,3 +293,138 @@ test("texts go to the linked user's own notebook, and a turned-off account gets 
     await sam.close();
   }
 });
+
+// ---- Emailing a tab ---------------------------------------------------------------
+
+interface SentEmail {
+  to: string;
+  toName?: string;
+  subject: string;
+  text: string;
+  html: string;
+}
+
+/** The emails sent to the logged-in user's login email, oldest first. */
+async function emails(request: APIRequestContext): Promise<SentEmail[]> {
+  return (await (await request.get("/api/test/emails")).json()) as SentEmail[];
+}
+
+/** The note lines of an email's text. */
+const emailedLines = (email: SentEmail) => email.text.split("\n").filter((line) => line.startsWith("- "));
+
+test('"App email tab <name>" emails a summary of the notes that tab shows, with no text back', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+
+  expect(reply((await text(page.request, "App email tab work")).body)).toBeUndefined();
+  const [work] = await emails(page.request);
+  expect(work!.to).toBe("admin@example.com");
+  expect(work!.toName).toBe("Admin");
+  expect(work!.subject).toBe("nwsnotes: Work (3 notes)");
+  expect(work!.text).toContain("Your Work tab on ");
+  // The notes the tab shows, in the notes page's order, without formatting markers.
+  expect(emailedLines(work!)).toEqual(["- Plan the team meeting", "- Read the quarterly report", "- Old invoice"]);
+  expect(work!.text).toContain("Open nwsnotes: ");
+  expect(work!.html).toContain("<li");
+  expect(work!.html).toContain("Plan the team meeting");
+  // Nothing was added as a note.
+  expect((await notes(page.request)).some((note) => note.titleText?.includes("email"))).toBe(false);
+  expect((await notifications(page.request)).at(-1)).toEqual(
+    expect.objectContaining({ title: "Emailed Work", body: "3 notes, sent to admin@example.com." }),
+  );
+});
+
+test("the tab email follows the notes page: its order, Bin hidden, handwritten and long-form notes, due dates, UK time", async ({ page }) => {
+  await linkPhone(page.request);
+  // Put "Garden ideas" first, and give "Buy milk" a due date.
+  const all = ((await (await page.request.get("/api/notes")).json()) as { notes: { id: number }[] }).notes.map((note) => note.id);
+  expect((await page.request.put("/api/notes/order", { data: { noteOrder: [9, ...all.filter((id) => id !== 9)] } })).ok()).toBe(true);
+  expect((await page.request.put("/api/notes/2", { data: { titleText: "Buy milk", tagIds: [2, 4, -1], dueDateTime: "2030-03-05T14:30:00.000Z" } })).ok()).toBe(true);
+
+  expect(reply((await text(page.request, "App e-mail tab Home.")).body)).toBeUndefined();
+  const [home] = await emails(page.request);
+  expect(home!.subject).toBe("nwsnotes: Home (5 notes)");
+  // "Broken lamp" is in the Bin, so the tab doesn't show it.
+  expect(emailedLines(home!)).toEqual([
+    "- Garden ideas",
+    "- Buy milk (due Tue, 5 Mar 2030, 14:30)",
+    "- [Handwritten note]",
+    "- Holiday plans (long-form note)",
+    "- Book flights (in Holiday plans)",
+  ]);
+
+  // A tab with a Lifetime filter, and All.
+  await text(page.request, "app email tab on hold");
+  expect(emailedLines((await emails(page.request)).at(-1)!)).toEqual(["- Read the quarterly report"]);
+  await text(page.request, "App email tab all");
+  const everything = (await emails(page.request)).at(-1)!;
+  expect(everything.subject).toBe("nwsnotes: All (8 notes)");
+  expect(emailedLines(everything)).not.toContain("- Broken lamp");
+});
+
+test("a tab's spoken name works in the email command, and an empty tab says so", async ({ page }) => {
+  await linkPhone(page.request);
+  const added = await page.request.post("/api/tabs", {
+    data: { name: "DIY", spokenName: "do it yourself", categories: [{ categoryId: 2, tagIds: [3] }] },
+  });
+  expect(added.ok()).toBe(true);
+  const empty = await page.request.post("/api/tabs", { data: { name: "Reading", categories: [{ categoryId: 2, tagIds: [5] }, { categoryId: 1, tagIds: [2] }] } });
+  expect(empty.ok()).toBe(true);
+
+  await text(page.request, "App email tab do it yourself");
+  const diy = (await emails(page.request)).at(-1)!;
+  expect(diy.subject).toBe("nwsnotes: DIY (1 note)");
+  expect(emailedLines(diy)).toEqual(["- Garden ideas"]);
+
+  await text(page.request, "App email tab reading");
+  const reading = (await emails(page.request)).at(-1)!;
+  expect(reading.subject).toBe("nwsnotes: Reading (0 notes)");
+  expect(reading.text).toContain("This tab shows no notes.");
+});
+
+test("an email command naming no tab gets a text back, and sends nothing", async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  expect(reply((await text(page.request, "App email tab holidays")).body)).toBe('Not emailed: no tab called "holidays".');
+  expect(reply((await text(page.request, "App email")).body)).toBe('Not emailed: say which tab, e.g. "App email tab Shopping".');
+  expect(reply((await text(page.request, "App email tab work and home")).body)).toBe('Not emailed: no tab called "work and home".');
+  const long = `App email tab ${"very ".repeat(40)}long name`;
+  const longReply = reply((await text(page.request, long)).body)!;
+  expect(longReply).toMatch(/^Not emailed: no tab called "very very .*\.\.\."\.$/);
+  expect(longReply.length).toBeLessThanOrEqual(160);
+  expect(await emails(page.request)).toEqual([]);
+  expect((await notifications(page.request)).at(-1)).toEqual(expect.objectContaining({ title: "Not emailed" }));
+  // And nothing was saved as a note.
+  expect((await notes(page.request)).some((note) => note.titleText?.toLowerCase().includes("email"))).toBe(false);
+});
+
+test("tab emails go only to the texting user's own email, with their own tabs", async ({ page, browser }) => {
+  const added = await page.request.post("/api/users", { data: { displayName: "Kit", loginName: "kit@example.com" } });
+  const { password } = (await added.json()) as { password: string };
+  const kit = await (await browser.newContext({ storageState: { cookies: [], origins: [] } })).newPage();
+  expect((await kit.request.post("/api/login", { data: { loginName: "kit@example.com", password } })).ok()).toBe(true);
+  await linkPhone(kit.request, "+447700900456");
+
+  // Kit has no tabs, so "Work" is none of theirs.
+  expect(reply((await text(kit.request, "App email tab work", { from: "+447700900456" })).body)).toBe('Not emailed: no tab called "work".');
+  await text(kit.request, "App email tab all", { from: "+447700900456" });
+  const [kitsEmail] = await emails(kit.request);
+  expect(kitsEmail!.to).toBe("kit@example.com");
+  expect(kitsEmail!.subject).toBe("nwsnotes: All (0 notes)");
+  expect(await emails(page.request)).toEqual([]);
+  await kit.context().close();
+});
+
+test("at most 10 tab emails a day for each user", async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  for (let i = 0; i < 10; i++) expect(reply((await text(page.request, "App email tab work")).body)).toBeUndefined();
+  expect(await emails(page.request)).toHaveLength(10);
+  expect(reply((await text(page.request, "App email tab work")).body)).toBe(
+    "Not emailed: you've had 10 tab emails in the last day. Try again later.",
+  );
+  expect(await emails(page.request)).toHaveLength(10);
+  // Notes can still be texted in.
+  expect(reply((await text(page.request, "Work, still saved")).body)).toBeUndefined();
+  expect((await lastNote(page.request)).titleText).toBe("Still saved");
+});

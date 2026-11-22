@@ -134,6 +134,24 @@ Lets everyone text notes in, e.g. by voice from the car with Android Auto (see [
 
 It costs about $0.0075 for each text received and $0.05 for each text sent back (only when a note couldn't be saved).
 
+### 7. Sending email (Brevo, optional)
+
+Lets nwsnotes send email, e.g. a summary of a tab when someone texts "App email tab Shopping" (see "Emailing a tab" in [Specs/text-messages.md](Specs/text-messages.md)). It goes through Brevo's API over HTTPS, as DigitalOcean blocks the usual mail ports. Without it, the app works as before, and the email command texts back that email isn't set up.
+
+1. At https://www.brevo.com, sign up (the free plan sends 300 emails a day).
+2. In **Senders, Domains & Dedicated IPs → Domains**, add `nwsnotes.com` and add the DNS records it shows (a `brevo-code` TXT record, DKIM records and, if there isn't one, DMARC). Wait until Brevo shows the domain as authenticated.
+3. Under **Senders**, add `noreply@nwsnotes.com`. It needs no mailbox.
+4. Under **SMTP & API → API Keys**, make an **API key** (it starts `xkeysib-`; an SMTP key won't do).
+5. Copy the script to the VM and run it. It asks for the key, without showing it, and the sender, then restarts the app:
+
+   ```bash
+   scp deploy/set-email.sh root@nwsnotes.com:
+   ssh root@nwsnotes.com
+   sudo bash set-email.sh
+   ```
+
+Emails go to each person's login email. Each person can have at most 10 tab emails a day, so everyone together stays within the free plan.
+
 ## Moving from nwsnotes.duckdns.org to nwsnotes.com (once)
 
 If the VM was set up when the site was at nwsnotes.duckdns.org:
@@ -177,7 +195,7 @@ Open https://nwsnotes.com in Chrome on the phone, log in, then choose **⋮ → 
 | Supabase | The users, and each one's notes, categories, tabs and their 30-day history |
 | `/var/lib/nwsnotes/data/backups/<user id>` | A backup file a day for each user, the last seven, e.g. `backups/1/notes-2026-11-18.json` |
 | `/var/lib/nwsnotes/data` | Push-notification keys and devices (and any old save-files from before the database, which the app no longer reads) |
-| `/etc/nwsnotes/config.json` | Session secret, the database's connection string, and the admin's email (`adminLoginName`) and first password hash (both only used to make user 1) |
+| `/etc/nwsnotes/config.json` | Session secret, the Brevo key and sender (if email is on), the database's connection string, and the admin's email (`adminLoginName`) and first password hash (both only used to make user 1) |
 | `/etc/nwsnotes/supabase-ca.crt` | Supabase's SSL certificate, to check the database connection |
 | `/etc/nwsnotes/certs` | The app's copy of the HTTPS certificate |
 

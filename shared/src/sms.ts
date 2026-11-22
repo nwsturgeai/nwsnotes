@@ -185,3 +185,34 @@ export function formatPhoneNumber(e164: string): string {
   if (uk) return `0${uk[1]} ${uk[2]}`;
   return e164;
 }
+
+// ---- Commands -----------------------------------------------------------------
+
+/**
+ * "App email tab <tab name>": emails the user a summary of the notes that tab shows. Returns the text
+ * after "App email" (still starting with "tab", if it was said), or undefined if the text isn't this
+ * command. "E-mail" and "e mail" count as "email", as dictation may write them either way.
+ */
+export function emailTabCommand(text: string): string | undefined {
+  const trimmed = text.trim();
+  const words = wordsWithEnds(trimmed);
+  if (words[0]?.word !== "app") return undefined;
+  let last: number;
+  if (words[1]?.word === "email") last = 1;
+  else if (words[1]?.word === "e" && words[2]?.word === "mail") last = 2;
+  else return undefined;
+  return trimmed.slice(words[last]!.end).replace(LEADING_PUNCTUATION, "").trim();
+}
+
+/**
+ * Which tab an "App email tab" command names: one of the tabs (by its name or spoken name, as for
+ * notes), "all" for the built-in All tab, or undefined when it names none or has words after the name.
+ */
+export function emailTabTarget<T extends SpokenTab>(named: string, tabs: T[]): T | "all" | undefined {
+  const words = wordsOf(named);
+  const withoutTabWord = words[0] === TAB_WORD ? words.slice(1) : words;
+  if (withoutTabWord.join(" ") === "all") return "all";
+  if (withoutTabWord.length === 0) return undefined;
+  const { tab, title } = matchSpokenTab(named, tabs);
+  return tab && normaliseSpoken(title) === "" ? tab : undefined;
+}
