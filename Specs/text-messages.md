@@ -15,6 +15,7 @@ People want to add notes by voice while driving. Their Android phone connects to
 
 ### Sending a note
 - The text is the note's title. If it starts with the name, or the spoken name, of one of the person's tabs, that's taken off and the note gets the tab's tags, so it shows in that tab. Otherwise the whole text is the title and the note has no tags, so it shows in All.
+- **"Top" after the tab name:** if the word "top" comes straight after the tab's name, it isn't part of the note: the note is added at the top of that tab's list instead of at the bottom, as adding at the top does in the app. E.g. "Shopping top, oat milk" adds "Oat milk" at the top of the Shopping tab.
 - The note appears straight away on the person's other open devices.
 - **A notification for every note:** each saved note sends a notification to the person's devices that have reminders turned on, e.g. "Saved to Shopping" with "Oat milk and bin bags" below it. Android Auto doesn't show these in the car; they're there to check afterwards. There's no setting to turn this off, for now.
 - **A text back only when it fails:** if a note couldn't be saved, the reply is a text message saying why, so the person hears it in the car (Android Auto reads incoming texts aloud). Saved notes get no text back, which keeps the cost down.
@@ -43,6 +44,7 @@ People want to add notes by voice while driving. Their Android phone connects to
 ### Logging
 - **One line in the server's log for each text** (seen with `pm2 logs nwsnotes`), so it's clear what happened when a note doesn't appear: e.g. `Text SM… from …258: saved as user 1's note 42, in tab 3.` The outcomes: refused (wrong or missing signature, naming the addresses checked), already received, empty, a linking code used, a code that isn't waiting, a phone that isn't linked, an opt-out word, too many texts, a turned-off account, only a tab's name, the note limit, an error, or saved.
 - **Never the text itself,** and only the last 3 digits of the sender's number. Users are named by their id.
+- **Adding at the top** shows in the "saved" line, e.g. `saved as user 1's note 42, in tab 3, at the top.`
 
 ### Phone numbers
 - **Stored as E.164,** e.g. `+447700900123`. Twilio sends `From` in this form already.
@@ -73,6 +75,10 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **The title** is the rest of the original text after the matched words, with any spaces and punctuation in front of it (`, : ; . - –`) removed and the first letter put in upper case. Nothing else in it is changed.
 - **No tab matched:** the whole text (trimmed, with its first letter in upper case) is the title, with no tags.
 - **"All"** isn't matched: a text starting "All" is just a note starting with "All".
+- **"Top":** after the tab's name (and any punctuation after it), if the next word is "top" (any case, a whole word, with no slips allowed), it's taken off too, along with any punctuation after it, and the note is added at the top (see "Adding at the top"). So "Shopping top, oat milk", "Shopping, top: oat milk" and "shopping Top oat milk" all add "Oat milk" at the top of Shopping. "Shopping topsoil" is a note "Topsoil", at the bottom.
+  - **Only after a tab's name:** with no tab matched, "top" is just a word in the note.
+  - **Nothing after it:** "Shopping top" saves nothing, and gets the same text back as only a tab's name: "Nothing to save after the tab name."
+  - **A note that really starts with "top"** ("Work top priority is the budget") is taken as adding at the top, with the title "Priority is the budget". To keep the word, say something before it, or leave out the tab name.
 - **Matching** is a shared function, `matchSpokenTab` in `shared/src/sms.ts`, with its own unit tests, as it has many small cases.
 
 ### The note
@@ -84,13 +90,20 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **Too long:** a title over 500 characters is cut at the last space before 500 characters. It's still saved, and the notification says so.
 - **Added as any other note:** the same checks, the same place in the note order (at the bottom, as the newest), one change in the History ("Added "<title>" by text message"), and live updates to the person's open devices.
 
+### Adding at the top
+- **The same as in the app** (see "Adding a note at the top" in [notes.md](notes.md)): the note is added as usual, then the shared order is saved with the new note straight before the first note the tab lists, or at the very front if the tab lists none. It's then at the top of that tab, and in the same place relative to those notes on every other tab.
+- **"The first note the tab lists"** is worked out on the server from the tab's own filter (Bin notes hidden unless the tab shows Bin), in the shared order. The filter row and search on a device aren't known to the server, so they don't count.
+- **Two changes in the History,** as in the app: the note added, then "Changed the order of the notes". Going back one change puts it at the bottom.
+- **If saving the order fails,** the note stays added, at the bottom, and the notification says so (see below). There's no text back, as the note was saved.
+
 ### The notification for each note
 - **Sent with the reminders' Web Push** (see "Reminders (push notifications)" in [due-dates.md](due-dates.md)) to every device of that person that has reminders turned on. A person with none gets no notification; the note is still saved.
-- **Its heading** is "Saved to <tab name>", or "Saved to All" when no tab matched.
+- **Its heading** is "Saved to <tab name>", "Saved to the top of <tab name>" when added at the top, or "Saved to All" when no tab matched.
 - **Its text** is the note's title. After it, on a new line, when they apply:
   - "No tab matched, so it has no tags." (when no tab matched);
   - "This tab doesn't show New notes." (when the tab hides New notes);
-  - "It was too long and has been cut short." (when cut).
+  - "It was too long and has been cut short." (when cut);
+  - "It couldn't be put at the top, so it's at the bottom." (when saving the order failed; the heading is then "Saved to <tab name>").
 - **Each note gets its own notification;** they don't replace each other.
 - **Tapping it** brings the app to the front, or opens it, as for reminders.
 
