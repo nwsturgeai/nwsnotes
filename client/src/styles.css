@@ -781,6 +781,15 @@ body:has(.note-list li.dragging) {
   height: 16px;
 }
 
+.note-button.wide {
+  width: auto;
+  padding: 0 4px;
+}
+
+.note-button.wide svg {
+  width: auto;
+}
+
 .note-button:hover:not(:disabled) {
   background: var(--bg);
   color: var(--text);

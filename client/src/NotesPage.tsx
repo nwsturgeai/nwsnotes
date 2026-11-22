@@ -21,7 +21,6 @@ import {
   faCircleCheck,
   faCirclePlus,
   faCircleUp,
-  faClipboardCheck,
   faDeleteLeft,
   faGripVertical,
   faHourglass,
@@ -35,6 +34,7 @@ import {
   faX,
   type IconDefinition,
 } from "@fortawesome/free-solid-svg-icons";
+import { faFinishOrdering } from "./icons";
 import {
   isLongForm,
   lifetimeOf,
@@ -980,7 +980,8 @@ export function NotesPage({
             </div>
             <div className="filter-row-end">
               <IconButton
-                icon={ordering ? faClipboardCheck : faArrowDownWideShort}
+                icon={ordering ? faFinishOrdering : faArrowDownWideShort}
+                wide={ordering}
                 label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
                 disabled={!ordering && (editBlocked || offline)}
                 onClick={() => setOrdering(!ordering)}
@@ -1430,6 +1431,7 @@ function IconButton({
   disabled,
   onClick,
   pressed,
+  wide,
 }: {
   icon: IconDefinition;
   label: string;
@@ -1437,11 +1439,13 @@ function IconButton({
   onClick: () => void;
   /** For a toggle: filled in while it's on. */
   pressed?: boolean;
+  /** For an icon wider than it is tall: the button grows to fit it. */
+  wide?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={pressed ? "note-button pressed" : "note-button"}
+      className={["note-button", pressed && "pressed", wide && "wide"].filter(Boolean).join(" ")}
       aria-label={label}
       aria-pressed={pressed}
       title={label}
