@@ -415,14 +415,15 @@ export function LongFormEditor({
 
       {/* A tinted, labelled band, so the note's tags stand out between the title and the details. */}
       <div className="lf-tags" role="group" aria-label="Tags">
-        <TagPickers categories={categories} selection={selection} onChange={changeTags} disabled={busy} />
+        {/* A note shared with you keeps its tags: only its owner changes them. */}
+        <TagPickers categories={categories} selection={selection} onChange={changeTags} disabled={busy || note?.shared !== undefined} />
         {/* At the far right: choose the tags the selected tab fixes. */}
         <button
           type="button"
           className="note-button"
           aria-label={matchHint}
           title={matchHint}
-          disabled={busy || tabTags.size === 0}
+          disabled={busy || tabTags.size === 0 || note?.shared !== undefined}
           onClick={matchTab}
         >
           <FontAwesomeIcon icon={faTags} />

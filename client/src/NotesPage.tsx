@@ -8,7 +8,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faAlarmClock, faCircle, faFileLines } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faCircle, faEye, faFileLines } from "@fortawesome/free-regular-svg-icons";
 import {
   faAnglesDown,
   faAnglesUp,
@@ -36,6 +36,8 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { faFinishOrdering } from "./icons";
 import {
+  allows,
+  isLifetimeTag,
   isLongForm,
   lifetimeOf,
   LIFETIME_ACTIVE,
@@ -663,6 +665,11 @@ export function NotesPage({
         setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
         return;
       }
+      const sharedProblem = sharedNoteProblem(selectedTagIds(userCategories, tagSelection, newNoteConstraints), userCategories, dueDate);
+      if (sharedProblem) {
+        setSaveError(sharedProblem);
+        return;
+      }
     }
 
     setSaving(true);
@@ -749,7 +756,8 @@ export function NotesPage({
       setBulk(undefined);
       setSaveError(undefined);
     } else if (!listCheckHint) {
-      setBulk({ noteIds: selectAll ? visibleNotes.map((note) => note.id) : [], changes: new Map() });
+      // Notes shared with you can't have their tags changed, so they're never selected.
+      setBulk({ noteIds: selectAll ? visibleNotes.filter((note) => !note.shared).map((note) => note.id) : [], changes: new Map() });
       setSaveError(undefined);
       setPadInked(false);
     }
@@ -760,7 +768,7 @@ export function NotesPage({
 
   /** Selects or unselects a note, until a pill has been clicked. */
   function toggleBulkNote(noteId: number) {
-    if (!bulk || bulk.changes.size > 0) return;
+    if (!bulk || bulk.changes.size > 0 || notes.find((note) => note.id === noteId)?.shared) return;
     const noteIds = bulk.noteIds.includes(noteId) ? bulk.noteIds.filter((id) => id !== noteId) : [...bulk.noteIds, noteId];
     setBulk({ ...bulk, noteIds });
   }
@@ -768,7 +776,8 @@ export function NotesPage({
   /** The filter row's "All" and "None": selects exactly these notes, until a pill has been clicked. */
   function selectBulkNotes(noteIds: number[]) {
     if (!bulk || bulk.changes.size > 0) return;
-    setBulk({ ...bulk, noteIds });
+    const shared = new Set(notes.filter((note) => note.shared).map((note) => note.id));
+    setBulk({ ...bulk, noteIds: noteIds.filter((id) => !shared.has(id)) });
   }
 
   /** Accept: clicked pills that ended chosen are added to every selected note, the others removed. */
@@ -822,14 +831,16 @@ export function NotesPage({
       )}
       {bulk ? (
         <BulkTagPicker
-          categories={userCategories}
+          // Tags shared with you can't be added to your own notes.
+          categories={userCategories.filter((category) => !category.shared)}
           notes={notes.filter((note) => bulk.noteIds.includes(note.id))}
           changes={bulk.changes}
           onChange={(changes) => setBulk({ ...bulk, changes })}
           disabled={saving}
         />
       ) : editingNote ? (
-        <TagChooser categories={userCategories} selection={editSelection} onChange={setEditSelection} disabled={saving} />
+        // A note shared with you keeps its tags: only its owner changes them.
+        <TagChooser categories={userCategories} selection={editSelection} onChange={setEditSelection} disabled={saving || editingNote.shared !== undefined} />
       ) : (
         <TagChooser
           categories={userCategories}
@@ -1021,9 +1032,12 @@ export function NotesPage({
                     !coloured && lifetime === LIFETIME_ARCHIVED && "archived",
                     lifetime === LIFETIME_BIN && "binned",
                     selected && "selected",
-                    bulk && (bulk.changes.size > 0 ? "selection-locked" : "selectable"),
+                    bulk && (bulk.changes.size > 0 || note.shared ? "selection-locked" : "selectable"),
                   ].filter(Boolean);
                   const busy = blocked || busyNoteId !== undefined || bulkActive;
+                  // A note shared with you: its buttons follow what its owner lets you do.
+                  const canEdit = !note.shared || allows(note.shared.permission, "edit");
+                  const canBin = !note.shared || allows(note.shared.permission, "delete");
                   const hint = bulkActive
                     ? "Not while selecting notes"
                     : blocked
@@ -1070,7 +1084,7 @@ export function NotesPage({
                           hideCategoryIds={filteredSingleSelect}
                           // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
                           // Offline it's plain too: resetting the New tags needs the server.
-                          onNewClick={bulk || offline ? undefined : () => setConfirmResetNew(true)}
+                          onNewClick={bulk || offline || !canEdit ? undefined : () => setConfirmResetNew(true)}
                           newClickDisabled={resettingNew}
                         />
                       </div>
@@ -1093,7 +1107,7 @@ export function NotesPage({
                               onClick={() => moveToEnd(note.id, "bottom")}
                             />
                           </>
-                        ) : (
+                        ) : canEdit ? (
                           <>
                         <IconButton
                           icon={faPen}
@@ -1119,12 +1133,14 @@ export function NotesPage({
                         )}
                         {/* Anything not yet Archived or in the Bin can be archived; Archived notes can be binned. */}
                         {lifetime === LIFETIME_ARCHIVED ? (
-                          <IconButton
-                            icon={faTrashCan}
-                            label={hint ?? "Move to bin"}
-                            disabled={busy}
-                            onClick={() => void changeLifetime(note, "Bin")}
-                          />
+                          canBin && (
+                            <IconButton
+                              icon={faTrashCan}
+                              label={hint ?? "Move to bin"}
+                              disabled={busy}
+                              onClick={() => void changeLifetime(note, "Bin")}
+                            />
+                          )
                         ) : (
                           lifetime !== LIFETIME_BIN && (
                             <IconButton
@@ -1136,6 +1152,11 @@ export function NotesPage({
                           )
                         )}
                           </>
+                        ) : (
+                          // Read-only: no buttons, just a reminder whose note it is.
+                          <span className="read-only-mark" title={`Shared by ${note.shared!.ownerName}, to read only`}>
+                            <FontAwesomeIcon icon={faEye} />
+                          </span>
                         )}
                       </div>
                       {/* The due date if the note has one, otherwise when it was created. */}
@@ -1405,7 +1426,8 @@ export function NotesPage({
                 </button>
               )}
               {/* In the expanded area: the due date of the note being added or edited. Filled in while it has one. */}
-              {fullTagList && !bulk && (
+              {/* Only a note's owner sets its due date. */}
+              {fullTagList && !bulk && !editingNote?.shared && (
                 <button
                   type="button"
                   className={dueDate ? "icon-button primary" : "icon-button"}
@@ -1517,4 +1539,22 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 function dueClass(iso: string, now: number): string | undefined {
   const due = Date.parse(iso);
   return due < now ? "overdue" : due - now < WEEK_MS ? "due-soon" : undefined;
+}
+
+/**
+ * Why a new note with these tags can't be added, if it has tags shared with you: it goes in their
+ * owner's notebook, so it can only have tags shared by that one person, all ones you may edit, and no
+ * due date (only the owner sets those). The server checks the same.
+ */
+function sharedNoteProblem(tagIds: number[], categories: Category[], dueDate: string | undefined): string | undefined {
+  const shared = categories.find((category) => category.shared)?.tags.filter((tag) => tagIds.includes(tag.id)) ?? [];
+  if (shared.length === 0) return undefined;
+  if (shared.length !== tagIds.filter((id) => !isLifetimeTag(id)).length) {
+    return "A note with a tag shared with you can't also have your own tags.";
+  }
+  if (new Set(shared.map((tag) => tag.ownerId)).size > 1) return "A note can only have tags shared with you by one person.";
+  const readOnly = shared.find((tag) => tag.permission === undefined || !allows(tag.permission, "edit"));
+  if (readOnly) return `"${readOnly.name}" is shared with you to read only, so you can't add notes to it.`;
+  if (dueDate) return `Only ${shared[0]!.ownerName ?? "its owner"} can set due dates on their notes.`;
+  return undefined;
 }

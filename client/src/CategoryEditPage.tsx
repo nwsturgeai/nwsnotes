@@ -1,12 +1,13 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowDown, faArrowUp, faTrashCan } from "@fortawesome/free-solid-svg-icons";
-import { NAME_MAX_LENGTH, TAGS_PER_CATEGORY_MAX, validateCategory, type Category, type CategoryRequest, type Note } from "@nwsnotes/shared";
+import { faArrowDown, faArrowUp, faShareNodes, faTrashCan } from "@fortawesome/free-solid-svg-icons";
+import { NAME_MAX_LENGTH, TAGS_PER_CATEGORY_MAX, tagLabel, validateCategory, type Category, type CategoryRequest, type Note, type Tag } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { hueColour } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { HuePicker } from "./HuePicker";
 import { DragGrip, draggedStyle, rowsWithGap, useListDrag } from "./listDrag";
+import { ShareDialog } from "./ShareDialog";
 
 interface Props {
   /** "new" to add a category. */
@@ -27,6 +28,8 @@ interface TagRow {
   name: string;
   /** The tag's colour (degrees), if it has one. */
   hue?: number;
+  /** In "Shared with me": the tag as shared (its name can't be changed there). */
+  shared?: Tag;
 }
 
 /** Adding and editing a category share this page. */
@@ -59,7 +62,14 @@ function CategoryForm({
 }: Props & { existing: Category | undefined }) {
   // The form starts from the saved category and isn't changed by live updates while open.
   const nextKey = useRef(0);
-  const newRow = (tag?: { id: number; name: string; hue?: number }): TagRow => ({ key: nextKey.current++, ...tag, name: tag?.name ?? "" });
+  /** "Shared with me": only the order and colours of its tags can be changed, and they're yours alone. */
+  const sharedLayout = existing?.shared === true;
+  const newRow = (tag?: Tag): TagRow => ({
+    key: nextKey.current++,
+    ...(tag && { id: tag.id, name: tag.name, ...(tag.hue !== undefined && { hue: tag.hue }) }),
+    ...(tag?.ownerName !== undefined && { shared: tag }),
+    name: tag?.name ?? "",
+  });
   const [name, setName] = useState(existing?.name ?? "");
   const [multiSelect, setMultiSelect] = useState(existing?.multiSelect ?? false);
   const [rows, setRows] = useState<TagRow[]>(() => (existing ? existing.tags.map((tag) => newRow(tag)) : [newRow()]));
@@ -70,6 +80,8 @@ function CategoryForm({
   const focusKey = useRef<number>(undefined);
   /** The tag row whose colour is being chosen. */
   const [pickingHueFor, setPickingHueFor] = useState<TagRow>();
+  /** The saved tag whose sharing is being changed. */
+  const [sharing, setSharing] = useState<{ id: number; name: string }>();
 
   function setRowHue(key: number, hue: number | undefined) {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, hue } : row)));
@@ -148,6 +160,10 @@ function CategoryForm({
   function save(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
+    if (sharedLayout) {
+      void saveSharedLayout();
+      return;
+    }
 
     const request: CategoryRequest = {
       name,
@@ -191,6 +207,24 @@ function CategoryForm({
     void send(check.category);
   }
 
+  /** "Shared with me": saves your order and colours for its tags. */
+  async function saveSharedLayout() {
+    setSaving(true);
+    setError(undefined);
+    try {
+      const saved = await api.setSharedTags({ tags: rows.map((row) => ({ id: row.id!, ...(row.hue !== undefined && { hue: row.hue }) })) });
+      if (saved) onSaved(saved);
+      onClose();
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setError(`The order and colours weren't saved: ${err instanceof Error ? err.message : String(err)}`);
+      setSaving(false);
+    }
+  }
+
   async function send(request: CategoryRequest) {
     setConfirming(undefined);
     setSaving(true);
@@ -211,8 +245,15 @@ function CategoryForm({
 
   return (
     <main className="settings-page">
-      <h1>{existing ? "Edit category" : "New category"}</h1>
+      <h1>{sharedLayout ? existing!.name : existing ? "Edit category" : "New category"}</h1>
       <form className="category-form" onSubmit={save}>
+        {sharedLayout ? (
+          <p className="hint">
+            These are the tags other people have shared with you. You can choose their order and colours here: they only change how the
+            notes look to you.
+          </p>
+        ) : (
+          <>
         <label htmlFor="category-name">Name</label>
         <input
           id="category-name"
@@ -238,6 +279,8 @@ function CategoryForm({
         </label>
         {existing?.multiSelect && !multiSelect && (
           <p className="hint">Notes with more than one of these tags will keep only the first one in the list below.</p>
+        )}
+          </>
         )}
 
         <fieldset>
@@ -266,6 +309,9 @@ function CategoryForm({
                 disabled={saving}
                 onClick={() => setPickingHueFor(row)}
               />
+              {row.shared ? (
+                <span className="shared-tag-name">{tagLabel(row.shared)}</span>
+              ) : (
               <input
                 type="text"
                 aria-label={`Tag ${index + 1}`}
@@ -283,6 +329,7 @@ function CategoryForm({
                 onChange={(event) => setRowName(row.key, event.target.value)}
                 onKeyDown={onTagKeyDown}
               />
+              )}
               {/* Up and down change the tag order; like renames and deletes, it's saved with the category. */}
               <button
                 type="button"
@@ -306,22 +353,40 @@ function CategoryForm({
               >
                 <FontAwesomeIcon icon={faArrowDown} />
               </button>
-              <button
-                type="button"
-                className="note-button"
-                aria-label={`Delete tag ${row.name || index + 1}`}
-                title="Delete tag"
-                // A category needs at least one tag.
-                disabled={saving || rows.length === 1}
-                onClick={() => deleteRow(row.key)}
-              >
-                <FontAwesomeIcon icon={faTrashCan} />
-              </button>
+              {!sharedLayout && (
+                <>
+                  {/* Sharing is saved by itself, straight away, so only a saved tag (with its saved name) can be shared. */}
+                  <button
+                    type="button"
+                    className="note-button"
+                    aria-label={`Share ${row.name || `tag ${index + 1}`}`}
+                    title={row.id === undefined ? "Save the category before sharing this tag" : "Share with other people"}
+                    disabled={saving || row.id === undefined}
+                    onClick={() => {
+                      const saved = existing?.tags.find((tag) => tag.id === row.id);
+                      if (saved) setSharing({ id: saved.id, name: saved.name });
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faShareNodes} />
+                  </button>
+                  <button
+                    type="button"
+                    className="note-button"
+                    aria-label={`Delete tag ${row.name || index + 1}`}
+                    title="Delete tag"
+                    // A category needs at least one tag.
+                    disabled={saving || rows.length === 1}
+                    onClick={() => deleteRow(row.key)}
+                  >
+                    <FontAwesomeIcon icon={faTrashCan} />
+                  </button>
+                </>
+              )}
             </div>
             );
           })}
           </div>
-          {tagsFull ? (
+          {sharedLayout ? null : tagsFull ? (
             <p className="hint">A category can have at most {TAGS_PER_CATEGORY_MAX} tags.</p>
           ) : (
             <button type="button" className="button" disabled={saving} onClick={addRow}>
@@ -347,7 +412,7 @@ function CategoryForm({
       </form>
       {pickingHueFor && (
         <HuePicker
-          tagName={pickingHueFor.name || "New tag"}
+          tagName={pickingHueFor.shared ? tagLabel(pickingHueFor.shared) : pickingHueFor.name || "New tag"}
           hue={pickingHueFor.hue}
           onSet={(hue) => {
             setRowHue(pickingHueFor.key, hue);
@@ -355,6 +420,9 @@ function CategoryForm({
           }}
           onCancel={() => setPickingHueFor(undefined)}
         />
+      )}
+      {sharing && (
+        <ShareDialog tagId={sharing.id} tagName={sharing.name} onClose={() => setSharing(undefined)} onSessionExpired={onSessionExpired} />
       )}
       {confirming && (
         <ConfirmDialog

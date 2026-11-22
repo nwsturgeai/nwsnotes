@@ -5,7 +5,6 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import {
   CONNECTION_ID_HEADER,
-  stylusNoteLimitOf,
   validateDueDate,
   validateNoteDetails,
   validateNoteTitle,
@@ -25,7 +24,7 @@ import type { SmsNotes } from "./sms.js";
 import { actingUser } from "./context.js";
 import type { NoteStore } from "./store.js";
 import type { Sharing } from "./sharing.js";
-import { ADMIN_ID, noteLimitOf, noteStatsOf, type User } from "./users.js";
+import { ADMIN_ID, noteStatsOf, type User } from "./users.js";
 
 /** The logged-in user's notebook (after requireSession and withNotebook). */
 function notebookOf(res: Response): NoteStore {

@@ -1,0 +1,161 @@
+import type { APIRequestContext, Browser, Page } from "@playwright/test";
+import { addArea, expect, logIn, noteRow, openNotes, pills, test } from "./fixtures";
+
+/*
+ * Sharing tags, in the app: the owner's share dialog, and what a recipient sees and can do. The seed is
+ * the admin's: "Buy milk" has Home and Shopping (Topic category, orange); "Garden ideas" has Home and Ideas.
+ */
+
+const SHOPPING = 4;
+
+/** The admin adds a user, who logs in on a new device: their notes page. */
+async function newUserPage(admin: APIRequestContext, browser: Browser, displayName: string, loginName: string): Promise<Page> {
+  const made = await admin.post("/api/users", { data: { displayName, loginName } });
+  expect(made.status()).toBe(201);
+  const { password } = (await made.json()) as { password: string };
+  const use = test.info().project.use;
+  const context = await browser.newContext({
+    baseURL: use.baseURL,
+    viewport: use.viewport,
+    hasTouch: use.hasTouch,
+    isMobile: use.isMobile,
+    userAgent: use.userAgent,
+    timezoneId: use.timezoneId,
+    locale: use.locale,
+    serviceWorkers: "block",
+    storageState: { cookies: [], origins: [] },
+  });
+  await context.addInitScript(() => localStorage.setItem("nwsnotes.fullTagList", "off"));
+  const page = await context.newPage();
+  await page.goto("/");
+  await logIn(page, loginName, password);
+  await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+  return page;
+}
+
+async function shareThroughApi(admin: APIRequestContext, tagId: number, loginName: string, permission: string) {
+  const response = await admin.put(`/api/tags/${tagId}/shares`, { data: { shares: [{ loginName, permission }] } });
+  expect(response.ok(), await response.text()).toBe(true);
+}
+
+test("the owner shares a tag from its category page", async ({ page, browser }) => {
+  const sam = await newUserPage(page.request, browser, "Sam Smith", "sam@example.com");
+  await page.goto("/settings/categories/2");
+  // A tag that isn't saved yet can't be shared.
+  await page.getByRole("button", { name: "Add tag" }).click();
+  await expect(page.getByRole("button", { name: "Share tag 4" })).toBeDisabled();
+
+  await page.getByRole("button", { name: "Share Shopping" }).click();
+  const dialog = page.getByRole("dialog", { name: "Share Shopping" });
+  await expect(dialog.getByText("It isn't shared with anyone.")).toBeVisible();
+  // Nobody is linked yet, so the email address is typed.
+  await dialog.getByLabel("Their email address").fill("nobody@example.com");
+  await dialog.getByRole("button", { name: "Add" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("The sharing wasn't saved: There's no nwsnotes account for nobody@example.com.");
+  await dialog.getByRole("button", { name: "Stop sharing with nobody@example.com" }).click();
+  await dialog.getByLabel("Their email address").fill("sam@example.com");
+  await dialog.getByRole("button", { name: "Add" }).click();
+  await dialog.getByLabel("What sam@example.com may do").selectOption("edit");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // Opened again, it lists Sam by name.
+  await page.getByRole("button", { name: "Share Shopping" }).click();
+  await expect(dialog.getByLabel("What Sam Smith may do")).toHaveValue("edit");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Sam's page shows the note straight away (a live update), with only the shared tag.
+  await expect(noteRow(sam, "Buy milk")).toBeVisible();
+  await expect(pills(noteRow(sam, "Buy milk"))).toHaveText(["Shopping", "New"]);
+  await expect(noteRow(sam, "Garden ideas")).toHaveCount(0);
+  await sam.context().close();
+});
+
+test("a recipient's buttons follow their permission, and they can't change tags or due dates", async ({ page, browser }) => {
+  const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "read");
+  await openNotes(sam);
+  const milk = noteRow(sam, "Buy milk");
+  // Read-only: no buttons, just the eye.
+  await expect(milk.getByRole("button")).toHaveCount(0);
+  await expect(milk.locator(".read-only-mark")).toHaveAttribute("title", "Shared by Admin, to read only");
+
+  // Edit: edit, Waiting and Archive, but no Move to bin once archived.
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "edit");
+  await expect(milk.getByRole("button", { name: "Edit note" })).toBeVisible();
+  await milk.getByRole("button", { name: "Archive" }).click();
+  await expect(milk.getByRole("button", { name: "Reinstate" })).toBeVisible();
+  await expect(milk.getByRole("button", { name: "Move to bin" })).toHaveCount(0);
+  await milk.getByRole("button", { name: "Reinstate" }).click();
+
+  // Editing: the title can change; the tags can't, and there's no due date button.
+  await milk.getByRole("button", { name: "Edit note" }).click();
+  await sam.getByRole("button", { name: "Show all tags" }).click();
+  await expect(addArea(sam).getByRole("button", { name: "Shopping (Admin)" })).toBeDisabled();
+  await expect(sam.getByRole("button", { name: "Set due date" })).toHaveCount(0);
+  const box = sam.getByRole("textbox", { name: "Note title" });
+  await box.fill("Buy oat milk");
+  await box.press("Enter");
+  await expect(noteRow(sam, "Buy oat milk")).toBeVisible();
+  await openNotes(page);
+  await expect(pills(noteRow(page, "Buy oat milk"))).toHaveText(["Home", "Shopping"]);
+
+  // Edit and delete: Move to bin too.
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "delete");
+  await noteRow(sam, "Buy oat milk").getByRole("button", { name: "Archive" }).click();
+  await expect(noteRow(sam, "Buy oat milk").getByRole("button", { name: "Move to bin" })).toBeVisible();
+  await sam.context().close();
+});
+
+test("a recipient adds notes to a shared tag, and sets its colour and order for themselves", async ({ page, browser }) => {
+  const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "edit");
+  // Sam's tab on the shared tag.
+  const tab = await sam.request.post("/api/tabs", { data: { name: "Shop", categories: [{ categoryId: -2, tagIds: [SHOPPING] }] } });
+  expect(tab.ok()).toBe(true);
+  await openNotes(sam, "/");
+  await sam.getByRole("tab", { name: "Shop" }).click();
+  const box = sam.getByRole("textbox", { name: "New note" });
+  await box.fill("Eggs");
+  await box.press("Enter");
+  await expect(noteRow(sam, "Eggs")).toBeVisible();
+  // It's the admin's note, and shows on the admin's open page.
+  await openNotes(page);
+  await expect(pills(noteRow(page, "Eggs"))).toHaveText(["Shopping", "New"]);
+
+  // Sam's own colour for Shopping, on the "Shared with me" page; the admin's orange is untouched.
+  await sam.goto("/settings");
+  await expect(sam.locator(".category-list").first()).toContainText("Shopping (Admin)");
+  await sam.getByRole("link", { name: /^Shared with me/ }).click();
+  await expect(sam.getByRole("heading", { name: "Shared with me" })).toBeVisible();
+  await expect(sam.getByRole("textbox")).toHaveCount(0);
+  await expect(sam.getByRole("button", { name: /^Delete tag/ })).toHaveCount(0);
+  await sam.getByRole("button", { name: /^Colour of Shopping/ }).click();
+  await sam.getByRole("button", { name: "Hue 200°" }).click();
+  await sam.getByRole("button", { name: "Set colour" }).click();
+  await sam.getByRole("button", { name: "Save" }).click();
+  await expect(sam.getByRole("heading", { name: "Settings" })).toBeVisible();
+  const samTags = (await (await sam.request.get("/api/notes")).json()) as { categories: { id: number; tags: { id: number; hue?: number }[] }[] };
+  expect(samTags.categories.find((c) => c.id === -2)!.tags[0]!.hue).toBe(200);
+  const adminTags = (await (await page.request.get("/api/notes")).json()) as typeof samTags;
+  expect(adminTags.categories.flatMap((c) => c.tags).find((t) => t.id === SHOPPING)!.hue).toBe(30);
+  await sam.context().close();
+});
+
+test("a shared tag shows its owner's name where two shared tags share a name", async ({ page, browser }) => {
+  const robin = await newUserPage(page.request, browser, "Christopher Robin", "robin@example.com");
+  const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
+  const category = await robin.request.post("/api/categories", { data: { name: "Lists", multiSelect: false, tags: [{ name: "Shopping" }] } });
+  const robinShopping = ((await category.json()) as { tags: { id: number }[] }).tags[0]!.id;
+  expect((await robin.request.post("/api/notes", { data: { titleText: "Bread", tagIds: [robinShopping] } })).ok()).toBe(true);
+  await shareThroughApi(robin.request, robinShopping, "sam@example.com", "read");
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "read");
+
+  await openNotes(sam);
+  // Both are "Shopping", so each pill says whose; a long name is cut to 10 letters.
+  await expect(pills(noteRow(sam, "Bread"))).toHaveText(["Shopping (Christophe…)", "New"]);
+  await expect(pills(noteRow(sam, "Buy milk"))).toHaveText(["Shopping (Admin)", "New"]);
+  await robin.context().close();
+  await sam.context().close();
+});
