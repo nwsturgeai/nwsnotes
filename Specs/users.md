@@ -5,7 +5,7 @@
 The app can be used by several people, each with their own completely separate notebook. Nobody can see or change anyone else's notes, categories, tabs, history or settings. There are no shared notes.
 
 ### Accounts
-- The owner of the app (the "admin") creates every account. There is no sign-up page.
+- The owner of the app (the "admin") creates accounts, or confirms the ones people ask for on the public sign-up page (see Signing up).
 - A person logs in with their email address and a password: every login name is an email address. (Emails aren't sent yet.)
 - When the admin creates an account, the app generates a password and shows it to the admin once, so the admin can send it to the person.
 - Each person can change their own password in Settings, once logged in.
@@ -13,10 +13,20 @@ The app can be used by several people, each with their own completely separate n
 - The admin can't see anyone else's notes.
 - The existing notes, categories, tabs and history become the admin's own notebook, unchanged.
 
+### Signing up
+- **A public sign-up page,** `/signup`, which the admin can share with family and friends. The login page links to it ("No account? Ask for one").
+- It asks for "Email", "Password" and "Password again", and "Ask for an account". The page checks the email looks like one ("Please type your email address, e.g. pat@example.com."), the password's length ("The password must be at least 10 characters.") and that the two match ("The passwords don't match.") before sending.
+- On success: "Thanks! Your account is waiting to be confirmed.", and a link to the login page.
+- **Until the admin confirms the account, it can't log in:** "This account is waiting to be confirmed. You can log in once it has been." (only once the right password is given).
+- **The admin is told:** while any accounts are waiting, the admin sees a warning icon (`fa-triangle-exclamation`) in the header, next to where the stylus-mode icon shows, titled "<n> account(s) waiting to be confirmed". It's a link to the users page (blocked, like the cog, while editing or offline). It appears on the admin's open pages straight away (a live update).
+- **On the users page,** a waiting account is labelled "Waiting to be confirmed", with **Confirm** and **Decline** (instead of Reset password and Turn off), and a notice above the list says how many are waiting. Declining asks first, "Decline <email>'s account? It will be removed, and they'd need to ask again.", then removes it (it has never logged in, so has no notes). Only waiting accounts can be removed.
+- The display name starts as the part of the email before the "@"; the admin can change it with Edit.
+
 ### New accounts
 - A new account starts empty: no notes, no categories and no tabs (only the built-in "All" tab and the built-in Lifetime category). An introduction guide, written separately later, will explain how to start.
 
 ### Later, not now
+- Emailing the admin when someone asks for an account, and emailing the person once it's confirmed.
 - People choosing their own password from an emailed invitation, and "forgot password" emails, sent to their login email. Data belongs to a user's id, never to their login name, so this needs no reworking.
 - iPhone support.
 - Encryption.
@@ -38,6 +48,9 @@ The app can be used by several people, each with their own completely separate n
 - **Users aren't in the History,** and aren't in the save-files or backups (those hold one notebook each).
 - **Generated passwords:** 16 characters from lowercase letters and digits, leaving out ones easily confused (`0`, `o`, `1`, `l`, `i`), shown in four groups of four with dashes, e.g. `kq7m-x4tp-9wfd-hr3c`. The dashes are part of the password. They're made with a cryptographically secure random generator, shown once, and only their hash is kept.
 - **Passwords people choose:** at least 10 characters, at most 200.
+- **Waiting accounts:** `waitingForConfirmation: true` in `data` for an account asked for on the sign-up page, removed when the admin confirms it. Such an account can't log in, and a session for it isn't accepted.
+- **Signing up:** `POST /api/signup` with `{ loginName, password }` (no login needed; 201). Rate limited to 5 per hour from one address. Refused (400) for an email that isn't one, a password of the wrong length, or an email already used, ignoring case: "There's already an account for this email (or one waiting to be confirmed)." It sets up an empty notebook, as adding a user does, and tells the admin's open pages (a live update).
+- **Confirming and declining (admin only):** `POST /api/users/:id/confirm` returns the `UserSummary`; `DELETE /api/users/:id` removes a waiting account and its empty notebook (400 for any other). `UserSummary` gains `waitingForConfirmation`, and `GET /api/me` gains `waitingUserCount` for the admin only. The admin's page refetches `/api/me` with each background reload, so the icon follows.
 
 ### Logging in
 - **The login page** has two boxes, "Email" (the login name) and "Password", and "Log in". The Email box is a text box with an email keyboard, not an email-only box, so names from before the rule can still be typed. Wrong email or password: "Incorrect email or password." A turned-off account: "This account is turned off." The browser's password manager can fill both in.
@@ -45,7 +58,7 @@ The app can be used by several people, each with their own completely separate n
 - **Sessions** stay as signed cookies that last 30 days, but now say who is logged in: the cookie holds `<user id>.<session version>.<expiry ms>.<signature>`. A request is accepted only if the signature is right, it hasn't expired, the user exists and isn't turned off, and the session version matches the user's. The user is then known for the rest of the request.
 - **Logging everyone out of one account** is done by raising its `sessionVersion`: resetting its password, turning it off, or the person changing their own password (the device they changed it on gets a fresh cookie, so it stays logged in; their other devices are logged out).
 - **Cookies from before this change** have no user, so they're refused, and the admin logs in again once after the update.
-- `GET /api/me` returns `{ id, loginName, displayName, admin }` for the logged-in user.
+- `GET /api/me` returns `{ id, loginName, displayName, admin }` for the logged-in user (and `waitingUserCount` for the admin).
 
 ### Settings for every user
 - **Account section** (at the bottom, as now): "Logged in as <display name> (<login name>)", a "Change password" button and "Log out".
@@ -128,6 +141,7 @@ The app can be used by several people, each with their own completely separate n
   - Resetting a password and turning an account off log that user out; a turned-off account can't log in, with "This account is turned off."; turning it on again lets them log in.
   - A non-admin sees no Users section, and `/api/users` answers 403.
   - The login form refuses a wrong name or password.
+- `signup.spec.ts`: asking for an account (the page's checks, then success); a waiting account can't log in; the admin's warning icon appears by a live update and leads to the users page; confirming lets them log in with the password they chose; declining removes it; the API's checks (bad email, short password, an email already used) and that only the admin can confirm or decline.
   - Login names must be email addresses when adding or editing a user (in the page and the API); saving an unchanged name is allowed.
 - The existing tests log in as the admin (`admin@example.com` / `dev`).
 - `database.spec.ts`: a database from before users (no `users` table and no `user_id` columns) is moved to user 1 on start, with its notes, history and order unchanged, and the old password still logs in.

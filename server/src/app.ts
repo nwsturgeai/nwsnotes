@@ -10,12 +10,13 @@ import {
   validateNoteDetails,
   validateNoteTitle,
   type LoginRequest,
+  type SignUpRequest,
 } from "@nwsnotes/shared";
 import { RequestError } from "./errors.js";
 import { DEV_ADMIN_LOGIN_NAME, DEV_PASSWORD } from "./config.js";
 import { SESSION_COOKIE, SESSION_LENGTH_MS, createSessionToken, hashPassword, requireSession, userOf } from "./auth.js";
 import type { Config } from "./config.js";
-import type { Db } from "./db.js";
+import { databaseUnreachable, type Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
@@ -91,9 +92,30 @@ export function createApp(
       res.status(403).json({ error: "This account is turned off." });
       return;
     }
+    if (result === "waiting") {
+      res.status(403).json({ error: "This account is waiting to be confirmed. You can log in once it has been." });
+      return;
+    }
     await users.recordLogin(result.id);
     startSession(res, result);
     res.json({ ok: true });
+  });
+
+  // The public sign-up page: asks for an account, which the admin then confirms on the users page.
+  const signUpLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: config.testMode ? 1000 : 5,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too many accounts asked for. Please wait an hour and try again." },
+  });
+
+  app.post("/api/signup", signUpLimiter, async (req: Request<object, object, Partial<SignUpRequest>>, res) => {
+    if (!users.isReady()) throw databaseUnreachable();
+    await users.signUp(req.body);
+    // The admin's open pages show the "waiting to be confirmed" icon.
+    live.notifyChanged(ADMIN_ID, undefined);
+    res.status(201).json({ ok: true });
   });
 
   app.post("/api/logout", (_req, res) => {
@@ -116,7 +138,7 @@ export function createApp(
 
   meRouter.get("/", (_req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json(meOf(userOf(res)));
+    res.json(meOf(userOf(res), users.waitingCount()));
   });
 
   // Your number of notes and the space they take, for the top of Settings.
@@ -175,6 +197,19 @@ export function createApp(
     const { user, loggedOut } = await users.update(id, req.body);
     if (loggedOut) live.logOut(id);
     res.json(users.summary(user, (await users.noteStats(id)).get(id)));
+  });
+
+  // Confirming an account asked for on the sign-up page, so it can log in.
+  usersRouter.post("/:id/confirm", async (req: Request<{ id: string }>, res) => {
+    const id = userIdOf(req);
+    const user = await users.confirm(id);
+    res.json(users.summary(user, (await users.noteStats(id)).get(id)));
+  });
+
+  // Declining one: it's removed (it has never logged in, so has no notes).
+  usersRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {
+    await users.decline(userIdOf(req));
+    res.json({ ok: true });
   });
 
   usersRouter.post("/:id/reset-password", async (req: Request<{ id: string }>, res) => {

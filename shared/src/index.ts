@@ -259,6 +259,15 @@ export interface Me {
   loginName: string;
   displayName: string;
   admin: boolean;
+  /** The admin only: how many accounts asked for on the sign-up page are waiting to be confirmed. */
+  waitingUserCount?: number;
+}
+
+/** Body of POST /api/signup: asking for an account on the public sign-up page. */
+export interface SignUpRequest {
+  /** An email address, to log in with. */
+  loginName: string;
+  password: string;
 }
 
 /** Body of PUT /api/me/password. */
@@ -270,6 +279,8 @@ export interface PasswordChangeRequest {
 /** A user, as the users page (admin only) lists them. */
 export interface UserSummary extends Me {
   disabled: boolean;
+  /** Asked for on the sign-up page and not yet confirmed by the admin: can't log in until it is. */
+  waitingForConfirmation: boolean;
   createdDateTime: string;
   /** Missing if they've never logged in. */
   lastLoginDateTime?: string;

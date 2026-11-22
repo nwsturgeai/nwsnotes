@@ -25,6 +25,8 @@ export interface UserData {
   admin: boolean;
   /** Turned off: can't log in. */
   disabled: boolean;
+  /** Asked for on the sign-up page, and not yet confirmed by the admin: can't log in until it is. */
+  waitingForConfirmation?: boolean;
   /** Goes up whenever this user's existing logins must stop working. */
   sessionVersion: number;
   createdDateTime: string;
@@ -61,14 +63,29 @@ export const ADMIN_ID = 1;
 const FIRST_SESSION_VERSION = 1;
 
 /** What GET /api/me answers. */
-export function meOf(user: User): Me {
-  return { id: user.id, loginName: user.loginName, displayName: user.displayName, admin: user.admin };
+export function meOf(user: User, waitingUserCount?: number): Me {
+  return {
+    id: user.id,
+    loginName: user.loginName,
+    displayName: user.displayName,
+    admin: user.admin,
+    ...(user.admin && waitingUserCount !== undefined && { waitingUserCount }),
+  };
 }
 
 function validLoginName(raw: unknown): string {
   const name = typeof raw === "string" ? raw.trim() : "";
   if (!isValidLoginName(name)) throw new RequestError(400, LOGIN_NAME_RULE);
   return name;
+}
+
+/** A password someone chose (changing their own, or on the sign-up page). `what` starts its error messages. */
+function validNewPassword(raw: unknown, what: string): string {
+  if (typeof raw !== "string" || raw.length < PASSWORD_MIN_LENGTH) {
+    throw new RequestError(400, `${what} must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+  }
+  if (raw.length > PASSWORD_MAX_LENGTH) throw new RequestError(400, `${what} must be at most ${PASSWORD_MAX_LENGTH} characters.`);
+  return raw;
 }
 
 function validDisplayName(raw: unknown): string {
@@ -172,12 +189,18 @@ export class Users {
   }
 
   /** Checks a login: the user, or why not. */
-  checkLogin(rawName: unknown, rawPassword: unknown): User | "incorrect" | "disabled" {
+  checkLogin(rawName: unknown, rawPassword: unknown): User | "incorrect" | "disabled" | "waiting" {
     if (!this.ready) throw databaseUnreachable();
     if (typeof rawName !== "string" || typeof rawPassword !== "string") return "incorrect";
     const user = this.byLoginName(rawName);
     if (!user || !verifyPassword(rawPassword, user.passwordHash)) return "incorrect";
+    if (user.waitingForConfirmation) return "waiting";
     return user.disabled ? "disabled" : user;
+  }
+
+  /** How many accounts asked for on the sign-up page are waiting for the admin to confirm them. */
+  waitingCount(): number {
+    return this.list().filter((user) => user.waitingForConfirmation).length;
   }
 
   /**
@@ -231,6 +254,7 @@ export class Users {
     return {
       ...meOf(user),
       disabled: user.disabled,
+      waitingForConfirmation: user.waitingForConfirmation === true,
       createdDateTime: user.createdDateTime,
       ...(user.lastLoginDateTime !== undefined && { lastLoginDateTime: user.lastLoginDateTime }),
       ...noteStatsOf(user, counts),
@@ -245,25 +269,73 @@ export class Users {
       const loginName = this.unusedLoginName(body.loginName);
       const displayName = validDisplayName(body.displayName);
       const password = generatePassword();
-      const id = Math.max(0, ...this.users.keys()) + 1;
-      const user: User = {
-        id,
-        loginName,
-        displayName,
-        passwordHash: hashPassword(password),
-        admin: false,
-        disabled: false,
-        sessionVersion: FIRST_SESSION_VERSION,
-        createdDateTime: new Date().toISOString(),
-      };
-      await this.db.transaction(async (query) => {
-        await query("INSERT INTO nwsnotes.users (id, login_name, data) VALUES ($1, $2, $3)", [id, loginName, JSON.stringify(dataOf(user))]);
-        // The notebook is set up, and empty.
-        await query("INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($1, 'lastNoteId', '0'::jsonb)", [id]);
-      });
-      this.users.set(id, user);
+      const user = await this.insert({ loginName, displayName, passwordHash: hashPassword(password) });
       return { user, password };
     });
+  }
+
+  /**
+   * The public sign-up page: an account with the password the person chose, waiting for the admin to
+   * confirm it. Its display name is the part of the email before the "@" (the admin can change it).
+   */
+  signUp(raw: unknown): Promise<User> {
+    return this.enqueue(async () => {
+      const body = (raw ?? {}) as { loginName?: unknown; password?: unknown };
+      const loginName = validLoginName(body.loginName);
+      if (this.byLoginName(loginName)) {
+        throw new RequestError(400, "There's already an account for this email (or one waiting to be confirmed).");
+      }
+      const password = validNewPassword(body.password, "The password");
+      const displayName = loginName.slice(0, loginName.lastIndexOf("@")).slice(0, DISPLAY_NAME_MAX_LENGTH);
+      return this.insert({ loginName, displayName, passwordHash: hashPassword(password), waitingForConfirmation: true });
+    });
+  }
+
+  /** The admin confirms an account asked for on the sign-up page: it can then log in. */
+  confirm(id: number): Promise<User> {
+    return this.enqueue(async () => {
+      const existing = this.required(id);
+      if (!existing.waitingForConfirmation) throw new RequestError(400, `${existing.displayName}'s account isn't waiting to be confirmed.`);
+      const { waitingForConfirmation: _waiting, ...next } = existing;
+      await this.save(next);
+      return next;
+    });
+  }
+
+  /**
+   * The admin declines an account asked for on the sign-up page: it's removed, with its (empty) notebook.
+   * Only accounts still waiting to be confirmed can be removed: they've never logged in, so have no data.
+   */
+  decline(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      const existing = this.required(id);
+      if (!existing.waitingForConfirmation) throw new RequestError(400, "Only an account waiting to be confirmed can be declined.");
+      await this.db.transaction(async (query) => {
+        await query("DELETE FROM nwsnotes.meta WHERE user_id = $1", [id]);
+        await query("DELETE FROM nwsnotes.users WHERE id = $1", [id]);
+      });
+      this.users.delete(id);
+    });
+  }
+
+  /** Saves a new user, with an empty notebook. */
+  private async insert(fields: Pick<User, "loginName" | "displayName" | "passwordHash"> & { waitingForConfirmation?: true }): Promise<User> {
+    const id = Math.max(0, ...this.users.keys()) + 1;
+    const user: User = {
+      id,
+      ...fields,
+      admin: false,
+      disabled: false,
+      sessionVersion: FIRST_SESSION_VERSION,
+      createdDateTime: new Date().toISOString(),
+    };
+    await this.db.transaction(async (query) => {
+      await query("INSERT INTO nwsnotes.users (id, login_name, data) VALUES ($1, $2, $3)", [id, user.loginName, JSON.stringify(dataOf(user))]);
+      // The notebook is set up, and empty.
+      await query("INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($1, 'lastNoteId', '0'::jsonb)", [id]);
+    });
+    this.users.set(id, user);
+    return user;
   }
 
   /**
@@ -319,13 +391,8 @@ export class Users {
       if (typeof currentPassword !== "string" || !verifyPassword(currentPassword, existing.passwordHash)) {
         throw new RequestError(400, "The current password isn't right.");
       }
-      if (typeof newPassword !== "string" || newPassword.length < PASSWORD_MIN_LENGTH) {
-        throw new RequestError(400, `The new password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
-      }
-      if (newPassword.length > PASSWORD_MAX_LENGTH) {
-        throw new RequestError(400, `The new password must be at most ${PASSWORD_MAX_LENGTH} characters.`);
-      }
-      const next = { ...existing, passwordHash: hashPassword(newPassword), sessionVersion: existing.sessionVersion + 1 };
+      const password = validNewPassword(newPassword, "The new password");
+      const next = { ...existing, passwordHash: hashPassword(password), sessionVersion: existing.sessionVersion + 1 };
       await this.save(next);
       return next;
     });

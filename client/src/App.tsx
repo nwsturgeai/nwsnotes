@@ -28,6 +28,7 @@ import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
 import { UsersPage } from "./UsersPage";
 import { SettingsPage } from "./SettingsPage";
+import { SignUpPage } from "./SignUpPage";
 import { useColumns, useStylusMode, useTabCounts } from "./stylusMode";
 import { TabEditPage } from "./TabEditPage";
 import type { TagSelection } from "./TagPickers";
@@ -65,6 +66,11 @@ export function App() {
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
   const refreshInProgress = useRef(false);
+  /** Whether the admin is logged in: their background reloads also refresh how many accounts are waiting to be confirmed. */
+  const adminLoggedIn = useRef(false);
+  useEffect(() => {
+    adminLoggedIn.current = state.screen === "notes" && state.me.admin;
+  }, [state]);
 
   const offlineState = useOfflineState();
   /** A short message for the notes page after a sync ("3 offline changes saved"). */
@@ -123,6 +129,13 @@ export function App() {
     }
     const thisRefresh = ++latestRefresh.current;
     refreshInProgress.current = true;
+    if (adminLoggedIn.current) {
+      // A failure here doesn't matter: the notes' reload below reports it.
+      void api.me().then(
+        (me) => setState((prev) => (prev.screen === "notes" && prev.me.id === me.id ? { ...prev, me } : prev)),
+        () => undefined,
+      );
+    }
     try {
       const data = await api.getNotes();
       if (thisRefresh !== latestRefresh.current) return;
@@ -288,11 +301,14 @@ export function App() {
     if (page.name !== "settings" && page.name !== "password") setSettingsNotice(undefined);
   }, [page.name]);
 
+  // The public sign-up page shows whether or not anyone is logged in.
+  if (page.name === "signup") return <SignUpPage onLogIn={() => navigate({ name: "notes" })} />;
+
   switch (state.screen) {
     case "loading":
       return <p className="loading">Loading...</p>;
     case "login":
-      return <LoginPage onLoggedIn={loadNotes} />;
+      return <LoginPage onLoggedIn={loadNotes} onSignUp={() => navigate({ name: "signup" })} />;
     case "error":
       return <ErrorPage error={state.error} when={state.when} onRetry={loadNotes} />;
     case "notes":
@@ -314,6 +330,7 @@ export function App() {
             offline={offlineState.offline}
             pendingCount={offlineState.pendingCount}
             showUpdateNotice={updateReady && !notesUnsaved}
+            waitingUserCount={state.me.waitingUserCount ?? 0}
           />
           {offlineState.offline && page.name !== "notes" ? (
             // Settings (and category and tab editing) need the server.

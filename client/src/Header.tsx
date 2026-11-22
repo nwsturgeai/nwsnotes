@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCloud, faEllipsis, faGear, faSignature, faSlash } from "@fortawesome/free-solid-svg-icons";
+import { faCloud, faEllipsis, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { ALL_TAB_NAME, type Tab } from "@nwsnotes/shared";
 import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
@@ -31,6 +31,8 @@ interface Props {
   pendingCount: number;
   /** A new version of the app is ready and nothing unsaved would be lost: offer "Reload". */
   showUpdateNotice: boolean;
+  /** The admin only: accounts asked for on the sign-up page, waiting to be confirmed. Above 0, an icon links to the users page. */
+  waitingUserCount: number;
 }
 
 /** Why the tabs and the cog can't be used while a note is being edited. */
@@ -54,6 +56,7 @@ export function Header({
   offline,
   pendingCount,
   showUpdateNotice,
+  waitingUserCount,
 }: Props) {
   const cogBlocked = editing || offline;
   const offlineTitle =
@@ -97,6 +100,9 @@ export function Header({
               <FontAwesomeIcon icon={faSlash} className="offline-slash" />
             </span>
           )}
+          {waitingUserCount > 0 && (
+            <WaitingUsersIcon count={waitingUserCount} blocked={cogBlocked} offline={offline} onOpen={(event) => go(event, { name: "users" })} />
+          )}
           {stylusMode && (
             // Only shows the mode; it isn't a button.
             <span className="stylus-indicator" role="img" aria-label="Stylus mode is on" title="Stylus mode is on">
@@ -134,6 +140,33 @@ export function Header({
         </div>
       )}
     </>
+  );
+}
+
+/** The admin's reminder that accounts are waiting to be confirmed: a link to the users page (blocked like the cog). */
+function WaitingUsersIcon({
+  count,
+  blocked,
+  offline,
+  onOpen,
+}: {
+  count: number;
+  blocked: boolean;
+  offline: boolean;
+  onOpen: (event: MouseEvent) => void;
+}) {
+  const text = `${count} ${count === 1 ? "account is" : "accounts are"} waiting to be confirmed`;
+  return (
+    <a
+      href={pathFor({ name: "users" })}
+      className={blocked ? "waiting-users-indicator blocked" : "waiting-users-indicator"}
+      aria-label={text}
+      aria-disabled={blocked || undefined}
+      title={offline ? `${text} (${OFFLINE_HINT.toLowerCase()})` : blocked ? `${text}. ${BLOCKED_HINT}.` : text}
+      onClick={(event) => (blocked ? event.preventDefault() : onOpen(event))}
+    >
+      <FontAwesomeIcon icon={faTriangleExclamation} />
+    </a>
   );
 }
 

@@ -11,6 +11,7 @@
   --accent-text: #ffffff;
   --error: #a3261b;
   --error-bg: #fbeceb;
+  --warning: #b45309;
   --focus: #6fa594;
   --pill-bg: #e3ece8;
   --pill-text: #2f5d50;
@@ -299,6 +300,21 @@ body:has(.app) {
   height: 24px;
   color: var(--accent);
   font-size: 16px;
+}
+
+/* Accounts waiting to be confirmed (the admin only): a link to the users page, at the stylus icon's size. */
+.waiting-users-indicator {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--warning);
+  font-size: 16px;
+}
+
+.waiting-users-indicator.blocked {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Offline: a cloud with a slash drawn over it (both icons in the same grid cell), at the stylus icon's size. */
@@ -2383,6 +2399,19 @@ body:has(.dragging) {
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+.waiting-notice {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--warning);
+  border-radius: 6px;
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.user-label.waiting {
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
 .user-label.off {

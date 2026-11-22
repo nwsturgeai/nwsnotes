@@ -9,6 +9,7 @@ import {
   type LifetimeChange,
   type LifetimeRequest,
   type LoginRequest,
+  type SignUpRequest,
   type Me,
   type NewUserRequest,
   type PasswordChangeRequest,
@@ -155,6 +156,8 @@ export const api = {
   /** Sends "Test reminder" to every device; returns how many it reached. */
   pushTest: () => request<{ count: number }>("POST", "/api/push/test"),
   login: (body: LoginRequest) => request<{ ok: true }>("POST", "/api/login", body),
+  /** The public sign-up page: asks for an account, which the admin then confirms. */
+  signUp: (body: SignUpRequest) => request<{ ok: true }>("POST", "/api/signup", body),
   logout: () => request<{ ok: true }>("POST", "/api/logout"),
   /** Who is logged in. */
   me: () => request<Me>("GET", "/api/me"),
@@ -171,5 +174,8 @@ export const api = {
   databaseSize: () => request<{ bytes: number }>("GET", "/api/users/database-size"),
   addUser: (body: NewUserRequest) => request<{ user: UserSummary; password: string }>("POST", "/api/users", body),
   updateUser: (id: number, body: UserUpdateRequest) => request<UserSummary>("PUT", `/api/users/${id}`, body),
+  /** Confirming or declining (removing) an account asked for on the sign-up page. */
+  confirmUser: (id: number) => request<UserSummary>("POST", `/api/users/${id}/confirm`),
+  declineUser: (id: number) => request<{ ok: true }>("DELETE", `/api/users/${id}`),
   resetPassword: (id: number) => request<{ password: string }>("POST", `/api/users/${id}/reset-password`),
 };

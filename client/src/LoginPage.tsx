@@ -4,9 +4,11 @@ import { remindAfterLogin } from "./reminders";
 
 interface Props {
   onLoggedIn: () => void;
+  /** To the sign-up page, for asking for an account. */
+  onSignUp: () => void;
 }
 
-export function LoginPage({ onLoggedIn }: Props) {
+export function LoginPage({ onLoggedIn, onSignUp }: Props) {
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,6 +74,17 @@ export function LoginPage({ onLoggedIn }: Props) {
       {/* The help pages are public, so they can be read before logging in. */}
       <p className="login-help">
         <a href="/docs/">New here? Read the introduction</a>
+      </p>
+      <p className="login-help">
+        <a
+          href="/signup"
+          onClick={(event) => {
+            event.preventDefault();
+            onSignUp();
+          }}
+        >
+          No account? Ask for one
+        </a>
       </p>
     </main>
   );

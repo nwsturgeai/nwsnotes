@@ -101,7 +101,7 @@ export function sessionUser(req: IncomingMessage, users: Users, secret: string):
   const session = readSessionToken(readCookie(req, SESSION_COOKIE), secret);
   if (!session) return undefined;
   const user = users.byId(session.userId);
-  if (!user || user.disabled || user.sessionVersion !== session.sessionVersion) return undefined;
+  if (!user || user.disabled || user.waitingForConfirmation || user.sessionVersion !== session.sessionVersion) return undefined;
   return user;
 }
 

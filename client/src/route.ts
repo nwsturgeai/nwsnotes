@@ -10,6 +10,8 @@ export type Page =
   | { name: "password" }
   /** The admin's users page. */
   | { name: "users" }
+  /** The public sign-up page, for asking for an account. */
+  | { name: "signup" }
   /** Adding (id "new") or editing a category. */
   | { name: "category"; id: number | "new" }
   /** Adding (id "new") or editing a tab; "all" is the built-in tab, whose only setting is where it shows. */
@@ -27,6 +29,8 @@ export function pathFor(page: Page): string {
       return "/settings/password";
     case "users":
       return "/settings/users";
+    case "signup":
+      return "/signup";
     case "category":
       return `/settings/categories/${page.id}`;
     case "tab":
@@ -39,6 +43,7 @@ function pageFromPath(pathname: string): Page {
   if (pathname === "/history") return { name: "history" };
   if (pathname === "/settings/password") return { name: "password" };
   if (pathname === "/settings/users") return { name: "users" };
+  if (pathname === "/signup") return { name: "signup" };
   if (pathname === "/settings/tabs/all") return { name: "tab", id: "all" };
   const match = /^\/settings\/(categories|tabs)\/(new|\d+)$/.exec(pathname);
   if (match) {

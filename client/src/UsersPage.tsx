@@ -137,7 +137,17 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
   const [shown, setShown] = useState<{ displayName: string; password: string }>();
   /** The user being edited; the note limit as typed in its box. */
   const [editing, setEditing] = useState<{ id: number; displayName: string; loginName: string; noteLimit: string }>();
-  const [confirming, setConfirming] = useState<{ user: UserSummary; action: "reset" | "turn-off" }>();
+  const [confirming, setConfirming] = useState<{ user: UserSummary; action: "reset" | "turn-off" | "decline" }>();
+
+  // The header's "waiting to be confirmed" icon follows the list.
+  const waitingCount = users?.filter((user) => user.waitingForConfirmation).length;
+  const meRef = useRef(me);
+  meRef.current = me;
+  useEffect(() => {
+    if (waitingCount !== undefined && waitingCount !== (meRef.current.waitingUserCount ?? 0)) {
+      onMeChanged({ ...meRef.current, waitingUserCount: waitingCount });
+    }
+  }, [waitingCount, onMeChanged]);
 
   const failed = useCallback(
     (err: unknown) => {
@@ -203,7 +213,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
         noteLimit: Number(editing.noteLimit),
       });
       replace(user);
-      if (user.id === me.id) onMeChanged({ id: user.id, loginName: user.loginName, displayName: user.displayName, admin: user.admin });
+      if (user.id === me.id) onMeChanged({ ...me, loginName: user.loginName, displayName: user.displayName });
       setEditing(undefined);
     });
   }
@@ -216,6 +226,9 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
       if (action === "reset") {
         const { password } = await api.resetPassword(user.id);
         setShown({ displayName: user.displayName, password });
+      } else if (action === "decline") {
+        await api.declineUser(user.id);
+        setUsers((list) => list?.filter((u) => u.id !== user.id));
       } else {
         replace(await api.updateUser(user.id, { disabled: true }));
       }
@@ -232,6 +245,12 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
         </p>
       )}
       {users === undefined && !error && <p>Loading…</p>}
+      {waitingCount !== undefined && waitingCount > 0 && (
+        <p className="waiting-notice" role="status">
+          {waitingCount === 1 ? "1 account is" : `${waitingCount} accounts are`} waiting to be confirmed. Confirm the people you
+          know; decline any you don't.
+        </p>
+      )}
       {users && (
         <>
           <p className="note-stats">
@@ -294,6 +313,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                     <strong>{user.displayName}</strong> <span className="user-login">{user.loginName}</span>
                     {user.admin && <span className="user-label">Admin</span>}
                     {!isValidLoginName(user.loginName) && <span className="user-label off">Not an email address</span>}
+                    {user.waitingForConfirmation && <span className="user-label waiting">Waiting to be confirmed</span>}
                     {user.disabled && <span className="user-label off">Turned off</span>}
                     {user.smsLinked && <span className="user-label">Phone</span>}
                   </div>
@@ -304,6 +324,21 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                     {formatBytes(user.historyBytes)} History
                   </p>
                   <div className="lifetime-buttons">
+                    {user.waitingForConfirmation && (
+                      <>
+                        <button
+                          type="button"
+                          className="button primary"
+                          disabled={busy}
+                          onClick={() => void run(async () => replace(await api.confirmUser(user.id)))}
+                        >
+                          Confirm
+                        </button>
+                        <button type="button" className="button" disabled={busy} onClick={() => setConfirming({ user, action: "decline" })}>
+                          Decline
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
                       className="button"
@@ -314,7 +349,8 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                     >
                       Edit
                     </button>
-                    {user.id !== me.id && (
+                    {/* An account waiting to be confirmed has Confirm and Decline instead. */}
+                    {user.id !== me.id && !user.waitingForConfirmation && (
                       <>
                         <button type="button" className="button" disabled={busy} onClick={() => setConfirming({ user, action: "reset" })}>
                           Reset password
@@ -354,7 +390,10 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
             onLoginName={setNewLoginName}
             disabled={busy}
           />
-          <p className="hint">A password is made for them, and shown once, for you to send them.</p>
+          <p className="hint">
+            A password is made for them, and shown once, for you to send them. Or send them the sign-up page,{" "}
+            <a href="/signup">{window.location.origin}/signup</a>, to choose their own password; you then confirm their account here.
+          </p>
           <div className="form-buttons">
             <button type="submit" disabled={busy || newDisplayName.trim() === "" || newLoginName.trim() === ""}>
               Add
@@ -371,9 +410,11 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
           message={
             confirming.action === "reset"
               ? `Reset ${confirming.user.displayName}'s password? They'll be logged out everywhere.`
-              : `Turn off ${confirming.user.displayName}'s account? They'll be logged out everywhere and can't log in until it's turned on again.`
+              : confirming.action === "decline"
+                ? `Decline ${confirming.user.loginName}'s account? It will be removed, and they'd need to ask again.`
+                : `Turn off ${confirming.user.displayName}'s account? They'll be logged out everywhere and can't log in until it's turned on again.`
           }
-          confirmLabel={confirming.action === "reset" ? "Reset password" : "Turn off"}
+          confirmLabel={confirming.action === "reset" ? "Reset password" : confirming.action === "decline" ? "Decline" : "Turn off"}
           onConfirm={confirmed}
           onCancel={() => setConfirming(undefined)}
         />
