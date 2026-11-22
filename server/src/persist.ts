@@ -99,47 +99,17 @@ const USERS_TABLE = [
   "CREATE UNIQUE INDEX IF NOT EXISTS users_login_name ON nwsnotes.users (lower(login_name))",
 ];
 
-/** The tables that held the one notebook before there were users, with their old primary key's columns. */
-const NOTEBOOK_TABLES: { table: string; key?: string }[] = [
-  { table: "notes", key: "id" },
-  { table: "categories", key: "id" },
-  { table: "tabs", key: "id" },
-  { table: "meta", key: "name" },
-  { table: "changes" },
-];
-
 /**
- * Creates the schema and tables if they don't exist yet. A database from before there were users (its
- * tables have no `user_id`) becomes user 1's notebook: every row gets user id 1 and the keys change to
- * include it. `firstUser` makes user 1 when there are no users yet. All of it is one transaction.
- * Returns whether the old single-user tables were moved across.
+ * Creates the schema and tables if they don't exist yet, and with `firstUser` makes user 1 when there
+ * are no users yet, all in one transaction.
  */
-export async function ensureSchema(db: Db, firstUser: (query: Query) => Promise<void>): Promise<boolean> {
+export async function ensureSchema(db: Db, firstUser: (query: Query) => Promise<void>): Promise<void> {
   await db.query("CREATE SCHEMA IF NOT EXISTS nwsnotes");
-  return db.transaction(async (query) => {
+  await db.transaction(async (query) => {
     for (const sql of USERS_TABLE) await query(sql);
-    const old = await query<{ table_name: string }>(
-      `SELECT t.table_name FROM information_schema.tables t
-       WHERE t.table_schema = 'nwsnotes' AND t.table_name = 'notes' AND NOT EXISTS (
-         SELECT 1 FROM information_schema.columns c
-         WHERE c.table_schema = 'nwsnotes' AND c.table_name = 'notes' AND c.column_name = 'user_id'
-       )`,
-    );
-    const migrating = old.length > 0;
-    if (migrating) {
-      for (const { table, key } of NOTEBOOK_TABLES) {
-        await query(`ALTER TABLE nwsnotes.${table} ADD COLUMN user_id integer NOT NULL DEFAULT 1`);
-        await query(`ALTER TABLE nwsnotes.${table} ALTER COLUMN user_id DROP DEFAULT`);
-        if (key) {
-          await query(`ALTER TABLE nwsnotes.${table} DROP CONSTRAINT ${table}_pkey`);
-          await query(`ALTER TABLE nwsnotes.${table} ADD PRIMARY KEY (user_id, ${key})`);
-        }
-      }
-    }
     for (const sql of TABLES) await query(sql);
     const [{ count } = { count: 0 }] = await query<{ count: number }>("SELECT count(*)::int AS count FROM nwsnotes.users");
     if (Number(count) === 0) await firstUser(query);
-    return migrating;
   });
 }
 
@@ -406,56 +376,3 @@ export async function pruneHistory(db: Db, days: number): Promise<number> {
   return rows.length;
 }
 
-/**
- * End-to-end tests only: replaces the whole database with one from before there were users (no `users`
- * table and no `user_id` columns), holding `saveFile`'s notebook and one history entry (`summary`) that
- * added its notes.
- */
-export async function makeSingleUserDatabaseForTests(db: Db, rawSaveFile: unknown, summary: string): Promise<void> {
-  const file = (rawSaveFile ?? {}) as Partial<Snapshot>;
-  const notes = Array.isArray(file.notes) ? file.notes : [];
-  const categories = Array.isArray(file.categories) ? file.categories : [];
-  const tabs = Array.isArray(file.tabs) ? file.tabs : [];
-  await db.transaction(async (query) => {
-    await query("DROP SCHEMA IF EXISTS nwsnotes CASCADE");
-    for (const sql of [
-      "CREATE SCHEMA nwsnotes",
-      "CREATE TABLE nwsnotes.notes (id integer PRIMARY KEY, data jsonb NOT NULL)",
-      "CREATE TABLE nwsnotes.categories (id integer PRIMARY KEY, position integer NOT NULL, data jsonb NOT NULL)",
-      "CREATE TABLE nwsnotes.tabs (id integer PRIMARY KEY, position integer NOT NULL, data jsonb NOT NULL)",
-      "CREATE TABLE nwsnotes.meta (name text PRIMARY KEY, value jsonb NOT NULL)",
-      `CREATE TABLE nwsnotes.changes (
-         id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, time timestamptz NOT NULL, summary text NOT NULL,
-         item_count integer NOT NULL, reverted_to timestamptz, undone integer
-       )`,
-      `CREATE TABLE nwsnotes.change_items (
-         change_id integer NOT NULL REFERENCES nwsnotes.changes (id) ON DELETE CASCADE, kind text NOT NULL,
-         item_id integer NOT NULL, "before" jsonb, PRIMARY KEY (change_id, kind, item_id)
-       )`,
-      "CREATE INDEX changes_time ON nwsnotes.changes (time)",
-    ]) {
-      await query(sql);
-    }
-    for (const note of notes) await query("INSERT INTO nwsnotes.notes (id, data) VALUES ($1, $2)", [note.id, JSON.stringify(note)]);
-    for (const [table, items] of [["categories", categories], ["tabs", tabs]] as const) {
-      for (const [position, item] of items.entries()) {
-        await query(`INSERT INTO nwsnotes.${table} (id, position, data) VALUES ($1, $2, $3)`, [item.id, position, JSON.stringify(item)]);
-      }
-    }
-    const meta = {
-      lastNoteId: typeof file.lastNoteId === "number" ? file.lastNoteId : Math.max(0, ...notes.map((note) => note.id)),
-      allTabPlacement: file.allTabPlacement === "left" ? "left" : "top",
-      noteOrder: Array.isArray(file.noteOrder) ? file.noteOrder : [],
-    };
-    for (const [name, value] of Object.entries(meta)) {
-      await query("INSERT INTO nwsnotes.meta (name, value) VALUES ($1, $2::jsonb)", [name, JSON.stringify(value)]);
-    }
-    const [change] = await query<{ id: number }>(
-      "INSERT INTO nwsnotes.changes (time, summary, item_count) VALUES (now(), $1, $2) RETURNING id",
-      [summary, notes.length],
-    );
-    for (const note of notes) {
-      await query(`INSERT INTO nwsnotes.change_items (change_id, kind, item_id, "before") VALUES ($1, 'note', $2, NULL)`, [change!.id, note.id]);
-    }
-  });
-}

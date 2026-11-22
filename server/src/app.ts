@@ -466,23 +466,6 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
       await notebookOf(res).reloadForTests();
       res.json({ ok: true });
     });
-    // The first start with a new database: imports this save-file.
-    app.post("/api/test/import", ...testSession, async (req, res) => {
-      res.json({ file: await notebookOf(res).importForTests(JSON.stringify(req.body)) });
-    });
-    // Replaces the whole database with one from before there were users, holding this save-file's notes
-    // (and a history entry for each), then starts again as the first start of this version does.
-    app.post(
-      "/api/test/single-user-database",
-      async (req: Request<object, object, { saveFile?: unknown; password?: unknown; summary?: unknown }>, res) => {
-        const password = typeof req.body?.password === "string" ? req.body.password : DEV_PASSWORD;
-        await makeSingleUserDatabaseForTests(db, req.body?.saveFile, typeof req.body?.summary === "string" ? req.body.summary : "Old change");
-        users.setFirstAdminPasswordForTests(hashPassword(password));
-        live.logOutEveryone();
-        await notebooks.restartForTests();
-        res.json({ ok: true });
-      },
-    );
     // Makes the database unreachable (or reachable again), to test what the app does then.
     app.post("/api/test/database", (req: Request<object, object, { reachable?: unknown }>, res) => {
       db.simulateOutage = req.body?.reachable === false;

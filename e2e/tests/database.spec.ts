@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { ADMIN, expect, expectTitles, logIn, noteRow, noteTitles, openNotes, seed, test } from "./fixtures";
+import { expect, noteRow, noteTitles, openNotes, seed, test } from "./fixtures";
 
 async function addNote(page: Page, title: string) {
   const box = page.getByRole("textbox", { name: "New note" });
@@ -25,26 +25,14 @@ test("every change is in the database, as a restart shows", async ({ page }) => 
   await expect(page.getByRole("tablist", { name: "Tabs", exact: true }).getByRole("tab")).toHaveText(["All", "On hold", "Work", "Home"]);
 });
 
-test("the first start with a new database imports the latest save-file", async ({ page }) => {
-  const file = { ...(seed as Record<string, unknown>), notes: [(seed as { notes: unknown[] }).notes[0]] };
-  const response = await page.request.post("/api/test/import", { data: file });
-  const { file: name } = (await response.json()) as { file: string };
-  expect(name).toMatch(/^notes-.*\.json$/);
-
-  await openNotes(page);
-  await expectTitles(page, ["Plan the team meeting"]);
-  await page.getByRole("link", { name: "Settings" }).click();
-  await page.getByRole("link", { name: "History", exact: true }).click();
-  await expect(page.locator(".history-list .history-summary")).toHaveText([`Imported from ${name}`]);
-});
-
 test("a save-file from before the order was shared gets one shared order, the higher tab winning", async ({ page }) => {
   const old = JSON.parse(JSON.stringify(seed)) as { noteOrder?: unknown; tabs: { id: number; noteOrder?: number[] }[] };
   delete old.noteOrder;
   // Work lists Old invoice before Plan the team meeting; Home disagrees, so Work wins.
   const orders: Record<number, number[]> = { 1: [4, 1], 2: [9, 2, 1, 4], 3: [] };
   for (const tab of old.tabs) tab.noteOrder = orders[tab.id] ?? [];
-  await page.request.post("/api/test/import", { data: old });
+  // Loaded as the tests' seed is, which reads a save-file the way --restore does.
+  expect((await page.request.post("/api/test/reset", { data: old })).ok()).toBe(true);
 
   const data = (await (await page.request.get("/api/notes")).json()) as { noteOrder: number[]; tabs: object[] };
   expect(data.noteOrder).toEqual([4, 9, 2, 1]);
@@ -90,48 +78,4 @@ test("when the database can't be reached, the app works offline and catches up a
   await expect(noteRow(page, "Written while it was down").locator(".note-pending")).toHaveCount(0, { timeout: 10_000 });
   await page.reload();
   await expect(noteRow(page, "Written while it was down")).toBeVisible();
-});
-
-test("a database from before there were users becomes the admin's, unchanged, and the old password still logs in", async ({
-  page,
-  browser,
-}) => {
-  // A shared order that isn't the default, so it can be seen to survive.
-  expect((await page.request.put("/api/notes/order", { data: { noteOrder: [9, 2, 4] } })).ok()).toBe(true);
-  const before = (await (await page.request.get("/api/notes")).json()) as {
-    notes: { id: number }[];
-    categories: { system?: boolean }[];
-    tabs: unknown[];
-    allTabPlacement: string;
-    noteOrder: number[];
-  };
-  const saveFile = { ...before, categories: before.categories.filter((category) => !category.system), lastNoteId: 9 };
-
-  // The database is replaced by one with no users table and no user_id columns, then started again.
-  const oldPassword = "the old single password";
-  const response = await page.request.post("/api/test/single-user-database", {
-    data: { saveFile, password: oldPassword, summary: "Made before there were users" },
-  });
-  expect(response.ok()).toBe(true);
-
-  // The old password logs in as the admin (whose login name is the config's, "admin" by default).
-  const use = test.info().project.use;
-  const device = await (await browser.newContext({ baseURL: use.baseURL, viewport: use.viewport, serviceWorkers: "block", storageState: { cookies: [], origins: [] } })).newPage();
-  await device.goto("/");
-  await logIn(device, ADMIN, oldPassword);
-  await expect(device.getByRole("link", { name: "Settings" })).toBeVisible();
-  expect(await (await device.request.get("/api/me")).json()).toEqual({ id: 1, loginName: ADMIN, displayName: "Admin", admin: true });
-
-  // Notes, categories, tabs and the shared order are just as they were.
-  expect(await (await device.request.get("/api/notes")).json()).toEqual(before);
-  await expect.poll(async () => (await noteTitles(device)).slice(0, 3)).toEqual(["Garden ideas", "Buy milk", "Old invoice"]);
-  // The history is too, and can still be gone back through.
-  await device.getByRole("link", { name: "Settings" }).click();
-  await device.getByRole("link", { name: "History", exact: true }).click();
-  await expect(device.locator(".history-list .history-summary")).toHaveText(["Made before there were users"]);
-
-  // New notes carry on from the old ids.
-  const added = await device.request.post("/api/notes", { data: { titleText: "After the move", tagIds: [] } });
-  expect(((await added.json()) as { id: number }).id).toBe(10);
-  await device.context().close();
 });

@@ -106,7 +106,7 @@ The notes are kept in a Supabase database (the free plan is enough). **Do this b
    sudo bash set-database.sh prod-ca-2021.crt
    ```
 
-5. Deploy (merge to `main`). On its first start the app creates its tables and imports the latest save-file from `/var/lib/nwsnotes/data`. The save-files are left as they are; no new ones are written.
+5. Deploy (merge to `main`). On its first start the app creates its tables and the admin (user 1), with an empty notebook. To bring notes across, restore a backup file into it (see "Restoring a backup file" below).
 
 The app makes a small query every day, so Supabase sees the project as in use. If it's paused anyway (free projects pause after a week without activity), the app goes offline: open the project in Supabase and press **Restore**, and the app carries on by itself.
 
@@ -142,10 +142,6 @@ It costs about $0.0075 for each text received and $0.05 for each text sent back 
 - **Going back to an earlier state:** Settings → **History** lists the last 30 days of changes; **Go back to here** undoes everything after one (and can itself be undone).
 - **Restoring a backup file** (replaces all of one person's notes, as one change in their History, so it can be undone): `sudo -iu nwsnotes bash -c 'cd /opt/nwsnotes/app && NODE_ENV=production node server.cjs --restore /path/to/notes-….json --user <login name>'`, then restart the app. It refuses without `--user`, so a backup can't go into the wrong notebook.
 
-### The first start of the version with users
-
-The first time the version with several users starts, it moves everything that's there (notes, categories, tabs, History, backup files and reminder devices) to the admin, user 1, in one go. The admin's login name is `admin` (or `"adminLoginName"` in `/etc/nwsnotes/config.json`, if you add it before the update), and the password stays the one you have now. Every device is logged out once: log in again with the name and your usual password.
-
 ## Installing it as an Android app
 
 Open https://nwsnotes.duckdns.org in Chrome on the phone, log in, then choose **⋮ → Add to Home screen → Install**. The app opens full-screen from its own icon and updates itself after each deployment. Notes are always loaded from the server, so it needs a connection to work.
@@ -157,7 +153,7 @@ Open https://nwsnotes.duckdns.org in Chrome on the phone, log in, then choose **
 | `/opt/nwsnotes/app` | The deployed app (replaced on every deployment) |
 | Supabase | The users, and each one's notes, categories, tabs and their 30-day history |
 | `/var/lib/nwsnotes/data/backups/<user id>` | A backup file a day for each user, the last seven, e.g. `backups/1/notes-2026-11-18.json` |
-| `/var/lib/nwsnotes/data` | Push-notification keys and devices, and the save-files from before the database |
+| `/var/lib/nwsnotes/data` | Push-notification keys and devices (and any old save-files from before the database, which the app no longer reads) |
 | `/etc/nwsnotes/config.json` | Session secret, the database's connection string, and the admin's first password hash (only used to make user 1) |
 | `/etc/nwsnotes/supabase-ca.crt` | Supabase's SSL certificate, to check the database connection |
 | `/etc/nwsnotes/certs` | The app's copy of the HTTPS certificate |
