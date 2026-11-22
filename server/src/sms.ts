@@ -6,7 +6,9 @@ import {
   TITLE_MAX_LENGTH,
   formatPhoneNumber,
   matchSpokenTab,
+  noteMatchesFilters,
   notSavedReply,
+  orderNotes,
   type SmsLinkCode,
   type SmsStatus,
   type Tab,
@@ -16,6 +18,7 @@ import type { SmsConfig } from "./config.js";
 import type { LiveUpdates } from "./live.js";
 import type { Notebooks } from "./notebooks.js";
 import type { PushReminders } from "./push.js";
+import type { NoteStore } from "./store.js";
 import { noteLimitOf, type User } from "./users.js";
 
 /** Where Twilio sends each text that arrives at the nwsnotes number. */
@@ -255,7 +258,7 @@ export class SmsNotes {
     try {
       const store = await this.notebooks.for(user.id);
       const { tabs } = store.getAll();
-      const { tab, title: spokenTitle } = matchSpokenTab<Tab>(text, tabs);
+      const { tab, title: spokenTitle, top } = matchSpokenTab<Tab>(text, tabs);
       if (tab && spokenTitle === "") {
         log(`not saved: only tab ${tab.id}'s name, for user ${user.id}.`);
         return "Nothing to save after the tab name.";
@@ -265,17 +268,33 @@ export class SmsNotes {
       // isn't set: new notes are always New.
       const tagIds = (tab?.categories ?? []).filter((filter) => filter.categoryId !== LIFETIME_CATEGORY_ID).flatMap((filter) => filter.tagIds.slice(0, 1));
       const { note } = await store.add({ titleText: title }, tagIds, undefined, undefined, { noteLimit: noteLimitOf(user), source: "sms" });
+      // "top" after the tab's name: moved to the top of the tab, as adding at the top does in the app. If
+      // that fails, the note stays at the bottom, and the notification says so.
+      let atTop = false;
+      if (tab && top) {
+        try {
+          await this.moveToTopOfTab(store, note.id, tab);
+          atTop = true;
+        } catch (error) {
+          console.error(`Couldn't put user ${user.id}'s texted note ${note.id} at the top:`, error);
+        }
+      }
       this.live.notifyChanged(user.id, undefined);
-      log(`saved as user ${user.id}'s note ${note.id}, ${tab ? `in tab ${tab.id}` : "with no tab"}.`);
+      log(
+        `saved as user ${user.id}'s note ${note.id}, ${tab ? `in tab ${tab.id}` : "with no tab"}${
+          atTop ? ", at the top" : top ? ", at the bottom: putting it at the top failed (below)" : ""
+        }.`,
+      );
 
       const lifetime = tab?.categories.find((filter) => filter.categoryId === LIFETIME_CATEGORY_ID);
       const notes = [
         !tab && "No tab matched, so it has no tags.",
         lifetime && !lifetime.tagIds.includes(LIFETIME_NEW) && "This tab doesn't show New notes.",
         cut && "It was too long and has been cut short.",
+        top && !atTop && "It couldn't be put at the top, so it's at the bottom.",
       ].filter((line): line is string => typeof line === "string");
       await this.push.notify(user.id, {
-        title: `Saved to ${tab?.name ?? "All"}`,
+        title: atTop ? `Saved to the top of ${tab!.name}` : `Saved to ${tab?.name ?? "All"}`,
         body: [title, ...notes].join("\n"),
         tag: `sms-note-${note.id}`,
       });
@@ -290,6 +309,24 @@ export class SmsNotes {
       console.error(`Couldn't add user ${user.id}'s texted note:`, error);
       return this.failed(user.id, text, "nwsnotes can't save right now. Please send it again later.");
     }
+  }
+
+  /**
+   * Puts a note at the top of a tab, as adding at the top does in the app: the shared order is saved with
+   * it straight before the first note the tab lists (by its own filter, in the shared order), or at the
+   * very front if the tab lists none.
+   */
+  private async moveToTopOfTab(store: NoteStore, noteId: number, tab: Tab): Promise<void> {
+    const { notes, noteOrder } = store.getAll();
+    const order = orderNotes(notes, noteOrder)
+      .map((note) => note.id)
+      .filter((id) => id !== noteId);
+    const first = orderNotes(
+      notes.filter((note) => note.id !== noteId && noteMatchesFilters(note, tab.categories)),
+      noteOrder,
+    )[0];
+    const at = first ? Math.max(0, order.indexOf(first.id)) : 0;
+    await store.setNoteOrder({ noteOrder: [...order.slice(0, at), noteId, ...order.slice(at)] });
   }
 
   /** A note that wasn't saved: the reply to text back, and a notification with all of its text. */

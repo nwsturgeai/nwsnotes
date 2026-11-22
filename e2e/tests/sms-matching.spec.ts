@@ -67,6 +67,23 @@ test("text after the tab keeps its own case and accents", () => {
   expect(normaliseSpoken("Fish & chips")).toBe("fish and chips");
 });
 
+test('"top" straight after the tab\'s name adds at the top, and isn\'t part of the note', () => {
+  const top = (text: string) => {
+    const result = matchSpokenTab(text, tabs);
+    return { tab: result.tab?.id, title: result.title, top: result.top ?? false };
+  };
+  expect(top("Shopping top, oat milk")).toEqual({ tab: 1, title: "Oat milk", top: true });
+  expect(top("Shopping, top: oat milk")).toEqual({ tab: 1, title: "Oat milk", top: true });
+  expect(top("shopping Top oat milk")).toEqual({ tab: 1, title: "Oat milk", top: true });
+  expect(top("Do it yourself top. Buy wall plugs")).toEqual({ tab: 4, title: "Buy wall plugs", top: true });
+  // Only the whole word, and nothing left is an empty title.
+  expect(top("Shopping topsoil")).toEqual({ tab: 1, title: "Topsoil", top: false });
+  expect(top("Shopping top")).toEqual({ tab: 1, title: "", top: true });
+  // Only after a tab's name.
+  expect(top("Top of the list: milk")).toEqual({ tab: undefined, title: "Top of the list: milk", top: false });
+  expect(top("Call the garage top priority")).toEqual({ tab: undefined, title: "Call the garage top priority", top: false });
+});
+
 test("spoken names can't clash with any tab's name or spoken name, or be All or tab", () => {
   const others = tabs.filter((tab) => tab.id !== 1);
   expect(spokenNameError("shops", "Shopping", others)).toBeUndefined();

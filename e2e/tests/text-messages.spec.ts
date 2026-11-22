@@ -185,6 +185,40 @@ test("a tab that hides New notes still gets the note, and the notification says 
   });
 });
 
+test('"top" after the tab\'s name adds the note at the top of that tab', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  await openNotes(page);
+  await selectTab(page, "Work");
+  const firstBefore = (await noteTitles(page))[0];
+
+  expect(reply((await text(page.request, "Work top, call Dave about the invoice")).body)).toBeUndefined();
+  // At the top of Work straight away, above the note that was first.
+  await expect.poll(async () => (await noteTitles(page))[0]).toBe("Call Dave about the invoice");
+  expect((await noteTitles(page))[1]).toBe(firstBefore);
+  expect((await notifications(page.request)).at(-1)).toMatchObject({
+    title: "Saved to the top of Work",
+    body: "Call Dave about the invoice",
+  });
+
+  // Without "top", a note goes to the bottom as usual; "topsoil" isn't "top".
+  await text(page.request, "Work topsoil for the planters");
+  await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe("Topsoil for the planters");
+  expect((await noteTitles(page))[0]).toBe("Call Dave about the invoice");
+
+  // The History has the note added, then the new order.
+  await page.goto("/history");
+  await expect(page.getByText('Added "Call Dave about the invoice" by text message')).toBeVisible();
+  await expect(page.getByText("Changed the order of the notes").first()).toBeVisible();
+});
+
+test('only "top" after the tab\'s name saves nothing, and texts back', async ({ page }) => {
+  await linkPhone(page.request);
+  const before = (await notes(page.request)).length;
+  expect(reply((await text(page.request, "Work, top.")).body)).toBe("Nothing to save after the tab name.");
+  expect(await notes(page.request)).toHaveLength(before);
+});
+
 test("a tab whose filter has several tags in a category gives the note the first of them", async ({ page }) => {
   // Topic: Ideas (3), Shopping (4), Reading (5), in that order.
   const response = await page.request.post("/api/tabs", {

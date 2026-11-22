@@ -59,12 +59,16 @@ export interface SpokenTab {
 export interface SpokenNote<T extends SpokenTab> {
   /** Missing when no tab matched: the whole text is the title. */
   tab?: T;
-  /** Empty when the text was only a tab's name. */
+  /** Empty when the text was only a tab's name (and perhaps "top"). */
   title: string;
+  /** "top" came straight after the tab's name: add the note at the top of the tab. Never set without a tab. */
+  top?: boolean;
 }
 
 /** Punctuation left between the tab's name and the note, taken off the title. */
 const LEADING_PUNCTUATION = /^[\s,:;.\-–—'’]+/u;
+/** "top" as a whole word at the start (after the tab's name), any case. */
+const TOP_WORD = /^top(?![\p{L}\p{N}])/iu;
 
 /** The title with its first letter in upper case. */
 function capitalised(title: string): string {
@@ -104,7 +108,12 @@ export function matchSpokenTab<T extends SpokenTab>(text: string, tabs: T[]): Sp
     }
     if (!best) return undefined;
     const end = words[offset + best.nameWords.length - 1]!.end;
-    return { tab: best.tab, title: capitalised(trimmed.slice(end).replace(LEADING_PUNCTUATION, "").trim()) };
+    const rest = trimmed.slice(end).replace(LEADING_PUNCTUATION, "");
+    // "top" straight after the tab's name: the note goes at the top of the tab, and the word isn't part of it.
+    if (TOP_WORD.test(rest)) {
+      return { tab: best.tab, title: capitalised(rest.replace(TOP_WORD, "").replace(LEADING_PUNCTUATION, "").trim()), top: true };
+    }
+    return { tab: best.tab, title: capitalised(rest.trim()) };
   };
 
   const found = at(0) ?? (words[0]?.word === TAB_WORD ? at(1) : undefined);

@@ -29,6 +29,14 @@ This adds the note "Oat milk and bin bags", with the Shopping tab's tags, so it 
 
 If a tab's filter has several tags in one category, the note gets the first of them.
 
+### At the top of the tab
+
+Say "top" straight after the tab's name to put the note at the top of that tab's list, instead of at the bottom:
+
+> "Hey Google, send a text to nwsnotes: **Shopping top**, oat milk"
+
+This adds "Oat milk" at the top of the Shopping tab, just like adding a note at the top in the app. The notification then says "Saved to the top of Shopping". A note that really starts with the word "top" needs wording differently, e.g. "Work, the top priority is the budget".
+
 If the start of the text isn't a tab's name, the whole text is the note, with no tags, and it shows in **All**.
 
 ### Spoken names
