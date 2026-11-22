@@ -43,6 +43,18 @@ This adds "Oat milk" at the top of the Shopping tab, just like adding a note at 
 
 Some tab names are hard to say, or Google keeps mishearing them. Give such a tab a **spoken name**: an extra name for it, used only for texts. Edit the tab in **Settings**, fill in **Spoken name**, and save. For example, a tab called "DIY" could have the spoken name "do it yourself". A text can start with either name.
 
+## Commands
+
+A text that starts with the word **App** isn't a note: it tells the app to do something.
+
+- **App reset new:** every note marked New becomes Active, the same as **Reset New** in Settings.
+
+> "Hey Google, send a text to nwsnotes: App reset new"
+
+You get a notification saying how many notes changed. If the command isn't one the app knows, you get a text back listing the commands.
+
+Because of this, a tab whose name starts with "App" can't be sent notes by its name: give it a spoken name instead (one that doesn't start with "app").
+
 ## Knowing it worked
 
 - **Each saved note sends a notification** to your devices that have reminders turned on (see [Due dates and reminders](due-dates.md)), e.g. "Saved to Shopping" with the note below it. It tells you if no tab matched. These don't show in the car; they're there to check afterwards.

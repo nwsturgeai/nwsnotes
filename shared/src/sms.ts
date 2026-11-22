@@ -132,12 +132,36 @@ export function spokenNameError(spokenName: string, ownName: string, otherTabs: 
   if (spoken === "") return "The spoken name needs at least one letter or digit.";
   if (spoken === "all") return `The spoken name can't be "All".`;
   if (spoken === TAB_WORD) return `The spoken name can't be "${TAB_WORD}".`;
+  if (spoken.split(" ")[0] === APP_WORD) return `A spoken name can't start with "${APP_WORD}": texts starting "App" are commands to the app.`;
   if (spoken === normaliseSpoken(ownName)) return "The spoken name is the same as the tab's name.";
   const clash = otherTabs.find(
     (tab) => normaliseSpoken(tab.name) === spoken || (tab.spokenName !== undefined && normaliseSpoken(tab.spokenName) === spoken),
   );
   if (clash) return `Another tab already uses that name ("${clash.name}").`;
   return undefined;
+}
+
+// ---- Commands: texts starting "App" ---------------------------------------
+
+/** The first word that makes a text a command to the app, not a note. */
+const APP_WORD = "app";
+
+/** The commands a text can give, after "App", as normalised (lower case, single spaces). */
+export const APP_COMMANDS = ["reset new"] as const;
+export type AppCommand = (typeof APP_COMMANDS)[number];
+
+/**
+ * A text whose first word is "App": the command after it, normalised ("App: Reset New." gives "reset new"),
+ * whether or not it's one there is. Undefined when the text isn't a command (e.g. "Apple juice").
+ */
+export function appCommandOf(text: string): string | undefined {
+  const words = wordsOf(text);
+  return words[0] === APP_WORD ? words.slice(1).join(" ") : undefined;
+}
+
+/** Whether a command (from appCommandOf) is one there is. */
+export function isAppCommand(command: string): command is AppCommand {
+  return (APP_COMMANDS as readonly string[]).includes(command);
 }
 
 /** A tab name that is another tab's spoken name, once normalised: the other tab, if there is one. */
@@ -176,16 +200,27 @@ export function fitsOneSms(text: string): boolean {
  * A "not saved" reply naming the note: `Not saved: "<start of the note>..." - <reason>`, with the quoted
  * start cut short so the whole reply fits in one SMS.
  */
-export function notSavedReply(noteText: string, reason: string): string {
-  const note = noteText.trim().replace(/\s+/g, " ");
-  const make = (quoted: string) => `Not saved: "${quoted}" - ${reason}`;
-  if (fitsOneSms(make(note))) return make(note);
-  const chars = [...note];
+export function notSavedReply(noteText: string, reason: string, outcome = "Not saved"): string {
+  return withQuote(noteText, (quoted) => `${outcome}: "${quoted}" - ${reason}`, `${outcome}: ${reason}`);
+}
+
+/** The reply to a command that isn't one: `Unknown command "<command>". Commands: reset new.`, in one SMS. */
+export function unknownCommandReply(command: string): string {
+  const list = `Commands: ${APP_COMMANDS.join(", ")}.`;
+  if (command.trim() === "") return `That isn't a command. ${list}`;
+  return withQuote(command, (quoted) => `Unknown command "${quoted}". ${list}`, `Unknown command. ${list}`);
+}
+
+/** `make(quoted)` with as much of `text` quoted as fits in one SMS (cut short with "..."), or `fallback`. */
+function withQuote(text: string, make: (quoted: string) => string, fallback: string): string {
+  const whole = text.trim().replace(/\s+/g, " ");
+  if (fitsOneSms(make(whole))) return make(whole);
+  const chars = [...whole];
   for (let length = chars.length - 1; length > 0; length--) {
     const reply = make(`${chars.slice(0, length).join("").trimEnd()}...`);
     if (fitsOneSms(reply)) return reply;
   }
-  return `Not saved: ${reason}`;
+  return fallback;
 }
 
 /** A UK number in the usual form ("07700 900123"); any other in E.164 as given. */

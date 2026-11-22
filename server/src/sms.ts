@@ -5,10 +5,13 @@ import {
   LIFETIME_NEW,
   TITLE_MAX_LENGTH,
   formatPhoneNumber,
+  appCommandOf,
+  isAppCommand,
   matchSpokenTab,
   noteMatchesFilters,
   notSavedReply,
   orderNotes,
+  unknownCommandReply,
   type SmsLinkCode,
   type SmsStatus,
   type Tab,
@@ -229,7 +232,12 @@ export class SmsNotes {
       return undefined;
     }
 
-    // At most RATE_LIMIT notes in RATE_WINDOW_MS; the first text past it is told once, then they're ignored.
+    // A text starting "App" is a command, not a note.
+    const command = appCommandOf(text);
+    const outcome = command === undefined ? "Not saved" : "Not done";
+    const notDone = command === undefined ? "not saved" : "not done";
+
+    // At most RATE_LIMIT texts in RATE_WINDOW_MS; the first text past it is told once, then they're ignored.
     const now = Date.now();
     const recent = this.recent.get(from) ?? { times: [], warned: false };
     recent.times = recent.times.filter((time) => time > now - RATE_WINDOW_MS);
@@ -241,16 +249,54 @@ export class SmsNotes {
         return undefined;
       }
       recent.warned = true;
-      log(`not saved: too many texts from user ${user.id}; told them.`);
-      return this.failed(user.id, text, "too many texts. Wait a few minutes and try again.");
+      log(`${notDone}: too many texts from user ${user.id}; told them.`);
+      return this.failed(user.id, text, "too many texts. Wait a few minutes and try again.", outcome);
     }
     recent.times.push(now);
 
     if (user.disabled) {
-      log(`not saved: user ${user.id}'s account is turned off.`);
-      return this.failed(user.id, text, "your nwsnotes account is turned off.");
+      log(`${notDone}: user ${user.id}'s account is turned off.`);
+      return this.failed(user.id, text, "your nwsnotes account is turned off.", outcome);
     }
+    if (command !== undefined) return this.runCommand(user, command, text, log);
     return this.addNote(user, text, log);
+  }
+
+  /** A text starting "App": carries out the command, or texts back that there's no such command. */
+  private async runCommand(user: User, command: string, text: string, log: (outcome: string) => void): Promise<string | undefined> {
+    if (!isAppCommand(command)) {
+      // The words aren't logged: they could be a mistyped note.
+      log(`unknown command for user ${user.id}.`);
+      const reply = unknownCommandReply(command);
+      await this.notifySafely(user.id, { title: "Not done", body: `${text}\n\n${reply}`, tag: `sms-failed-${Date.now()}` });
+      return reply;
+    }
+    try {
+      const store = await this.notebooks.for(user.id);
+      // "reset new", the only command so far: every New note becomes Active, as Settings' "Reset New" does.
+      const count = await store.resetNew();
+      if (count > 0) this.live.notifyChanged(user.id, undefined);
+      log(`command "${command}" for user ${user.id}: ${count} note${count === 1 ? "" : "s"} made Active.`);
+      await this.notifySafely(user.id, {
+        title: `App: ${command}`,
+        body: count === 0 ? "There were no New notes." : `${count} note${count === 1 ? "" : "s"} changed to Active.`,
+        tag: `sms-command-${Date.now()}`,
+      });
+      return undefined;
+    } catch (error) {
+      log(`not done: an error (below) running "${command}" for user ${user.id}.`);
+      console.error(`Couldn't run user ${user.id}'s texted command:`, error);
+      return this.failed(user.id, text, "nwsnotes can't do that right now. Please send it again later.", "Not done");
+    }
+  }
+
+  /** A notification, where a failure to send it is only logged. */
+  private async notifySafely(userId: number, message: { title: string; body: string; tag: string }): Promise<void> {
+    try {
+      await this.push.notify(userId, message);
+    } catch (error) {
+      console.error("Couldn't send a notification:", error);
+    }
   }
 
   /** Adds the texted note to the user's notebook, in the tab its first words name. */
@@ -330,13 +376,13 @@ export class SmsNotes {
   }
 
   /** A note that wasn't saved: the reply to text back, and a notification with all of its text. */
-  private async failed(userId: number, text: string, reason: string): Promise<string> {
-    try {
-      await this.push.notify(userId, { title: "Not saved", body: `${text}\n\n${reason.charAt(0).toUpperCase()}${reason.slice(1)}`, tag: `sms-failed-${Date.now()}` });
-    } catch (error) {
-      console.error("Couldn't send a notification:", error);
-    }
-    return notSavedReply(text, reason);
+  private async failed(userId: number, text: string, reason: string, outcome = "Not saved"): Promise<string> {
+    await this.notifySafely(userId, {
+      title: outcome,
+      body: `${text}\n\n${reason.charAt(0).toUpperCase()}${reason.slice(1)}`,
+      tag: `sms-failed-${Date.now()}`,
+    });
+    return notSavedReply(text, reason, outcome);
   }
 
   /** End-to-end tests only: forgets the codes, texts and counts, so each test starts afresh. */

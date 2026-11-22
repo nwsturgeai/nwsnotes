@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { fitsOneSms, formatPhoneNumber, matchSpokenTab, normaliseSpoken, notSavedReply, spokenNameError } from "../../shared/src/sms";
+import {
+  appCommandOf,
+  fitsOneSms,
+  formatPhoneNumber,
+  isAppCommand,
+  matchSpokenTab,
+  normaliseSpoken,
+  notSavedReply,
+  spokenNameError,
+  unknownCommandReply,
+} from "../../shared/src/sms";
 
 // Unit tests of the shared text-message code: no browser or server needed, so they run once (desktop).
 test.beforeEach(() => {
@@ -108,6 +118,35 @@ test("a not-saved reply fits in one text, cutting the quoted note short", () => 
   expect(fitsOneSms(emoji)).toBe(true);
   expect(emoji).toContain("🎉");
   expect(emoji.length).toBeLessThanOrEqual(70);
+});
+
+test('a text whose first word is "App" is a command, whatever its case and punctuation', () => {
+  expect(appCommandOf("App reset new")).toBe("reset new");
+  expect(appCommandOf("app: Reset New.")).toBe("reset new");
+  expect(appCommandOf("APP, reset  new!")).toBe("reset new");
+  expect(appCommandOf("App")).toBe("");
+  expect(appCommandOf("Apple juice")).toBeUndefined();
+  expect(appCommandOf("Shopping, app store voucher")).toBeUndefined();
+  expect(isAppCommand("reset new")).toBe(true);
+  // No slips in commands.
+  expect(isAppCommand("reset news")).toBe(false);
+});
+
+test("an unknown command's reply lists the commands, in one text", () => {
+  expect(unknownCommandReply("reset news")).toBe('Unknown command "reset news". Commands: reset new.');
+  expect(unknownCommandReply("")).toBe("That isn't a command. Commands: reset new.");
+  const long = unknownCommandReply("word ".repeat(60));
+  expect(fitsOneSms(long)).toBe(true);
+  expect(long).toMatch(/^Unknown command "word word .*\.\.\."\. Commands: reset new\.$/);
+  expect(notSavedReply("App reset new", "your nwsnotes account is turned off.", "Not done")).toBe(
+    'Not done: "App reset new" - your nwsnotes account is turned off.',
+  );
+});
+
+test('spoken names can\'t start with "app", as texts starting "App" are commands', () => {
+  expect(spokenNameError("app", "Phone apps", [])).toMatch(/can't start with "app"/);
+  expect(spokenNameError("App ideas", "Phone apps", [])).toMatch(/can't start with "app"/);
+  expect(spokenNameError("apps", "Phone apps", [])).toBeUndefined();
 });
 
 test("UK numbers are shown in the usual form", () => {

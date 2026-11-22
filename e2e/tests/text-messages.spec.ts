@@ -219,6 +219,73 @@ test('only "top" after the tab\'s name saves nothing, and texts back', async ({ 
   expect(await notes(page.request)).toHaveLength(before);
 });
 
+test('"App reset new" makes every New note Active, with a notification and no text back', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  // A second New note, texted in, as well as the seed's.
+  await text(page.request, "Ring the plumber");
+  const isNew = (note: { tagIds: number[] }) => note.tagIds.includes(-1);
+  expect((await notes(page.request)).filter(isNew).length).toBeGreaterThanOrEqual(2);
+  const count = (await notes(page.request)).filter(isNew).length;
+
+  expect(reply((await text(page.request, "App: Reset New.")).body)).toBeUndefined();
+  expect((await notes(page.request)).filter(isNew)).toHaveLength(0);
+  expect((await notifications(page.request)).at(-1)).toMatchObject({
+    title: "App: reset new",
+    body: `${count} notes changed to Active.`,
+  });
+  // Nothing was added as a note.
+  expect((await lastNote(page.request)).titleText).toBe("Ring the plumber");
+
+  // Again, with nothing New left.
+  await text(page.request, "app reset new");
+  expect((await notifications(page.request)).at(-1)).toMatchObject({ body: "There were no New notes." });
+
+  await page.goto("/history");
+  await expect(page.getByText(`Reset New (${count} notes made Active)`)).toBeVisible();
+});
+
+test("an unknown command, or \"App\" alone, texts back the commands; \"Apple\" is just a note", async ({ page }) => {
+  await linkPhone(page.request);
+  const before = (await notes(page.request)).length;
+  expect(reply((await text(page.request, "App reset news")).body)).toBe('Unknown command "reset news". Commands: reset new.');
+  expect(reply((await text(page.request, "App")).body)).toBe("That isn't a command. Commands: reset new.");
+  expect(await notes(page.request)).toHaveLength(before);
+
+  await text(page.request, "Apple juice");
+  expect((await lastNote(page.request)).titleText).toBe("Apple juice");
+});
+
+test('a tab called "App" is a command, not the tab; its spoken name can\'t start with "app"', async ({ page }) => {
+  expect((await page.request.post("/api/tabs", { data: { name: "App", categories: [{ categoryId: 1, tagIds: [1] }] } })).status()).toBe(201);
+  const refused = await page.request.post("/api/tabs", {
+    data: { name: "Phone apps", spokenName: "app ideas", categories: [{ categoryId: 1, tagIds: [2] }] },
+  });
+  expect(refused.status()).toBe(400);
+  expect(await refused.text()).toContain(`can't start with \\"app\\"`);
+
+  await linkPhone(page.request);
+  const before = (await notes(page.request)).length;
+  expect(reply((await text(page.request, "App, buy a phone case")).body)).toBe('Unknown command "buy a phone case". Commands: reset new.');
+  expect(await notes(page.request)).toHaveLength(before);
+});
+
+test("a command from a turned-off account is not done, and says so", async ({ page, browser }) => {
+  const added = await page.request.post("/api/users", { data: { displayName: "Sam", loginName: "sam" } });
+  const { user, password } = (await added.json()) as { user: { id: number }; password: string };
+  const sam = await browser.newContext({ baseURL: test.info().project.use.baseURL, storageState: { cookies: [], origins: [] } });
+  try {
+    expect((await sam.request.post("/api/login", { data: { loginName: "sam", password } })).ok()).toBe(true);
+    await linkPhone(sam.request, "+447700900456");
+    await page.request.put(`/api/users/${user.id}`, { data: { disabled: true } });
+    expect(reply((await text(page.request, "App reset new", { from: "+447700900456" })).body)).toBe(
+      'Not done: "App reset new" - your nwsnotes account is turned off.',
+    );
+  } finally {
+    await sam.close();
+  }
+});
+
 test("a tab whose filter has several tags in a category gives the note the first of them", async ({ page }) => {
   // Topic: Ideas (3), Shopping (4), Reading (5), in that order.
   const response = await page.request.post("/api/tabs", {

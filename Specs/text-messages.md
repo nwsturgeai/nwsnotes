@@ -80,7 +80,7 @@ People want to add notes by voice while driving. Their Android phone connects to
   - heading "App: reset new", text "3 notes changed to Active." (or "There were no New notes.");
   - nothing is texted back, as it worked.
 - **Failures get a text back,** and a notification, as for notes:
-  - **An unknown command** (including "App" alone): "Unknown command "<command>". Commands: reset new." Kept to one text, cutting the quoted command short if need be.
+  - **An unknown command:** "Unknown command "<command>". Commands: reset new." Kept to one text, cutting the quoted command short if need be. "App" alone gets "That isn't a command. Commands: reset new."
   - **A turned-off account,** the database being unreachable, and too many texts give the same replies as for notes, with "Not done" in place of "Not saved".
 - **Counted as texts** for "too many texts", as notes are.
 - **Spoken names** can't start with the word "app" ("app", "app ideas"), as a text starting with it would never reach that tab.
