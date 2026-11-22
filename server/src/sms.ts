@@ -58,6 +58,19 @@ function cutToLimit(title: string): { title: string; cut: boolean } {
   return { title: title.slice(0, space > 0 ? space : TITLE_MAX_LENGTH).trimEnd(), cut: true };
 }
 
+/** A phone number for the logs: only its last 3 digits, e.g. "…258". */
+function maskedNumber(phoneNumber: string | undefined): string {
+  return phoneNumber ? `…${phoneNumber.slice(-3)}` : "no number";
+}
+
+/**
+ * One line in the server's log for each text that arrives, saying what happened to it (see `pm2 logs`).
+ * Never the text itself, and only the last 3 digits of the sender's number.
+ */
+function logText(fields: Record<string, string>, outcome: string): void {
+  console.log(`Text ${fields.MessageSid ?? "(no id)"} from ${maskedNumber(fields.From)}: ${outcome}`);
+}
+
 /** A reply in TwiML: a text back with this message, or (without one) nothing sent. */
 function twiml(res: Response, message?: string): void {
   const escaped = message?.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -103,6 +116,12 @@ export class SmsNotes {
       const addresses = new Set([this.config.publicUrl + req.originalUrl, `${req.protocol}://${req.get("host") ?? ""}${req.originalUrl}`]);
       const given = req.get("X-Twilio-Signature");
       if (![...addresses].some((url) => signatureIsRight(twilioSignature(this.config.authToken, url, fields), given))) {
+        logText(
+          fields,
+          given
+            ? `refused (403): the signature doesn't match ${[...addresses].join(" or ")}. Check the auth token given to set-sms.sh is the account's current one.`
+            : "refused (403): no Twilio signature, so it isn't from Twilio.",
+        );
         res.status(403).type("text").send("Not signed by Twilio.");
         return;
       }
@@ -149,18 +168,28 @@ export class SmsNotes {
 
   /** A text that arrived: links a phone, adds a note, or is ignored. Returns the reply to text back, if any. */
   private async received(fields: Record<string, string>): Promise<string | undefined> {
+    const log = (outcome: string) => logText(fields, outcome);
     const sid = fields.MessageSid;
     if (sid) {
-      if (this.sids.includes(sid)) return undefined;
+      if (this.sids.includes(sid)) {
+        log("ignored: already received (Twilio sent it again).");
+        return undefined;
+      }
       this.sids.push(sid);
       if (this.sids.length > SIDS_REMEMBERED) this.sids.shift();
     }
     const from = fields.From ?? "";
     const text = (fields.Body ?? "").trim();
-    if (!from || !text) return undefined;
+    if (!from || !text) {
+      log("ignored: empty.");
+      return undefined;
+    }
 
     const users = this.notebooks.users;
-    if (!users.isReady()) return users.byPhoneNumber(from) ? notSavedReply(text, "nwsnotes can't save right now. Please send it again later.") : undefined;
+    if (!users.isReady()) {
+      log("not saved: the database isn't loaded yet.");
+      return users.byPhoneNumber(from) ? notSavedReply(text, "nwsnotes can't save right now. Please send it again later.") : undefined;
+    }
 
     // A linking code.
     const waiting = /^\d{6}$/.test(text) ? this.codes.get(text) : undefined;
@@ -169,9 +198,11 @@ export class SmsNotes {
       try {
         await users.linkPhone(waiting.userId, from);
       } catch (error) {
+        log(`couldn't link the phone to user ${waiting.userId}.`);
         console.error("Couldn't link a phone:", error);
         return undefined;
       }
+      log(`linking code: the phone is now linked to user ${waiting.userId}.`);
       this.live.notifyChanged(waiting.userId, undefined);
       await this.push.notify(waiting.userId, {
         title: "Phone linked",
@@ -182,7 +213,18 @@ export class SmsNotes {
     }
 
     const user = users.byPhoneNumber(from);
-    if (!user || OPT_OUT_WORDS.has(text.toLowerCase())) return undefined;
+    if (!user) {
+      log(
+        /^\d{6}$/.test(text)
+          ? "ignored: a linking code that isn't waiting (wrong, already used, or older than 15 minutes). Make a new one in Settings."
+          : "ignored: this phone isn't linked to anyone. Link it in Settings → Text messages.",
+      );
+      return undefined;
+    }
+    if (OPT_OUT_WORDS.has(text.toLowerCase())) {
+      log(`ignored: an opt-out word, for user ${user.id}.`);
+      return undefined;
+    }
 
     // At most RATE_LIMIT notes in RATE_WINDOW_MS; the first text past it is told once, then they're ignored.
     const now = Date.now();
@@ -191,29 +233,40 @@ export class SmsNotes {
     if (recent.times.length === 0) recent.warned = false;
     this.recent.set(from, recent);
     if (recent.times.length >= RATE_LIMIT) {
-      if (recent.warned) return undefined;
+      if (recent.warned) {
+        log(`ignored: too many texts from user ${user.id}.`);
+        return undefined;
+      }
       recent.warned = true;
+      log(`not saved: too many texts from user ${user.id}; told them.`);
       return this.failed(user.id, text, "too many texts. Wait a few minutes and try again.");
     }
     recent.times.push(now);
 
-    if (user.disabled) return this.failed(user.id, text, "your nwsnotes account is turned off.");
-    return this.addNote(user, text);
+    if (user.disabled) {
+      log(`not saved: user ${user.id}'s account is turned off.`);
+      return this.failed(user.id, text, "your nwsnotes account is turned off.");
+    }
+    return this.addNote(user, text, log);
   }
 
   /** Adds the texted note to the user's notebook, in the tab its first words name. */
-  private async addNote(user: User, text: string): Promise<string | undefined> {
+  private async addNote(user: User, text: string, log: (outcome: string) => void): Promise<string | undefined> {
     try {
       const store = await this.notebooks.for(user.id);
       const { tabs } = store.getAll();
       const { tab, title: spokenTitle } = matchSpokenTab<Tab>(text, tabs);
-      if (tab && spokenTitle === "") return "Nothing to save after the tab name.";
+      if (tab && spokenTitle === "") {
+        log(`not saved: only tab ${tab.id}'s name, for user ${user.id}.`);
+        return "Nothing to save after the tab name.";
+      }
       const { title, cut } = cutToLimit(spokenTitle);
       // The first tag of each category the tab filters on (they're in the category's tag order). Lifetime
       // isn't set: new notes are always New.
       const tagIds = (tab?.categories ?? []).filter((filter) => filter.categoryId !== LIFETIME_CATEGORY_ID).flatMap((filter) => filter.tagIds.slice(0, 1));
       const { note } = await store.add({ titleText: title }, tagIds, undefined, undefined, { noteLimit: noteLimitOf(user), source: "sms" });
       this.live.notifyChanged(user.id, undefined);
+      log(`saved as user ${user.id}'s note ${note.id}, ${tab ? `in tab ${tab.id}` : "with no tab"}.`);
 
       const lifetime = tab?.categories.find((filter) => filter.categoryId === LIFETIME_CATEGORY_ID);
       const notes = [
@@ -229,7 +282,11 @@ export class SmsNotes {
       return undefined;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
-      if (status === 409) return this.failed(user.id, text, `you've reached your limit of ${noteLimitOf(user)} notes.`);
+      if (status === 409) {
+        log(`not saved: user ${user.id} is at their note limit.`);
+        return this.failed(user.id, text, `you've reached your limit of ${noteLimitOf(user)} notes.`);
+      }
+      log(`not saved: an error (below) adding user ${user.id}'s note.`);
       console.error(`Couldn't add user ${user.id}'s texted note:`, error);
       return this.failed(user.id, text, "nwsnotes can't save right now. Please send it again later.");
     }
