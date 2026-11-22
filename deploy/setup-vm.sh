@@ -145,21 +145,6 @@ step "Making pm2 start the app when the VM boots"
 pm2 startup systemd -u "$APP_USER" --hp "/home/$APP_USER" >/dev/null
 echo "Done."
 
-step "Installing the certificate renewal hook"
-cat > /usr/local/bin/nwsnotes-cert-deploy <<HOOK
-#!/usr/bin/env bash
-# Run by certbot after a certificate is issued or renewed:
-# copies it where the app can read it and restarts the app.
-set -euo pipefail
-LIVE=/etc/letsencrypt/live/nwsnotes.duckdns.org
-install -o $APP_USER -g $APP_USER -m 600 "\$LIVE/fullchain.pem" $CERT_DIR/fullchain.pem
-install -o $APP_USER -g $APP_USER -m 600 "\$LIVE/privkey.pem" $CERT_DIR/privkey.pem
-runuser -u $APP_USER -- env PM2_HOME=/home/$APP_USER/.pm2 pm2 restart nwsnotes --update-env \\
-  || echo "Certificate copied, but the app isn't running yet; it will use it when it starts."
-HOOK
-chmod 755 /usr/local/bin/nwsnotes-cert-deploy
-echo "Done."
-
 step "Setting up the deployment SSH key"
 SSH_DIR=/home/$APP_USER/.ssh
 install -d -o "$APP_USER" -g "$APP_USER" -m 700 "$SSH_DIR"

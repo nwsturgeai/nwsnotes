@@ -11,7 +11,7 @@ set -euo pipefail
 CONFIG_DIR=/etc/nwsnotes
 CONFIG_FILE=$CONFIG_DIR/config.json
 APP_USER=nwsnotes
-DEFAULT_URL=https://nwsnotes.duckdns.org
+DEFAULT_URL=https://nwsnotes.com
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run this as root: sudo bash set-sms.sh" >&2

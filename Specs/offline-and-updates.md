@@ -18,7 +18,7 @@ The settings page should show which version is running, and have a button to che
 ## Agreed technical decisions
 
 ### Live updates (WebSocket)
-- The website connects to `wss://nwsnotes.duckdns.org/ws`, on the same port (443) as the site.
+- The website connects to `wss://nwsnotes.com/ws`, on the same port (443) as the site.
 - The server only accepts the connection if the session cookie is valid and the request's `Origin` is the site's own address, so other websites can't connect using the cookie.
 - Each page load creates a random connection id and sends it with every change it makes (`X-Connection-Id` header). After a change is saved (a note added, a category added or edited, or a tab added, edited or deleted), the server sends `{ "type": "data-changed" }` to every other open connection; they reload the notes, categories and tabs with `GET /api/notes`. The same message will be used later for note editing and deleting.
 - If the connection drops, the website reconnects automatically, waiting a little longer after each failed attempt. After any reconnect, and whenever the app comes back on screen, it reloads the notes in case it missed a message.

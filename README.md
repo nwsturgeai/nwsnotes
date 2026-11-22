@@ -1,6 +1,6 @@
 # nwsnotes
 
-A personal notes website: a React front end and an Express API, written in TypeScript and served by Node.js from a DigitalOcean Ubuntu VM at https://nwsnotes.duckdns.org.
+A personal notes website: a React front end and an Express API, written in TypeScript and served by Node.js from a DigitalOcean Ubuntu VM at https://nwsnotes.com.
 
 The full specification is in [Specs/](Specs/README.md), one file per area.
 
@@ -47,15 +47,15 @@ Then:
 
 ## Setting up the VM (once)
 
-Before starting, check that nwsnotes.duckdns.org points at the VM's IP address, and if you use a DigitalOcean cloud firewall, that it allows ports 22, 80 and 443.
+Before starting, check that nwsnotes.com (and, if you want it to work too, www.nwsnotes.com) points at the VM's IP address, and if you use a DigitalOcean cloud firewall, that it allows ports 22, 80 and 443.
 
 ### 1. Run the setup script on the VM
 
 From a copy of this repository on your computer, copy the two scripts to the VM and log in (use whatever user you normally SSH in as):
 
 ```bash
-scp deploy/setup-vm.sh deploy/get-certificate.sh root@nwsnotes.duckdns.org:
-ssh root@nwsnotes.duckdns.org
+scp deploy/setup-vm.sh deploy/get-certificate.sh root@nwsnotes.com:
+ssh root@nwsnotes.com
 sudo bash setup-vm.sh
 ```
 
@@ -70,7 +70,7 @@ In GitHub, open the repository's **Settings → Secrets and variables → Action
 
 | Name | Value |
 | --- | --- |
-| `VM_HOST` | `nwsnotes.duckdns.org` |
+| `VM_HOST` | `nwsnotes.com` |
 | `VM_SSH_KEY` | The whole private key from step 1, including the `BEGIN` and `END` lines |
 
 ### 3. Deploy the app
@@ -89,7 +89,9 @@ sudo bash get-certificate.sh you@example.com
 
 Let's Encrypt only uses the email for expiry warnings. The certificate renews automatically; each renewal copies it to the app and restarts it.
 
-Then open https://nwsnotes.duckdns.org and log in.
+Then open https://nwsnotes.com and log in.
+
+The certificate also covers www.nwsnotes.com and the old nwsnotes.duckdns.org, if they point at the VM; the app sends visitors on those addresses to https://nwsnotes.com.
 
 ### 5. Connect the database (Supabase)
 
@@ -101,8 +103,8 @@ The notes are kept in a Supabase database (the free plan is enough). **Do this b
 4. Copy the certificate and the script to the VM, and run the script there. It asks for the connection string, without showing it:
 
    ```bash
-   scp deploy/set-database.sh prod-ca-2021.crt root@nwsnotes.duckdns.org:
-   ssh root@nwsnotes.duckdns.org
+   scp deploy/set-database.sh prod-ca-2021.crt root@nwsnotes.com:
+   ssh root@nwsnotes.com
    sudo bash set-database.sh prod-ca-2021.crt
    ```
 
@@ -117,18 +119,37 @@ Lets everyone text notes in, e.g. by voice from the car with Android Auto (see [
 1. At https://www.twilio.com, sign up and **upgrade** the account (a top-up of about $20, used up gradually). In **Billing**, leave **auto-recharge off**, so a fault can never run up a bill.
 2. In **Phone Numbers → Regulatory Compliance**, make a **UK bundle** for a mobile number, as an individual, with proof of address. Approval can take a few working days.
 3. Buy a **UK mobile number** (07…) that can receive SMS, about $2.50 a month.
-4. In the number's settings, under **Messaging → A message comes in**, choose **Webhook**, `https://nwsnotes.duckdns.org/api/sms/incoming`, **HTTP POST**.
+4. In the number's settings, under **Messaging → A message comes in**, choose **Webhook**, `https://nwsnotes.com/api/sms/incoming`, **HTTP POST**.
 5. Copy the script to the VM and run it. It asks for the **Auth Token** (Twilio Console → Account info), without showing it, the number and the site's address, then restarts the app:
 
    ```bash
-   scp deploy/set-sms.sh root@nwsnotes.duckdns.org:
-   ssh root@nwsnotes.duckdns.org
+   scp deploy/set-sms.sh root@nwsnotes.com:
+   ssh root@nwsnotes.com
    sudo bash set-sms.sh
    ```
 
 6. Each person then opens Settings → **Text messages** → **Link my phone**, texts the code shown to the number, and saves the number in their contacts as "nwsnotes".
 
 It costs about $0.0075 for each text received and $0.05 for each text sent back (only when a note couldn't be saved).
+
+## Moving from nwsnotes.duckdns.org to nwsnotes.com (once)
+
+If the VM was set up when the site was at nwsnotes.duckdns.org:
+
+1. At your domain registrar, add DNS records for nwsnotes.com pointing at the VM: an **A record** for `@` (the bare name) with the VM's IP address, and either another A record or a **CNAME** to `nwsnotes.com` for `www`. Leave the DuckDNS entry as it is, so old links keep working. Check with `nslookup nwsnotes.com` that it gives the VM's address (this can take from a few minutes to a few hours).
+2. Merge to `main` to deploy the version that knows about nwsnotes.com.
+3. Copy the new certificate script to the VM and run it:
+
+   ```bash
+   scp deploy/get-certificate.sh root@nwsnotes.duckdns.org:
+   ssh root@nwsnotes.duckdns.org
+   sudo bash get-certificate.sh you@example.com
+   ```
+
+   It gets one certificate for nwsnotes.com, www.nwsnotes.com and nwsnotes.duckdns.org, updates the renewal hook, restarts the app and removes the old certificate.
+4. In GitHub, change the `VM_HOST` secret to `nwsnotes.com`.
+5. If text messages are turned on: run `sudo bash set-sms.sh` again (copy the new one across first) and accept the new address, then change the Twilio webhook to `https://nwsnotes.com/api/sms/incoming`. Until you do, texts keep working at the old address.
+6. On each phone, open https://nwsnotes.com, log in (logins don't carry over to a new address), install it again (**⋮ → Add to Home screen → Install**), turn reminders back on in Settings if you use them, and remove the old app's icon. The old app keeps working until then.
 
 ## Day-to-day
 
@@ -144,7 +165,7 @@ It costs about $0.0075 for each text received and $0.05 for each text sent back 
 
 ## Installing it as an Android app
 
-Open https://nwsnotes.duckdns.org in Chrome on the phone, log in, then choose **⋮ → Add to Home screen → Install**. The app opens full-screen from its own icon and updates itself after each deployment. Notes are always loaded from the server, so it needs a connection to work.
+Open https://nwsnotes.com in Chrome on the phone, log in, then choose **⋮ → Add to Home screen → Install**. The app opens full-screen from its own icon and updates itself after each deployment. Notes are always loaded from the server, so it needs a connection to work.
 
 ## Where things live on the VM
 
