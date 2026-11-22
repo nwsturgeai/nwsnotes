@@ -1,5 +1,9 @@
 # Getting started with nwsnotes
 
+## Getting an account
+
+Go to the [sign-up page](/signup) (or, on the login page, choose **No account yet? Ask for one**). Fill in your email address, your name and a password you choose (at least 10 characters), then **Ask for an account**. Once your account has been confirmed, you'll get an email with the link to log in: use your email and that password. Until then, logging in says it's still waiting to be confirmed.
+
 Once you've logged in, you're straight into the main app screen.  At the bottom is an area to type a new note.  Clicking ENTER saves the note, or you can click the "+" button.
 
 In the top-right, there is a cog icon.  Clicking this takes you to the Settings page.

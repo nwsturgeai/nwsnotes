@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCloud, faEllipsis, faGear, faSignature, faSlash } from "@fortawesome/free-solid-svg-icons";
+import { faCloud, faEllipsis, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { ALL_TAB_NAME, type Tab } from "@nwsnotes/shared";
 import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
@@ -31,6 +31,8 @@ interface Props {
   pendingCount: number;
   /** A new version of the app is ready and nothing unsaved would be lost: offer "Reload". */
   showUpdateNotice: boolean;
+  /** Admins only: account requests waiting to be confirmed. Above 0, a warning icon links to the users page. */
+  accountsWaiting?: number;
 }
 
 /** Why the tabs and the cog can't be used while a note is being edited. */
@@ -54,10 +56,12 @@ export function Header({
   offline,
   pendingCount,
   showUpdateNotice,
+  accountsWaiting = 0,
 }: Props) {
   const cogBlocked = editing || offline;
   const offlineTitle =
     pendingCount === 0 ? "Offline" : `Offline: ${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting`;
+  const waitingTitle = `${accountsWaiting} ${accountsWaiting === 1 ? "account is" : "accounts are"} waiting to be confirmed`;
   function go(event: MouseEvent, target: Page) {
     event.preventDefault();
     onNavigate(target);
@@ -96,6 +100,19 @@ export function Header({
               <FontAwesomeIcon icon={faCloud} />
               <FontAwesomeIcon icon={faSlash} className="offline-slash" />
             </span>
+          )}
+          {accountsWaiting > 0 && (
+            // Goes to the users page, where the requests are confirmed or declined. Blocked like the cog.
+            <a
+              href={pathFor({ name: "users" })}
+              className={cogBlocked ? "accounts-waiting blocked" : "accounts-waiting"}
+              aria-label={waitingTitle}
+              aria-disabled={cogBlocked || undefined}
+              title={offline ? OFFLINE_HINT : editing ? BLOCKED_HINT : waitingTitle}
+              onClick={(event) => (cogBlocked ? event.preventDefault() : go(event, { name: "users" }))}
+            >
+              <FontAwesomeIcon icon={faTriangleExclamation} />
+            </a>
           )}
           {stylusMode && (
             // Only shows the mode; it isn't a button.

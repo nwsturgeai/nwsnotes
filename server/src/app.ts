@@ -19,10 +19,11 @@ import type { Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
+import { accountConfirmedEmail } from "./accountEmail.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
 import type { NoteStore } from "./store.js";
-import { ADMIN_ID, meOf, noteLimitOf, noteStatsOf, type User } from "./users.js";
+import { ADMIN_ID, noteLimitOf, noteStatsOf, type User } from "./users.js";
 
 /** The logged-in user's notebook (after requireSession and withNotebook). */
 function notebookOf(res: Response): NoteStore {
@@ -91,9 +92,35 @@ export function createApp(
       res.status(403).json({ error: "This account is turned off." });
       return;
     }
+    if (result === "waiting") {
+      res.status(403).json({ error: "Your account is waiting to be confirmed. You can log in once it has been." });
+      return;
+    }
     await users.recordLogin(result.id);
     startSession(res, result);
     res.json({ ok: true });
+  });
+
+  // --- Asking for an account (the public sign-up page) ------------------------
+
+  const signUpLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    limit: config.testMode ? 1000 : 5,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too many requests from here. Please wait an hour and try again." },
+  });
+
+  /** Tells the admins' open pages, so the "accounts waiting" icon comes and goes without a reload. */
+  const notifyAdmins = () => {
+    for (const id of users.adminIds()) live.notifyChanged(id, undefined);
+  };
+
+  app.post("/api/account-requests", signUpLimiter, async (req, res) => {
+    const request = await users.requestAccount(req.body);
+    console.log(`Account request ${request.id} made; waiting to be confirmed.`);
+    notifyAdmins();
+    res.status(201).json({ ok: true });
   });
 
   app.post("/api/logout", (_req, res) => {
@@ -116,7 +143,7 @@ export function createApp(
 
   meRouter.get("/", (_req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json(meOf(userOf(res)));
+    res.json(users.me(userOf(res)));
   });
 
   // Your number of notes and the space they take, for the top of Settings.
@@ -153,6 +180,43 @@ export function createApp(
   usersRouter.get("/database-size", async (_req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({ bytes: await users.databaseBytes() });
+  });
+
+  // Account requests from the sign-up page, waiting to be confirmed or declined.
+  usersRouter.get("/requests", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(users.accountRequests());
+  });
+
+  const requestIdOf = (req: Request<{ id: string }>): number => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) throw new RequestError(404, "That account request isn't waiting any more.");
+    return id;
+  };
+
+  // Confirming makes the user, then emails them that it's ready (if email is set up). The account is made
+  // either way; `emailed` says whether they were told, so the admin can tell them otherwise.
+  usersRouter.post("/requests/:id/confirm", async (req: Request<{ id: string }>, res) => {
+    const user = await users.confirmRequest(requestIdOf(req));
+    notifyAdmins();
+    let emailed = false;
+    if (mailer?.enabled) {
+      // The address the admin is using, which is the site's own (https://nwsnotes.com in production).
+      const loginUrl = `${req.protocol}://${req.get("host") ?? config.siteHost ?? "nwsnotes.com"}/`;
+      try {
+        await mailer.send(accountConfirmedEmail({ email: user.loginName, name: user.displayName }, loginUrl));
+        emailed = true;
+      } catch (error) {
+        console.error(`Couldn't email user ${user.id} that their account is confirmed:`, error);
+      }
+    }
+    res.status(201).json({ user: users.summary(user), emailed });
+  });
+
+  usersRouter.delete("/requests/:id", async (req: Request<{ id: string }>, res) => {
+    await users.declineRequest(requestIdOf(req));
+    notifyAdmins();
+    res.json({ ok: true });
   });
 
   usersRouter.post("/", async (req, res) => {

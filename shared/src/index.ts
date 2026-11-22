@@ -259,7 +259,29 @@ export interface Me {
   loginName: string;
   displayName: string;
   admin: boolean;
+  /** Admins only: how many account requests are waiting to be confirmed (from GET /api/me; missing elsewhere). */
+  accountsWaiting?: number;
 }
+
+/** Body of POST /api/account-requests: someone asking for an account, on the public sign-up page. */
+export interface AccountRequestBody {
+  /** Their email address, which they'll log in with. */
+  loginName: string;
+  displayName: string;
+  password: string;
+}
+
+/** An account request waiting for an admin to confirm it, as the users page lists them. */
+export interface AccountRequest {
+  id: number;
+  loginName: string;
+  displayName: string;
+  /** ISO 8601, UTC. */
+  requestedDateTime: string;
+}
+
+/** At most this many account requests can be waiting at once, so the sign-up page can't fill the database. */
+export const ACCOUNT_REQUESTS_MAX = 20;
 
 /** Body of PUT /api/me/password. */
 export interface PasswordChangeRequest {

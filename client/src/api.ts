@@ -1,5 +1,7 @@
 import {
   CONNECTION_ID_HEADER,
+  type AccountRequest,
+  type AccountRequestBody,
   type AllTabRequest,
   type ApiErrorBody,
   type BulkTagsRequest,
@@ -172,4 +174,11 @@ export const api = {
   addUser: (body: NewUserRequest) => request<{ user: UserSummary; password: string }>("POST", "/api/users", body),
   updateUser: (id: number, body: UserUpdateRequest) => request<UserSummary>("PUT", `/api/users/${id}`, body),
   resetPassword: (id: number) => request<{ password: string }>("POST", `/api/users/${id}/reset-password`),
+  /** The public sign-up page: asking for an account, which an admin then confirms. */
+  requestAccount: (body: AccountRequestBody) => request<{ ok: true }>("POST", "/api/account-requests", body),
+  /** Account requests waiting to be confirmed (admin only). */
+  accountRequests: () => request<AccountRequest[]>("GET", "/api/users/requests"),
+  /** Makes the user; `emailed` says whether they were emailed that it's ready. */
+  confirmAccountRequest: (id: number) => request<{ user: UserSummary; emailed: boolean }>("POST", `/api/users/requests/${id}/confirm`),
+  declineAccountRequest: (id: number) => request<{ ok: true }>("DELETE", `/api/users/requests/${id}`),
 };

@@ -1,4 +1,5 @@
 import {
+  ACCOUNT_REQUESTS_MAX,
   DISPLAY_NAME_MAX_LENGTH,
   LOGIN_NAME_RULE,
   isValidLoginName,
@@ -7,6 +8,7 @@ import {
   NOTE_LIMIT_DEFAULT,
   NOTE_LIMIT_MAX,
   stylusNoteLimitOf,
+  type AccountRequest,
   type Me,
   type NoteStats,
   type UserSummary,
@@ -71,6 +73,18 @@ function validLoginName(raw: unknown): string {
   return name;
 }
 
+/** A password someone chooses: at least PASSWORD_MIN_LENGTH characters, at most PASSWORD_MAX_LENGTH. */
+function validNewPassword(raw: unknown, what: string): string {
+  if (typeof raw !== "string" || raw.length < PASSWORD_MIN_LENGTH) throw new RequestError(400, `${what} must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+  if (raw.length > PASSWORD_MAX_LENGTH) throw new RequestError(400, `${what} must be at most ${PASSWORD_MAX_LENGTH} characters.`);
+  return raw;
+}
+
+/** An account request as kept: what the users page shows, and the password they chose (only its hash). */
+interface StoredRequest extends AccountRequest {
+  passwordHash: string;
+}
+
 function validDisplayName(raw: unknown): string {
   const name = typeof raw === "string" ? raw.trim() : "";
   if (name.length < 1 || name.length > DISPLAY_NAME_MAX_LENGTH) {
@@ -85,6 +99,8 @@ function validDisplayName(raw: unknown): string {
  */
 export class Users {
   private users = new Map<number, User>();
+  /** Account requests waiting for an admin, by id. */
+  private requests = new Map<number, StoredRequest>();
   private ready = false;
   /** Changes run one at a time, so two can't both take the same id or login name. */
   private queue: Promise<unknown> = Promise.resolve();
@@ -125,6 +141,102 @@ export class Users {
       "SELECT id, login_name, data FROM nwsnotes.users ORDER BY id",
     );
     this.users = new Map(rows.map((row) => [Number(row.id), { ...row.data, id: Number(row.id), loginName: row.login_name }]));
+    const requests = await this.db.query<{ id: number; login_name: string; data: Omit<StoredRequest, "id" | "loginName"> }>(
+      "SELECT id, login_name, data FROM nwsnotes.account_requests ORDER BY id",
+    );
+    this.requests = new Map(requests.map((row) => [Number(row.id), { ...row.data, id: Number(row.id), loginName: row.login_name }]));
+  }
+
+  /** What GET /api/me answers: admins are also told how many account requests are waiting. */
+  me(user: User): Me {
+    return { ...meOf(user), ...(user.admin && { accountsWaiting: this.requests.size }) };
+  }
+
+  /** Account requests waiting for an admin, oldest first. */
+  accountRequests(): AccountRequest[] {
+    return [...this.requests.values()]
+      .sort((a, b) => a.id - b.id)
+      .map(({ passwordHash: _hash, ...request }) => request);
+  }
+
+  /** The admins' ids, who are told about account requests. */
+  adminIds(): number[] {
+    return this.list().filter((user) => user.admin).map((user) => user.id);
+  }
+
+  /**
+   * Someone asking for an account on the public sign-up page, with the password they chose. It waits,
+   * and can't log in, until an admin confirms it.
+   */
+  requestAccount(raw: unknown): Promise<AccountRequest> {
+    return this.enqueue(async () => {
+      const body = (raw ?? {}) as { loginName?: unknown; displayName?: unknown; password?: unknown };
+      const loginName = validLoginName(body.loginName);
+      const displayName = validDisplayName(body.displayName);
+      const password = validNewPassword(body.password, "The password");
+      if (this.byLoginName(loginName) || this.requestByLoginName(loginName)) {
+        throw new RequestError(400, "There's already an account, or a request for one, with that email. Try logging in instead.");
+      }
+      if (this.requests.size >= ACCOUNT_REQUESTS_MAX) {
+        throw new RequestError(503, "Too many accounts are waiting to be confirmed just now. Please try again in a few days.");
+      }
+      const id = Math.max(0, ...this.requests.keys()) + 1;
+      const request: StoredRequest = { id, loginName, displayName, requestedDateTime: new Date().toISOString(), passwordHash: hashPassword(password) };
+      const { id: _id, loginName: _name, ...data } = request;
+      await this.db.query("INSERT INTO nwsnotes.account_requests (id, login_name, data) VALUES ($1, $2, $3)", [id, loginName, JSON.stringify(data)]);
+      this.requests.set(id, request);
+      const { passwordHash: _hash, ...shown } = request;
+      return shown;
+    });
+  }
+
+  /** An admin confirming a request: it becomes a user, with the password they chose and an empty notebook. */
+  confirmRequest(id: number): Promise<User> {
+    return this.enqueue(async () => {
+      const request = this.requiredRequest(id);
+      // Made since? (An admin may have added them by hand.)
+      if (this.byLoginName(request.loginName)) throw new RequestError(400, `There's already a user with the login name "${request.loginName}".`);
+      const userId = Math.max(0, ...this.users.keys()) + 1;
+      const user: User = {
+        id: userId,
+        loginName: request.loginName,
+        displayName: request.displayName,
+        passwordHash: request.passwordHash,
+        admin: false,
+        disabled: false,
+        sessionVersion: FIRST_SESSION_VERSION,
+        createdDateTime: new Date().toISOString(),
+      };
+      await this.db.transaction(async (query) => {
+        await query("INSERT INTO nwsnotes.users (id, login_name, data) VALUES ($1, $2, $3)", [userId, user.loginName, JSON.stringify(dataOf(user))]);
+        await query("INSERT INTO nwsnotes.meta (user_id, name, value) VALUES ($1, 'lastNoteId', '0'::jsonb)", [userId]);
+        await query("DELETE FROM nwsnotes.account_requests WHERE id = $1", [id]);
+      });
+      this.requests.delete(id);
+      this.users.set(userId, user);
+      return user;
+    });
+  }
+
+  /** An admin declining a request: it's removed, and nothing is kept. */
+  declineRequest(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      this.requiredRequest(id);
+      await this.db.query("DELETE FROM nwsnotes.account_requests WHERE id = $1", [id]);
+      this.requests.delete(id);
+    });
+  }
+
+  private requestByLoginName(name: string): StoredRequest | undefined {
+    const lower = name.trim().toLowerCase();
+    return [...this.requests.values()].find((request) => request.loginName.toLowerCase() === lower);
+  }
+
+  private requiredRequest(id: number): StoredRequest {
+    if (!this.ready) throw databaseUnreachable();
+    const request = this.requests.get(id);
+    if (!request) throw new RequestError(404, "That account request isn't waiting any more.");
+    return request;
   }
 
   isReady(): boolean {
@@ -172,11 +284,16 @@ export class Users {
   }
 
   /** Checks a login: the user, or why not. */
-  checkLogin(rawName: unknown, rawPassword: unknown): User | "incorrect" | "disabled" {
+  checkLogin(rawName: unknown, rawPassword: unknown): User | "incorrect" | "disabled" | "waiting" {
     if (!this.ready) throw databaseUnreachable();
     if (typeof rawName !== "string" || typeof rawPassword !== "string") return "incorrect";
     const user = this.byLoginName(rawName);
-    if (!user || !verifyPassword(rawPassword, user.passwordHash)) return "incorrect";
+    if (!user) {
+      // Asked for on the sign-up page, and not confirmed yet: said only to someone who knows its password.
+      const request = this.requestByLoginName(rawName);
+      return request && verifyPassword(rawPassword, request.passwordHash) ? "waiting" : "incorrect";
+    }
+    if (!verifyPassword(rawPassword, user.passwordHash)) return "incorrect";
     return user.disabled ? "disabled" : user;
   }
 
@@ -319,13 +436,7 @@ export class Users {
       if (typeof currentPassword !== "string" || !verifyPassword(currentPassword, existing.passwordHash)) {
         throw new RequestError(400, "The current password isn't right.");
       }
-      if (typeof newPassword !== "string" || newPassword.length < PASSWORD_MIN_LENGTH) {
-        throw new RequestError(400, `The new password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
-      }
-      if (newPassword.length > PASSWORD_MAX_LENGTH) {
-        throw new RequestError(400, `The new password must be at most ${PASSWORD_MAX_LENGTH} characters.`);
-      }
-      const next = { ...existing, passwordHash: hashPassword(newPassword), sessionVersion: existing.sessionVersion + 1 };
+      const next = { ...existing, passwordHash: hashPassword(validNewPassword(newPassword, "The new password")), sessionVersion: existing.sessionVersion + 1 };
       await this.save(next);
       return next;
     });
@@ -347,6 +458,8 @@ export class Users {
     return this.enqueue(async () => {
       const others = this.list().filter((user) => user.id !== ADMIN_ID).map((user) => user.id);
       await this.db.query("DELETE FROM nwsnotes.users WHERE id <> $1", [ADMIN_ID]);
+      await this.db.query("DELETE FROM nwsnotes.account_requests");
+      this.requests.clear();
       for (const id of others) this.users.delete(id);
       const admin = this.required(ADMIN_ID);
       const { noteLimit: _limit, ...asStarted } = withoutPhone(admin);
@@ -374,6 +487,9 @@ export class Users {
     const name = validLoginName(raw);
     const other = this.byLoginName(name);
     if (other && other.id !== ownId) throw new RequestError(400, `The login name "${name}" is already used.`);
+    if (this.requestByLoginName(name)) {
+      throw new RequestError(400, `"${name}" has asked for an account, which is waiting to be confirmed: confirm or decline it above instead.`);
+    }
     return name;
   }
 

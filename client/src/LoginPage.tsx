@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
 import { remindAfterLogin } from "./reminders";
+import { SIGN_UP_PATH } from "./SignUpPage";
 
 interface Props {
   onLoggedIn: () => void;
@@ -70,6 +71,9 @@ export function LoginPage({ onLoggedIn }: Props) {
         )}
       </form>
       {/* The help pages are public, so they can be read before logging in. */}
+      <p className="login-help">
+        <a href={SIGN_UP_PATH}>No account yet? Ask for one</a>
+      </p>
       <p className="login-help">
         <a href="/docs/">New here? Read the introduction</a>
       </p>

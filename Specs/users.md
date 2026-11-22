@@ -5,7 +5,7 @@
 The app can be used by several people, each with their own completely separate notebook. Nobody can see or change anyone else's notes, categories, tabs, history or settings. There are no shared notes.
 
 ### Accounts
-- The owner of the app (the "admin") creates every account. There is no sign-up page.
+- People ask for an account themselves on a public sign-up page (`/signup`), which the admin shares with family and friends, choosing their own password. The admin confirms each request before it can be used. The admin can also still add an account directly, with a generated password.
 - A person logs in with their email address and a password: every login name is an email address. (Emails aren't sent yet.)
 - When the admin creates an account, the app generates a password and shows it to the admin once, so the admin can send it to the person.
 - Each person can change their own password in Settings, once logged in.
@@ -17,7 +17,7 @@ The app can be used by several people, each with their own completely separate n
 - A new account starts empty: no notes, no categories and no tabs (only the built-in "All" tab and the built-in Lifetime category). An introduction guide, written separately later, will explain how to start.
 
 ### Later, not now
-- People choosing their own password from an emailed invitation, and "forgot password" emails, sent to their login email. Data belongs to a user's id, never to their login name, so this needs no reworking.
+- "Forgot password" emails, sent to their login email. Data belongs to a user's id, never to their login name, so this needs no reworking.
 - iPhone support.
 - Encryption.
 - Deleting an account and its data (an account can be turned off instead).
@@ -46,6 +46,25 @@ The app can be used by several people, each with their own completely separate n
 - **Logging everyone out of one account** is done by raising its `sessionVersion`: resetting its password, turning it off, or the person changing their own password (the device they changed it on gets a fresh cookie, so it stays logged in; their other devices are logged out).
 - **Cookies from before this change** have no user, so they're refused, and the admin logs in again once after the update.
 - `GET /api/me` returns `{ id, loginName, displayName, admin }` for the logged-in user.
+
+### Asking for an account (the sign-up page)
+- **The page:** `/signup`, public (no login), linked from the login page as "No account yet? Ask for one". It's a page of its own, outside the app: no notes, offline copy or service-worker state. Heading "Ask for an account", with "Once you've sent this, your account will be checked and confirmed before you can log in."; boxes "Email", "Your name" (the display name), "Password" and "Password again" (at least 10 characters), and "Ask for an account".
+- **Checked in the page:** "Please enter your email address, e.g. pat@example.com.", "The password must be at least 10 characters.", "The passwords don't match.". **On the server:** the same rules as everywhere (login names are emails, display names 1 to 60 characters, passwords 10 to 200), and "There's already an account, or a request for one, with that email. Try logging in instead." for an email that's a user's or another waiting request's, ignoring case.
+- **Sent:** "Thanks, <name>. Your request has been sent." and "You can log in with your email and password once your account has been confirmed.", with "Go to the login page".
+- **Stored** in its own table, `account_requests` (`id`, `login_name` unique ignoring case, `data` with `displayName`, `passwordHash` and `requestedDateTime`), not as a user: a request has no notebook, backups or sessions until it's confirmed. `POST /api/account-requests` with `{ loginName, displayName, password }`.
+- **Limits:** 5 requests an hour from one address ("Too many requests from here. Please wait an hour and try again."), and at most 20 waiting at once ("Too many accounts are waiting to be confirmed just now. Please try again in a few days.", 503), so the public page can't fill the database.
+- **Logging in before it's confirmed,** with the right password: "Your account is waiting to be confirmed. You can log in once it has been." With a wrong password, or after it's declined: "Incorrect email or password." as usual.
+- **Not emailed:** the email isn't checked by sending to it; the admin knows who they're confirming.
+
+### Confirming requests (admins)
+- **The warning icon:** while any requests are waiting, every admin's header shows Font Awesome's `triangle-exclamation`, in the error colour, just before the stylus-mode icon (on every page). It's a link to the users page, titled "1 account is waiting to be confirmed" / "<n> accounts are waiting to be confirmed", and blocked (like the cog) while editing a note or offline.
+- **The count** comes with `GET /api/me`, as `accountsWaiting`, for admins only. A request made, confirmed or declined sends a live "data changed" to every admin's open pages, which then fetch `/api/me` again with the notes, so the icon comes and goes without a reload.
+- **On the users page,** above the users, a "Waiting to be confirmed" section lists each request (oldest first): name, email, "Asked <when>", **Confirm** and **Decline**. It's shown only while there are some, and says the sign-up page's address, to share.
+  - **Confirm** makes the user, as **Add user** does (an empty notebook, the default note limit), but with the password they chose, and removes the request, in one transaction. They appear in the list of users. `POST /api/users/requests/:id/confirm` returns `{ user, emailed }` (the new `UserSummary`, and whether the email below was sent).
+  - **The confirmation email** (through Brevo, see "Emailing a tab" in [text-messages.md](text-messages.md)), to their login email: subject "Your nwsnotes account is ready"; "Hello <name>," / "Your nwsnotes account has been confirmed." / "Log in at <link> with this email address (<email>) and the password you chose.", as plain text and HTML. The link is the site's address as the admin is using it (`https://nwsnotes.com/` in production). The account is made even if the email can't be sent (email not set up, or Brevo refusing); the page then says "<name>'s account is confirmed, but they couldn't be emailed: tell them they can log in now." instead of "<name>'s account is confirmed. They've been emailed at <email> with the link to log in."
+  - **Decline,** after "Decline <name>'s request? It will be removed, and they won't be told.", deletes it (`DELETE /api/users/requests/:id`). They can ask again.
+  - `GET /api/users/requests` lists them. All of these are admin only, like the rest of `/api/users`.
+- **Adding or renaming a user by hand** to an email that's waiting is refused: confirm or decline the request instead.
 
 ### Settings for every user
 - **Account section** (at the bottom, as now): "Logged in as <display name> (<login name>)", a "Change password" button and "Log out".
@@ -129,5 +148,6 @@ The app can be used by several people, each with their own completely separate n
   - A non-admin sees no Users section, and `/api/users` answers 403.
   - The login form refuses a wrong name or password.
   - Login names must be email addresses when adding or editing a user (in the page and the API); saving an unchanged name is allowed.
+- A new `signup.spec.ts`: asking on the sign-up page (with its checks), logging in before it's confirmed; the warning icon appearing live and linking to the users page; confirming (they're emailed the login link, and log in with their own password to an empty notebook) and declining; non-admins seeing no icon or requests; a waiting email refused for Add user; the server's checks and the limit of 20 waiting.
 - The existing tests log in as the admin (`admin@example.com` / `dev`).
 - `database.spec.ts`: a database from before users (no `users` table and no `user_id` columns) is moved to user 1 on start, with its notes, history and order unchanged, and the old password still logs in.
