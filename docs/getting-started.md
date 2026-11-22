@@ -36,6 +36,9 @@ You can choose when to set notes to Waiting or Archived as you like.  I think of
 
 Once notes have been archived, you can choose when to remove them from your notes lists.
 
+To delete archived notes in your current tab, click the notes-ordering button just under the settings cog in the top-right.  Then a button saying "Archived -> Bin" should appear, which you can click.
+
+
 ## That's all you need to get started!
 
 I hope you like the app!
