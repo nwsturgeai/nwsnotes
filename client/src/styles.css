@@ -781,6 +781,15 @@ body:has(.note-list li.dragging) {
   height: 16px;
 }
 
+.note-button.wide {
+  width: auto;
+  padding: 0 4px;
+}
+
+.note-button.wide svg {
+  width: auto;
+}
+
 .note-button:hover:not(:disabled) {
   background: var(--bg);
   color: var(--text);
@@ -795,6 +804,17 @@ body:has(.note-list li.dragging) {
 .note-button.pressed,
 .note-button.pressed:hover:not(:disabled) {
   background: var(--accent);
+  color: var(--accent-text);
+}
+
+/* The main action while it's on offer (Finish ordering): white on green, like the app's main buttons. */
+.note-button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.note-button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
   color: var(--accent-text);
 }
 
@@ -1563,7 +1583,6 @@ body:has(.note-list li.dragging) {
   border-radius: 50%;
   background: var(--surface);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-  transition: transform 0.15s;
 }
 
 .switch input:checked + .switch-track {
@@ -2258,6 +2277,36 @@ body:has(.dragging) {
 
 .error-message {
   font-size: 1.15rem;
+}
+
+.error-details {
+  margin-top: 2rem;
+}
+
+.error-details summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.error-details summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The open/closed arrow, drawn (the app's font has no triangle character): points right, then down. */
+.error-details summary::before {
+  content: "";
+  border-top: 0.35em solid transparent;
+  border-bottom: 0.35em solid transparent;
+  border-left: 0.5em solid currentColor;
+}
+
+.error-details[open] summary::before {
+  transform: rotate(90deg);
 }
 
 .error-page h2 {
