@@ -6,16 +6,15 @@ export interface Config {
   /** True on the VM; false when running locally with `npm run dev`. */
   production: boolean;
   /**
-   * The admin's first password, as a hash in the format produced by hashPassword(). Only used on the first
-   * start of the version with users (to make user 1, so the old single password keeps working), or with a
-   * new database; after that, passwords are kept with the users.
+   * The admin's first password, as a hash in the format produced by hashPassword(). Only used to make
+   * user 1 on the first start with a new database; after that, passwords are kept with the users.
    */
   passwordHash?: string;
   /** User 1's (the admin's) login name when user 1 is made. Default "admin". */
   adminLoginName: string;
   /** Random secret used to sign session cookies. */
   sessionSecret: string;
-  /** Folder holding the note save-files. */
+  /** Folder holding the backups, push keys and devices (and PGlite's database, locally). */
   dataDir: string;
   /** Folder holding fullchain.pem and privkey.pem (production only). */
   certDir: string;

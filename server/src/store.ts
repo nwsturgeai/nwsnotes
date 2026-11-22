@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CLIENT_ID_MAX_LENGTH,
@@ -130,8 +130,6 @@ function offlineTime(raw: unknown, now: Date): string | undefined {
   return ms <= now.getTime() ? new Date(ms).toISOString() : undefined;
 }
 
-const FILE_PATTERN = /^notes-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
-
 /** How long the history is kept. */
 export const HISTORY_DAYS = 30;
 
@@ -155,17 +153,6 @@ const LIFETIME_SUMMARIES: Record<LifetimeChange, (note: string) => string> = {
 /** "2026-10-24T09:40:12.345Z" -> "notes-2026-10-24T09-40-12-345Z.json" */
 function fileNameFor(date: Date): string {
   return `notes-${date.toISOString().replace(/[:.]/g, "-")}.json`;
-}
-
-/** "notes-2026-10-24T09-40-12-345Z.json" -> Date, or undefined if it isn't a save-file. */
-function dateFromFileName(name: string): Date | undefined {
-  const match = FILE_PATTERN.exec(name);
-  if (!match) return undefined;
-  const [, stamp] = match;
-  // 2026-10-24T09-40-12-345Z -> 2026-10-24T09:40:12.345Z
-  const iso = stamp!.replace(/T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z$/, "T$1:$2:$3.$4Z");
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 /** Reads a save-file of either version as the current version. */
@@ -261,8 +248,6 @@ export class NoteStore {
 
   constructor(
     private readonly db: Db,
-    /** Holds the save-files from before the database (only user 1's notebook imports them). */
-    private readonly dataDir: string,
     readonly userId: number,
   ) {}
 
@@ -280,20 +265,10 @@ export class NoteStore {
         `Loaded user ${this.userId}'s ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from the database.`,
       );
     } else {
-      // The first start with this database: bring across the latest save-file (from before the database,
-      // when there was one notebook, so only into the admin's), if there is one.
-      const latest = this.userId === 1 ? (await this.listSaveFiles()).at(-1) : undefined;
+      // A new notebook: marks it as set up (lastNoteId is stored), so later starts load it.
       const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0, allTabPlacement: "top", noteOrder: [] };
-      if (latest) {
-        const content = parseSaveFile(latest.name, await readFile(path.join(this.dataDir, latest.name), "utf8"));
-        await writeChange(this.db, this.userId, empty, snapshotOf(content), this.nextSaveTime(), { summary: `Imported from ${latest.name}` });
-        this.apply(snapshotOf(content));
-        console.log(`Imported ${this.notes.length} notes from ${latest.name} into the database.`);
-      } else {
-        // Marks the database as set up (lastNoteId is stored), so a later start doesn't import anything.
-        await writeChange(this.db, this.userId, { ...empty, lastNoteId: -1 }, empty, this.nextSaveTime(), undefined);
-        console.log("No data or save-files yet; starting with no notes.");
-      }
+      await writeChange(this.db, this.userId, { ...empty, lastNoteId: -1 }, empty, this.nextSaveTime(), undefined);
+      console.log(`User ${this.userId} has no notes yet.`);
     }
     this.ready = true;
   }
@@ -413,26 +388,6 @@ export class NoteStore {
     return this.enqueue(async () => {
       this.lastLongFormUpdate = undefined;
       await this.load();
-    });
-  }
-
-  /**
-   * End-to-end tests only: empties the database and puts a save-file in the data folder, then loads,
-   * as the first start with a new database does (so the file is imported). The file is removed afterwards.
-   */
-  importForTests(saveFileText: string): Promise<string> {
-    return this.enqueue(async () => {
-      const name = fileNameFor(new Date());
-      const file = path.join(this.dataDir, name);
-      await writeFile(file, saveFileText, "utf8");
-      try {
-        await this.db.transaction((query) => emptyNotebook(query, this.userId));
-        this.lastLongFormUpdate = undefined;
-        await this.load();
-      } finally {
-        await unlink(file);
-      }
-      return name;
     });
   }
 
@@ -1000,14 +955,5 @@ export class NoteStore {
     this.lastSaveMs = now.getTime();
     this.lastLongFormUpdate =
       options.longFormUpdateId !== undefined && changeId !== undefined ? { noteId: options.longFormUpdateId, changeId } : undefined;
-  }
-
-  /** Save-files in the data folder (from before the database), oldest first. */
-  private async listSaveFiles(): Promise<{ name: string; date: Date }[]> {
-    const names = await readdir(this.dataDir);
-    return names
-      .map((name) => ({ name, date: dateFromFileName(name) }))
-      .filter((file): file is { name: string; date: Date } => file.date !== undefined)
-      .sort((a, b) => a.date.getTime() - b.date.getTime());
   }
 }

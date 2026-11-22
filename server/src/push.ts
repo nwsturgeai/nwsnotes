@@ -4,7 +4,6 @@ import webpush, { WebPushError, type PushSubscription } from "web-push";
 import { withoutMarkers } from "@nwsnotes/shared";
 import type { Notebooks } from "./notebooks.js";
 import { RequestError } from "./store.js";
-import { ADMIN_ID } from "./users.js";
 
 /** A device's subscription, and the user whose device it is. */
 type Device = PushSubscription & { userId: number };
@@ -54,10 +53,7 @@ export class PushReminders {
       console.log(`Made new push keys in ${this.keysFile}`);
     }
     webpush.setVapidDetails(this.contact, this.keys.publicKey, this.keys.privateKey);
-    const stored = (await readJson<(PushSubscription & { userId?: number })[]>(this.subscriptionsFile)) ?? [];
-    // Devices registered before there were users are the admin's.
-    this.subscriptions = stored.map((device) => ({ ...device, userId: device.userId ?? ADMIN_ID }));
-    if (stored.some((device) => device.userId === undefined)) await writeJson(this.subscriptionsFile, this.subscriptions);
+    this.subscriptions = (await readJson<(PushSubscription & { userId: number })[]>(this.subscriptionsFile)) ?? [];
     console.log(`Reminders go to ${this.subscriptions.length} device(s).`);
 
     // Straight away (to catch reminders missed while the server was down), then every minute.

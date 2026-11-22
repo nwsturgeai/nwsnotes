@@ -73,17 +73,13 @@ The app can be used by several people, each with their own completely separate n
 - **Server memory:** one `NoteStore` per user, created and loaded from the database the first time that user's data is needed, and kept. Each keeps its own queue of changes, so one person's save never waits for another's.
 - **The API doesn't change shape:** `GET /api/notes` and all the other data routes work as now, on the logged-in user's notebook.
 - **Live updates:** each WebSocket connection belongs to the user whose cookie opened it. "Data changed" messages go only to that user's other connections. Turning off an account or raising its session version closes its connections.
-- **Reminders:** each push subscription belongs to the user whose device registered it, and a user's reminders go only to their own devices. "Send test" reaches only that user's devices. The subscriptions file gets a `userId` on each entry; existing ones belong to user 1.
+- **Reminders:** each push subscription belongs to the user whose device registered it, and a user's reminders go only to their own devices. "Send test" reaches only that user's devices. The subscriptions file has a `userId` on each entry.
 - **The test endpoints** (`/api/test/*`, test mode only) act on the logged-in user's notebook. `/api/test/reset` also removes every user but user 1 and puts user 1's password back to the test password.
 
-### Moving the existing data to user 1 (once)
-- **On the first start of the new version,** if the `users` table is empty:
-  - user 1 is created, as the admin, with the login name from `adminLoginName` in the config (default `admin`), the display name `Admin` (changeable on the users page), and the existing `passwordHash` from the config, so the current password keeps working;
-  - all existing rows get `user_id` 1, and the keys change as above, in one transaction;
-  - the existing backup files move to user 1's backup folder (below), and the existing push devices become user 1's.
-- After that, the config's `passwordHash` is no longer used.
-- **In development,** the admin's login name is `admin` and its password `dev`, as now.
-- **The offline copy on a device** from before the update has no user. After the update, the first login on that device keeps it, and any waiting changes, only if it's user 1 who logs in. Otherwise they're cleared.
+### The first user
+- **On the first start with a new database** (the `users` table is empty), user 1 is created, as the admin, with the login name from `adminLoginName` in the config (default `admin`), the display name `Admin` (changeable on the users page), and the `passwordHash` from the config. After that, the config's `passwordHash` is no longer used.
+- **In development,** the admin's login name is `admin` and its password `dev`.
+- **Moving the single-user data to user 1 (done, and since removed):** the first start of the version with users gave every existing row `user_id` 1, moved the backup files and push devices to user 1, and handed each device's offline copy to user 1. Production has made that move, so the code for it is gone.
 
 ### Backups, restore and daily jobs
 - **Daily backup files** go to `backups/<user id>/notes-YYYY-MM-DD.json`, seven kept for each user.

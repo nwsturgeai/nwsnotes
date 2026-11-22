@@ -50,13 +50,8 @@ interface Pending {
   nextSeq: number;
 }
 
-/** Where the copy and outbox were kept before there were users: the first login keeps them only for user 1. */
-const LEGACY_PENDING_KEY = "pending";
-const LEGACY_DATA_KEY = "data";
 /** Who was last logged in here, so the app can open offline from their copy. */
 const USER_KEY = "nwsnotes.user";
-/** The admin, the only user who can be given the copy from before there were users. */
-const FIRST_USER_ID = 1;
 const FIRST_TEMP_ID = -1001;
 /** While offline, how often to check whether the server can be reached again. */
 const PROBE_MS = 15_000;
@@ -154,10 +149,7 @@ async function changePending(change: (p: Pending) => void): Promise<void> {
   publish();
 }
 
-/**
- * Who is logged in (when the app starts, or after logging in): loads their waiting changes. The copy and
- * outbox from before there were users are kept, as theirs, only if the first to log in is user 1.
- */
+/** Who is logged in (when the app starts, or after logging in): loads their waiting changes. */
 export async function setOfflineUser(me: Me): Promise<void> {
   if (userId !== me.id) {
     window.clearTimeout(saveTimer);
@@ -170,17 +162,6 @@ export async function setOfflineUser(me: Me): Promise<void> {
   } catch {
     // Without local storage, the app just can't open offline before it has reached the server.
   }
-  await withLock("nwsnotes-outbox", async () => {
-    const legacyPending = await idbGet<Pending>(LEGACY_PENDING_KEY);
-    const legacyData = await idbGet<NotesData>(LEGACY_DATA_KEY);
-    if (!legacyPending && !legacyData) return;
-    if (me.id === FIRST_USER_ID) {
-      if (legacyPending && !(await idbGet(pendingKey(me.id)))) await idbSet(pendingKey(me.id), legacyPending);
-      if (legacyData && !(await idbGet(dataKey(me.id)))) await idbSet(dataKey(me.id), legacyData);
-    }
-    await idbDelete(LEGACY_PENDING_KEY);
-    await idbDelete(LEGACY_DATA_KEY);
-  });
   await reloadPending();
   publish();
 }

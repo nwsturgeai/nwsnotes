@@ -1,8 +1,8 @@
-import { mkdir, readdir, rename } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { Db } from "./db.js";
 import { emptyNotebook, pruneHistory } from "./persist.js";
-import { DAILY_BACKUP_PATTERN, HISTORY_DAYS, NoteStore } from "./store.js";
+import { HISTORY_DAYS, NoteStore } from "./store.js";
 import { ADMIN_ID, type Users } from "./users.js";
 
 /** How many daily backup files are kept for each user. */
@@ -25,7 +25,7 @@ export class Notebooks {
   ) {}
 
   /**
-   * Sets up the database and loads the users (moving a database from before there were users to user 1).
+   * Sets up the database and loads the users.
    * If the database can't be reached, it tries again every 30 seconds, and the API answers 503 meanwhile.
    * Then starts the daily jobs.
    */
@@ -46,25 +46,7 @@ export class Notebooks {
   }
 
   private async start(): Promise<void> {
-    const migrated = await this.users.init();
-    if (migrated) console.log(`Moved the existing notes, categories, tabs and history to user ${ADMIN_ID}.`);
-    await this.moveOldBackups();
-  }
-
-  /** Daily backups from before there were users (directly in `backups/`) are the admin's: they move to `backups/1/`. */
-  private async moveOldBackups(): Promise<void> {
-    const dir = path.join(this.dataDir, "backups");
-    let names: string[];
-    try {
-      names = (await readdir(dir)).filter((name) => DAILY_BACKUP_PATTERN.test(name));
-    } catch {
-      return;
-    }
-    if (names.length === 0) return;
-    const target = this.backupDir(ADMIN_ID);
-    await mkdir(target, { recursive: true });
-    for (const name of names) await rename(path.join(dir, name), path.join(target, name));
-    console.log(`Moved ${names.length} backup file(s) to ${target}.`);
+    await this.users.init();
   }
 
   private backupDir(userId: number): string {
@@ -75,7 +57,7 @@ export class Notebooks {
   for(userId: number): Promise<NoteStore> {
     let store = this.stores.get(userId);
     if (!store) {
-      const made = new NoteStore(this.db, this.dataDir, userId);
+      const made = new NoteStore(this.db, userId);
       store = made.load().then(() => made);
       this.stores.set(userId, store);
       // If it couldn't be loaded (e.g. the database is unreachable), the next request tries again.
