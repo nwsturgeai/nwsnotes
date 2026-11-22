@@ -22,6 +22,10 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
   exit 1
 fi
 
+# A number handled in a Twilio region other than the US (its configuration shows e.g. "(IE1)") is signed
+# with that region's own auth token, not the one the Console shows at first.
+echo "Use the auth token for the region the number's messages are handled in: if Twilio shows e.g."
+echo "\"Messaging configuration (IE1)\" for the number, switch the Console to Ireland (IE1) and copy the token there."
 read -rsp "Paste the Twilio auth token (Twilio Console → Account info → Auth Token): " TWILIO_AUTH_TOKEN
 echo
 if [[ ! "$TWILIO_AUTH_TOKEN" =~ ^[0-9a-f]{32}$ ]]; then

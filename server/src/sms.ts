@@ -119,7 +119,7 @@ export class SmsNotes {
         logText(
           fields,
           given
-            ? `refused (403): the signature doesn't match ${[...addresses].join(" or ")}. Check the auth token given to set-sms.sh is the account's current one.`
+            ? `refused (403): the signature doesn't match ${[...addresses].join(" or ")}. Check the auth token given to set-sms.sh is the current one for the region the number's texts are handled in (e.g. Ireland (IE1)'s own token).`
             : "refused (403): no Twilio signature, so it isn't from Twilio.",
         );
         res.status(403).type("text").send("Not signed by Twilio.");

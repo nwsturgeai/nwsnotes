@@ -120,7 +120,9 @@ Lets everyone text notes in, e.g. by voice from the car with Android Auto (see [
 2. In **Phone Numbers → Regulatory Compliance**, make a **UK bundle** for a mobile number, as an individual, with proof of address. Approval can take a few working days.
 3. Buy a **UK mobile number** (07…) that can receive SMS, about $2.50 a month.
 4. In the number's settings, under **Messaging → A message comes in**, choose **Webhook**, `https://nwsnotes.com/api/sms/incoming`, **HTTP POST**.
-5. Copy the script to the VM and run it. It asks for the **Auth Token** (Twilio Console → Account info), without showing it, the number and the site's address, then restarts the app:
+5. Copy the script to the VM and run it. It asks for the **Auth Token** (Twilio Console → Account info), without showing it, the number and the site's address, then restarts the app.
+
+   **Which Auth Token:** if the number's configuration shows a region in brackets, such as "Messaging configuration (IE1)", Twilio handles its texts in that region (IE1 is Ireland) and signs them with **that region's own Auth Token**, which differs from the one the Console shows at first. Switch the Console's region to it (e.g. **Ireland (IE1)**) and copy the Auth Token shown there. With the wrong one, every text is refused, and `pm2 logs` shows "refused (403): the signature doesn't match".
 
    ```bash
    scp deploy/set-sms.sh root@nwsnotes.com:
