@@ -68,6 +68,7 @@ If any text is typed into the search box, the list of notes shown in the main ar
 - **"All" is built in:** it isn't stored, always comes first, has no filters, and can't be edited or deleted. No other tab can be called "All".
 - **Ids:** a new tab gets the highest existing tab id + 1, starting at 1, like categories. Ids are only for the app's own use.
 - **Names:** trimmed, can't be empty, at most 20 characters, and unique ignoring upper/lower case.
+- **Spoken names:** each tab can also have an optional `spokenName`, an easier name to say when adding notes by text message. Its rules, and the extra check it adds to names, are in "Spoken names" in [text-messages.md](text-messages.md).
 - **Filters:** each entry names an existing category and one or more of that category's tags, and no category can appear twice. A tab needs at least one tag in total; otherwise it would just repeat "All".
 - **Matching:** a note is shown when, for every category the tab lists, it has at least one of that entry's tags. So categories combine with "and", and tags within one category combine with "or".
 - **Order:** "All" first, then tabs in the order they were created. No reordering for now.

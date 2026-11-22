@@ -2363,3 +2363,18 @@ body:has(.dragging) {
 .note-stats strong {
   color: var(--text);
 }
+
+/* A tab's spoken name, in grey after its name in Settings' tab list. */
+.spoken-name {
+  color: var(--muted);
+}
+
+/* Text messages, in Settings: the code to text is large and easy to read out. */
+.text-messages .hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.sms-code-digits {
+  font-size: 1.3rem;
+  letter-spacing: 0.15em;
+}

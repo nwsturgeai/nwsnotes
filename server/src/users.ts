@@ -31,6 +31,10 @@ export interface UserData {
   lastLoginDateTime?: string;
   /** The most notes they can have (NOTE_LIMIT_DEFAULT when missing). */
   noteLimit?: number;
+  /** The phone linked for adding notes by text message, in E.164 (e.g. "+447700900123"). Unique among users. */
+  smsPhoneNumber?: string;
+  /** When it was linked. */
+  smsLinkedDateTime?: string;
 }
 
 /** A user's maximum number of notes. */
@@ -139,6 +143,31 @@ export class Users {
     return this.list().find((user) => user.loginName.toLowerCase() === lower);
   }
 
+  /** The user whose linked phone this is (E.164). */
+  byPhoneNumber(phoneNumber: string): User | undefined {
+    return this.list().find((user) => user.smsPhoneNumber === phoneNumber);
+  }
+
+  /** Links a phone (E.164) to a user, taking it from anyone else it was linked to, and replacing the user's earlier one. */
+  linkPhone(id: number, phoneNumber: string): Promise<User> {
+    return this.enqueue(async () => {
+      const user = this.required(id);
+      const previous = this.byPhoneNumber(phoneNumber);
+      if (previous && previous.id !== id) await this.save(withoutPhone(previous));
+      const next = { ...user, smsPhoneNumber: phoneNumber, smsLinkedDateTime: new Date().toISOString() };
+      await this.save(next);
+      return next;
+    });
+  }
+
+  /** Unlinks the user's phone, if they have one. */
+  unlinkPhone(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      const user = this.required(id);
+      if (user.smsPhoneNumber !== undefined) await this.save(withoutPhone(user));
+    });
+  }
+
   /** Checks a login: the user, or why not. */
   checkLogin(rawName: unknown, rawPassword: unknown): User | "incorrect" | "disabled" {
     if (!this.ready) throw databaseUnreachable();
@@ -202,6 +231,7 @@ export class Users {
       createdDateTime: user.createdDateTime,
       ...(user.lastLoginDateTime !== undefined && { lastLoginDateTime: user.lastLoginDateTime }),
       ...noteStatsOf(user, counts),
+      smsLinked: user.smsPhoneNumber !== undefined,
     };
   }
 
@@ -314,8 +344,9 @@ export class Users {
       await this.db.query("DELETE FROM nwsnotes.users WHERE id <> $1", [ADMIN_ID]);
       for (const id of others) this.users.delete(id);
       const admin = this.required(ADMIN_ID);
+      const { noteLimit: _limit, ...asStarted } = withoutPhone(admin);
       await this.save({
-        ...admin,
+        ...asStarted,
         loginName: adminLoginName,
         displayName: "Admin",
         passwordHash,
@@ -352,6 +383,11 @@ export class Users {
     this.queue = result.catch(() => undefined);
     return result;
   }
+}
+
+function withoutPhone(user: User): User {
+  const { smsPhoneNumber: _phone, smsLinkedDateTime: _linked, ...rest } = user;
+  return rest;
 }
 
 function dataOf(user: User): UserData {

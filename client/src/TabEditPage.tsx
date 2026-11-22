@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import {
   ALL_TAB_NAME,
+  SPOKEN_NAME_MAX_LENGTH,
   TAB_NAME_MAX_LENGTH,
   validateTab,
   type Category,
@@ -56,6 +57,7 @@ function TabForm({
 }: Props & { existing: Tab | undefined }) {
   // The form starts from the saved tab and isn't changed by live updates while open.
   const [name, setName] = useState(existing?.name ?? "");
+  const [spokenName, setSpokenName] = useState(existing?.spokenName ?? "");
   const [selection, setSelection] = useState<TagSelection>(() =>
     Object.fromEntries((existing?.categories ?? []).map((filter) => [filter.categoryId, filter.tagIds])),
   );
@@ -93,6 +95,7 @@ function TabForm({
         }))
         .filter((filter) => filter.tagIds.length > 0),
       ...(placement === "left" && { placement }),
+      ...(spokenName.trim() !== "" && { spokenName }),
     };
     const check = validateTab(request, tabs, categories, existing);
     if (!check.ok) {
@@ -128,6 +131,21 @@ function TabForm({
           disabled={busy}
           onChange={(event) => setName(event.target.value)}
         />
+
+        <label htmlFor="tab-spoken-name">Spoken name (optional)</label>
+        <input
+          id="tab-spoken-name"
+          type="text"
+          value={spokenName}
+          maxLength={SPOKEN_NAME_MAX_LENGTH}
+          autoComplete="off"
+          disabled={busy}
+          aria-describedby="tab-spoken-name-hint"
+          onChange={(event) => setSpokenName(event.target.value)}
+        />
+        <p className="hint" id="tab-spoken-name-hint">
+          An easier name to say when sending notes by text message, e.g. "do it yourself" for "DIY".
+        </p>
 
         <PlacementSwitch placement={placement} onChange={setPlacement} disabled={busy} />
 

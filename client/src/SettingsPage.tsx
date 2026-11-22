@@ -4,6 +4,7 @@ import { faArrowDown, faArrowUp } from "@fortawesome/free-solid-svg-icons";
 import { formatBytes } from "./sizes";
 import {
   ALL_TAB_NAME,
+  formatPhoneNumber,
   lifetimeOf,
   CATEGORIES_MAX,
   LIFETIME_ARCHIVED,
@@ -15,6 +16,8 @@ import {
   type Me,
   type Note,
   type NoteStats,
+  type SmsLinkCode,
+  type SmsStatus,
   type Tab,
   type TabPlacement,
 } from "@nwsnotes/shared";
@@ -580,6 +583,7 @@ export function SettingsPage({
                 <DragGrip label={`Drag ${tab.name}`} handlers={tabGrip(tab.id)} />
                 <a href={pathFor(page)} onClick={(event) => go(event, page)}>
                   <span className="category-name">{tab.name}</span>
+                  {tab.spokenName && <span className="spoken-name">({tab.spokenName})</span>}
                   {tab.placement === "left" && <span className="category-kind">left</span>}
                   <div className="category-tags">
                     <TagPills
@@ -619,6 +623,8 @@ export function SettingsPage({
       </section>
 
       <Reminders />
+
+      <TextMessages notes={notes} tabs={tabs} onSessionExpired={onSessionExpired} />
 
       <section>
         <h2>Backup</h2>
@@ -753,6 +759,121 @@ function Reminders() {
         <p className={result.error ? "save-error" : "lifetime-result"} role="status">
           {result.text}
         </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Adding notes by text message: link this person's phone to their account with a code texted to the
+ * nwsnotes number. Hidden when the server doesn't have text messages set up (it answers 404).
+ */
+function TextMessages({ notes, tabs, onSessionExpired }: { notes: Note[]; tabs: Tab[]; onSessionExpired: () => void }) {
+  const [status, setStatus] = useState<SmsStatus | "off">();
+  const [code, setCode] = useState<SmsLinkCode>();
+  const [confirmingUnlink, setConfirmingUnlink] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [devicesNotified, setDevicesNotified] = useState<boolean>();
+
+  // Fetched when the page opens, and again whenever the notes change: a phone being linked tells this page
+  // to reload (a live update), so it then shows as linked.
+  useEffect(() => {
+    let current = true;
+    api
+      .smsStatus()
+      .then((found) => {
+        if (!current) return;
+        setStatus(found);
+        if (found.linked) setCode(undefined);
+      })
+      .catch((err: unknown) => {
+        if (!current) return;
+        if (err instanceof ApiError && err.isUnauthorized) onSessionExpired();
+        else if (err instanceof ApiError && err.status === 404) setStatus("off");
+      });
+    return () => {
+      current = false;
+    };
+  }, [notes, onSessionExpired]);
+
+  useEffect(() => {
+    reminderState()
+      .then((state) => setDevicesNotified(state === "on"))
+      .catch(() => setDevicesNotified(false));
+  }, []);
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await action();
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status === undefined || status === "off") return null;
+  const smsNumber = formatPhoneNumber(status.smsNumber);
+  const exampleTab = tabs[0]?.spokenName ?? tabs[0]?.name ?? "Shopping";
+
+  return (
+    <section className="text-messages">
+      <h2>Text messages</h2>
+      <p>
+        Add notes by texting them to {smsNumber}, e.g. by saying "Hey Google, send a text to nwsnotes: {exampleTab}, buy
+        milk" in the car. Start a text with a tab's name (or its spoken name) to put the note in that tab.
+      </p>
+      {status.linked ? (
+        <>
+          <p>
+            Linked to <strong>{formatPhoneNumber(status.phoneNumber)}</strong>. Save {smsNumber} in that phone's contacts as
+            "nwsnotes".
+          </p>
+          <button type="button" className="button" disabled={busy} onClick={() => setConfirmingUnlink(true)}>
+            Unlink
+          </button>
+        </>
+      ) : code ? (
+        <p className="sms-code" role="status">
+          Text <strong className="sms-code-digits">{code.code}</strong> to{" "}
+          <a href={`sms:${code.smsNumber}?body=${code.code}`}>{smsNumber}</a> from your phone. The code works for 15
+          minutes.
+        </p>
+      ) : (
+        <button
+          type="button"
+          className="button"
+          disabled={busy}
+          onClick={() => void run(async () => setCode(await api.smsLinkCode()))}
+        >
+          Link my phone
+        </button>
+      )}
+      {devicesNotified === false && (
+        <p className="hint">Turn on reminders on this device to be told about each note you text.</p>
+      )}
+      {error && (
+        <p className="save-error" role="alert">
+          {error}
+        </p>
+      )}
+      {confirmingUnlink && status.linked && (
+        <ConfirmDialog
+          message={`Unlink ${formatPhoneNumber(status.phoneNumber)}? Texts from it will no longer add notes.`}
+          confirmLabel="Unlink"
+          onConfirm={() => {
+            setConfirmingUnlink(false);
+            void run(async () => setStatus(await api.smsUnlink()));
+          }}
+          onCancel={() => setConfirmingUnlink(false)}
+        />
       )}
     </section>
   );

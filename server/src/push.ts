@@ -11,9 +11,10 @@ type Device = PushSubscription & { userId: number };
 /** How often the server looks for notes that have fallen due. */
 const CHECK_EVERY_MS = 60 * 1000;
 
-/** What the service worker (push-sw.js) shows: the notification's text, and a tag so a repeat replaces it. */
-interface PushMessage {
+/** What the service worker (push-sw.js) shows: the notification's heading and text, and a tag so a repeat replaces it. */
+export interface PushMessage {
   title: string;
+  body?: string;
   tag: string;
 }
 
@@ -27,11 +28,15 @@ export class PushReminders {
   private subscriptions: Device[] = [];
   private keys = { publicKey: "", privateKey: "" };
   private checking = false;
+  /** End-to-end tests only: what would have been sent, as push services can't be reached from the tests. */
+  private sentForTests: (PushMessage & { userId: number; devices: number })[] = [];
 
   constructor(
     private readonly dataDir: string,
     private readonly contact: string,
     private readonly notebooks: Notebooks,
+    /** The end-to-end tests: nothing is sent; what would have been is kept for them to check. */
+    private readonly testMode = false,
   ) {}
 
   private get keysFile() {
@@ -80,10 +85,21 @@ export class PushReminders {
     if (this.subscriptions.some((s) => s.endpoint === endpoint && s.userId === userId)) await this.remove([endpoint]);
   }
 
-  /** End-to-end tests only: forgets every device, so each test starts with none. */
+  /** End-to-end tests only: forgets every device, so each test starts with none, and what was sent. */
   async forgetAllDevices(): Promise<void> {
     this.subscriptions = [];
+    this.sentForTests = [];
     await writeJson(this.subscriptionsFile, this.subscriptions);
+  }
+
+  /** End-to-end tests only: the notifications that would have been sent to this user, oldest first. */
+  notificationsForTests(userId: number): (PushMessage & { devices: number })[] {
+    return this.sentForTests.filter((sent) => sent.userId === userId).map(({ userId: _user, ...sent }) => sent);
+  }
+
+  /** A notification to every device of the user that has reminders on. Returns how many it reached. */
+  notify(userId: number, message: PushMessage): Promise<number> {
+    return this.sendToUser(userId, message);
   }
 
   /** "Send test": returns how many of this user's devices it reached. */
@@ -93,6 +109,11 @@ export class PushReminders {
 
   /** Sends to every device of the user; devices the push service says are gone are forgotten. Returns how many it reached. */
   private async sendToUser(userId: number, message: PushMessage): Promise<number> {
+    if (this.testMode) {
+      const devices = this.subscriptions.filter((device) => device.userId === userId).length;
+      if (devices > 0) this.sentForTests.push({ ...message, userId, devices });
+      return devices;
+    }
     const payload = JSON.stringify(message);
     const gone: string[] = [];
     let reached = 0;

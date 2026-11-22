@@ -110,6 +110,26 @@ The notes are kept in a Supabase database (the free plan is enough). **Do this b
 
 The app makes a small query every day, so Supabase sees the project as in use. If it's paused anyway (free projects pause after a week without activity), the app goes offline: open the project in Supabase and press **Restore**, and the app carries on by itself.
 
+### 6. Adding notes by text message (Twilio, optional)
+
+Lets everyone text notes in, e.g. by voice from the car with Android Auto (see [Specs/text-messages.md](Specs/text-messages.md)). Without it, the app works as before, and Settings has no "Text messages" section.
+
+1. At https://www.twilio.com, sign up and **upgrade** the account (a top-up of about $20, used up gradually). In **Billing**, leave **auto-recharge off**, so a fault can never run up a bill.
+2. In **Phone Numbers → Regulatory Compliance**, make a **UK bundle** for a mobile number, as an individual, with proof of address. Approval can take a few working days.
+3. Buy a **UK mobile number** (07…) that can receive SMS, about $2.50 a month.
+4. In the number's settings, under **Messaging → A message comes in**, choose **Webhook**, `https://nwsnotes.duckdns.org/api/sms/incoming`, **HTTP POST**.
+5. Copy the script to the VM and run it. It asks for the **Auth Token** (Twilio Console → Account info), without showing it, the number and the site's address, then restarts the app:
+
+   ```bash
+   scp deploy/set-sms.sh root@nwsnotes.duckdns.org:
+   ssh root@nwsnotes.duckdns.org
+   sudo bash set-sms.sh
+   ```
+
+6. Each person then opens Settings → **Text messages** → **Link my phone**, texts the code shown to the number, and saves the number in their contacts as "nwsnotes".
+
+It costs about $0.0075 for each text received and $0.05 for each text sent back (only when a note couldn't be saved).
+
 ## Day-to-day
 
 - **Deploying changes:** push or merge to `main`.

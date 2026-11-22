@@ -1,5 +1,6 @@
-// Reminders: imported into the generated service worker (vite.config.ts). Shows the notifications the
-// server pushes ({ title, tag }) and brings the app to the front, or opens it, when one is tapped.
+// Reminders and other notifications: imported into the generated service worker (vite.config.ts). Shows
+// the notifications the server pushes ({ title, body?, tag }) and brings the app to the front, or opens
+// it, when one is tapped.
 
 self.addEventListener("push", (event) => {
   let message = { title: "A note is due", tag: undefined };
@@ -10,6 +11,7 @@ self.addEventListener("push", (event) => {
   }
   event.waitUntil(
     self.registration.showNotification(message.title, {
+      ...(message.body && { body: message.body }),
       // A second reminder for the same note replaces the first, and still alerts.
       tag: message.tag,
       renotify: message.tag !== undefined,

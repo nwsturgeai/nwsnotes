@@ -146,7 +146,7 @@ test.describe("categories", () => {
 test.describe("tabs", () => {
   test("a new tab shows the notes with its tags; it can be renamed and deleted", async ({ page }) => {
     await section(page, "Tabs").getByRole("link", { name: "Add tab" }).click();
-    await page.getByLabel("Name").fill("Ideas");
+    await page.getByLabel("Name", { exact: true }).fill("Ideas");
     await page.getByRole("button", { name: "Topic: no tag" }).click();
     await page.getByRole("group", { name: "Topic" }).getByRole("checkbox", { name: /^Ideas/ }).check();
     await page.keyboard.press("Escape");
@@ -161,7 +161,7 @@ test.describe("tabs", () => {
 
     await page.getByRole("link", { name: "Settings" }).click();
     await section(page, "Tabs").getByRole("link", { name: /^Ideas/ }).click();
-    await page.getByLabel("Name").fill("Thoughts");
+    await page.getByLabel("Name", { exact: true }).fill("Thoughts");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(section(page, "Tabs").locator(".category-name")).toHaveText(["All", "Work", "Home", "On hold", "Thoughts"]);
 

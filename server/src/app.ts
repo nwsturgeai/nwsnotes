@@ -19,6 +19,7 @@ import type { Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
+import type { SmsNotes } from "./sms.js";
 import type { NoteStore } from "./store.js";
 import { ADMIN_ID, meOf, noteLimitOf, noteStatsOf, type User } from "./users.js";
 
@@ -28,7 +29,7 @@ function notebookOf(res: Response): NoteStore {
 }
 
 /** The main website + API app. */
-export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdates, push: PushReminders, db: Db) {
+export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdates, push: PushReminders, db: Db, sms?: SmsNotes) {
   const users = notebooks.users;
 
   /** Loads the logged-in user's notebook (after requireSession): every data route works on it. */
@@ -89,6 +90,14 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
     res.clearCookie(SESSION_COOKIE, cookieOptions);
     res.json({ ok: true });
   });
+
+  // --- Adding notes by text message (only when it's set up) -----------------
+
+  if (sms) {
+    const { webhook, me } = sms.routers();
+    app.use(webhook);
+    app.use("/api/me/sms", me);
+  }
 
   // --- The logged-in user ---------------------------------------------------
 
@@ -443,7 +452,13 @@ export function createApp(config: Config, notebooks: Notebooks, live: LiveUpdate
       await notebooks.resetForTests(config.adminLoginName, hashPassword(DEV_PASSWORD));
       await (await notebooks.for(ADMIN_ID)).resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
+      sms?.resetForTests();
       res.json({ ok: true });
+    });
+    // The notifications that would have been sent to the logged-in user (push services can't be reached from the tests).
+    app.get("/api/test/notifications", requireSession(users, config.sessionSecret), (_req, res) => {
+      res.set("Cache-Control", "no-store");
+      res.json(push.notificationsForTests(userOf(res).id));
     });
     // Loads the data again from the database, as a restart would.
     app.post("/api/test/reload", ...testSession, async (_req, res) => {

@@ -1,3 +1,7 @@
+import { nameClashesWithSpokenName, spokenNameError } from "./sms";
+
+export * from "./sms";
+
 /** A single note, as stored on the server and sent to the website. */
 export interface Note {
   /** Unique id assigned by the server, starting at 1. */
@@ -125,6 +129,8 @@ export interface Tab {
   categories: TabFilter[];
   /** "left": shown in the left strip. Missing: along the top (the usual place). */
   placement?: TabPlacement;
+  /** An easier name to say when adding notes by text message. Missing: none. */
+  spokenName?: string;
 }
 
 /** Body of PUT /api/notes/order: the shared order of the notes, for every tab. */
@@ -153,6 +159,8 @@ export interface TabRequest {
   categories: TabFilter[];
   /** Where the tab shows: "left" for the left strip; missing means the top strip. */
   placement?: TabPlacement;
+  /** An easier name to say when adding notes by text message; missing or empty means none. */
+  spokenName?: string;
 }
 
 /** Where a tab shows on the notes page: along the top, or down the left-hand side. */
@@ -276,6 +284,21 @@ export interface UserSummary extends Me {
   /** How many of their notes are stylus (handwritten) notes, and the most they can have (see stylusNoteLimitOf). */
   stylusNoteCount: number;
   stylusNoteLimit: number;
+  /** Whether they've linked a phone for adding notes by text message. */
+  smsLinked: boolean;
+}
+
+/** GET /api/me/sms: adding notes by text message. */
+export type SmsStatus =
+  | { smsNumber: string; linked: false }
+  | { smsNumber: string; linked: true; phoneNumber: string; linkedDateTime: string };
+
+/** POST /api/me/sms/link-code: the code to text to the nwsnotes number, from the phone being linked. */
+export interface SmsLinkCode {
+  code: string;
+  smsNumber: string;
+  /** ISO 8601, UTC. */
+  expiresDateTime: string;
 }
 
 /** Everyone's maximum number of notes until the admin changes it, and the highest it can be set to. */
@@ -637,9 +660,22 @@ export function validateTab(
   if (sameName(name.value, ALL_TAB_NAME)) {
     return { ok: false, error: `The name "${ALL_TAB_NAME}" is used by the built-in tab that shows every note.` };
   }
-  const clash = tabs.find((other) => other.id !== existing?.id && sameName(other.name, name.value));
+  const others = tabs.filter((other) => other.id !== existing?.id);
+  const clash = others.find((other) => sameName(other.name, name.value));
   if (clash) {
     return { ok: false, error: `There is already a tab called "${clash.name}".` };
+  }
+  const spokenClash = nameClashesWithSpokenName(name.value, others);
+  if (spokenClash) {
+    return { ok: false, error: `The tab "${spokenClash.name}" already uses that as its spoken name.` };
+  }
+  if (input.spokenName !== undefined && input.spokenName !== null && typeof input.spokenName !== "string") {
+    return { ok: false, error: "The spoken name must be text." };
+  }
+  const spokenName = typeof input.spokenName === "string" ? input.spokenName.trim() : "";
+  if (spokenName !== "") {
+    const error = spokenNameError(spokenName, name.value, others);
+    if (error) return { ok: false, error };
   }
 
   if (!Array.isArray(input.categories)) {
@@ -680,7 +716,15 @@ export function validateTab(
     return { ok: false, error: '"placement" must be "top" or "left".' };
   }
   // Top is the usual place, so only "left" is stored.
-  return { ok: true, tab: { name: name.value, categories: filters, ...(input.placement === "left" && { placement: "left" }) } };
+  return {
+    ok: true,
+    tab: {
+      name: name.value,
+      categories: filters,
+      ...(input.placement === "left" && { placement: "left" }),
+      ...(spokenName !== "" && { spokenName }),
+    },
+  };
 }
 
 // ---- Text formatting -------------------------------------------------------

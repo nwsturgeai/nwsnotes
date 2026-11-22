@@ -38,7 +38,22 @@ export interface Config {
   databaseUrl?: string;
   /** Supabase's SSL certificate, to check the database connection against (production only). */
   databaseCaFile?: string;
+  /** Adding notes by text message (Twilio). Missing: turned off. */
+  sms?: SmsConfig;
 }
+
+/** The Twilio number that texts are sent to, and what's needed to check that requests come from Twilio. */
+export interface SmsConfig {
+  /** The Twilio account's auth token: Twilio signs each request with it. */
+  authToken: string;
+  /** The nwsnotes number, in E.164 (e.g. "+447700900123"). */
+  number: string;
+  /** The site's address as Twilio sees it (e.g. "https://nwsnotes.duckdns.org"), part of what Twilio signs. */
+  publicUrl: string;
+}
+
+/** Development and the tests: a made-up number, and a known token so the tests can sign their texts. */
+export const TEST_SMS = { authToken: "test-twilio-auth-token", number: "+447700900000" };
 
 const DEFAULT_PUSH_CONTACT = "mailto:nwsnotes@localhost";
 
@@ -77,11 +92,25 @@ export function loadConfig(): Config {
       testMode: process.env.NWSNOTES_TEST === "1",
       // Normally unset, so development uses PGlite; set it to try a real Postgres database.
       databaseUrl: process.env.NWSNOTES_DATABASE_URL,
+      // A fake Twilio: texts are posted to the server by the tests (or by hand), signed with the test token.
+      sms: { ...TEST_SMS, publicUrl: `http://localhost:${process.env.PORT ?? 3000}` },
     };
   }
 
   const file = process.env.NWSNOTES_CONFIG ?? "/etc/nwsnotes/config.json";
-  const raw = JSON.parse(readFileSync(file, "utf8")) as Partial<Config>;
+  const raw = JSON.parse(readFileSync(file, "utf8")) as Partial<Config> & {
+    twilioAuthToken?: string;
+    smsNumber?: string;
+    publicUrl?: string;
+  };
+  const smsKeys = ["twilioAuthToken", "smsNumber", "publicUrl"] as const;
+  const smsSet = smsKeys.filter((key) => raw[key]);
+  if (smsSet.length > 0 && smsSet.length < smsKeys.length) {
+    throw new Error(`${file} needs all of ${smsKeys.map((key) => `"${key}"`).join(", ")} for text messages, or none of them.`);
+  }
+  if (raw.smsNumber && !/^\+[1-9]\d{6,14}$/.test(raw.smsNumber)) {
+    throw new Error(`${file}: "smsNumber" must be in international form, e.g. "+447700900123".`);
+  }
   for (const key of ["sessionSecret", "databaseUrl"] as const) {
     if (!raw[key]) throw new Error(`${file} is missing "${key}"`);
   }
@@ -100,5 +129,8 @@ export function loadConfig(): Config {
     testMode: false,
     databaseUrl: raw.databaseUrl!,
     databaseCaFile: raw.databaseCaFile ?? "/etc/nwsnotes/supabase-ca.crt",
+    ...(raw.twilioAuthToken &&
+      raw.smsNumber &&
+      raw.publicUrl && { sms: { authToken: raw.twilioAuthToken, number: raw.smsNumber, publicUrl: raw.publicUrl.replace(/\/+$/, "") } }),
   };
 }
