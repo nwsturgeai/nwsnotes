@@ -2,7 +2,7 @@
 
 ## Requirements
 
-The app can be used by several people, each with their own completely separate notebook. Nobody can see or change anyone else's notes, categories, tabs, history or settings. There are no shared notes.
+The app can be used by several people, each with their own completely separate notebook. Nobody can see or change anyone else's notes, categories, tabs, history or settings. The one exception is tags an owner chooses to share, described in [sharing.md](sharing.md).
 
 ### Accounts
 - People ask for an account themselves on a public sign-up page (`/signup`), which the admin shares with family and friends, choosing their own password. The admin confirms each request before it can be used. The admin can also still add an account directly, with a generated password.
