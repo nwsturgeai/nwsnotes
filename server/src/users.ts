@@ -52,7 +52,7 @@ export interface User extends UserData {
   loginName: string;
 }
 
-/** The admin: user 1, made on the first start of this version (from the old single password, if there was one). */
+/** The admin: user 1, made on the first start with a new database. */
 export const ADMIN_ID = 1;
 const FIRST_SESSION_VERSION = 1;
 
@@ -91,15 +91,11 @@ export class Users {
     private readonly firstAdmin: { loginName: string; passwordHash?: string },
   ) {}
 
-  /**
-   * Sets up the tables, moving a database from before there were users to user 1 (see ensureSchema),
-   * then loads the users. Returns whether the old single-user data was moved across.
-   */
-  async init(): Promise<boolean> {
-    const migrated = await ensureSchema(this.db, (query) => this.insertFirstAdmin(query));
+  /** Sets up the tables (making the admin if there are no users yet), then loads the users. */
+  async init(): Promise<void> {
+    await ensureSchema(this.db, (query) => this.insertFirstAdmin(query));
     await this.load();
     this.ready = true;
-    return migrated;
   }
 
   private async insertFirstAdmin(query: Query): Promise<void> {
@@ -331,10 +327,6 @@ export class Users {
   }
 
   /** End-to-end tests only: the old single password, which the next start (with no users yet) gives user 1. */
-  setFirstAdminPasswordForTests(passwordHash: string): void {
-    this.firstAdmin.passwordHash = passwordHash;
-  }
-
   private required(id: number): User {
     if (!this.ready) throw databaseUnreachable();
     const user = this.users.get(id);
