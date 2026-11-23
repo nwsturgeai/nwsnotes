@@ -39,6 +39,7 @@ Some tab names are hard to say, or Google keeps mishearing them. Give such a tab
 
 - **Each saved note sends a notification** to your devices that have reminders turned on (see [Due dates and reminders](due-dates.md)), e.g. "Saved to Shopping" with the note below it. It tells you if no tab matched. These don't show in the car; they're there to check afterwards.
 - **If a note couldn't be saved, you get a text back** saying why, which Android Auto reads out to you. For example, the text was only a tab's name, you've reached your limit of notes, or nwsnotes couldn't be reached. The note's text is still in your sent messages, to send again later.
+- **A text back every time, if you'd like one:** the admin can turn this on for you. Then every text that works gets a text back too, e.g. `Saved to Shopping: "Oat milk and bin bags"`, which Android Auto reads out, so you know in the car that it worked. Ask the admin if you'd like it.
 
 ## Emailing yourself a tab
 

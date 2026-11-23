@@ -164,20 +164,48 @@ export function fitsOneSms(text: string): boolean {
 }
 
 /**
- * A "not saved" reply naming the note: `Not saved: "<start of the note>..." - <reason>`, with the quoted
- * start cut short so the whole reply fits in one SMS.
+ * `make(quoted)` with as much of `text` (spaces tidied) as fits in one SMS, cut short with "..." when
+ * needed; `fallback` when not even one character fits.
  */
-export function notSavedReply(noteText: string, reason: string): string {
-  const note = noteText.trim().replace(/\s+/g, " ");
-  const make = (quoted: string) => `Not saved: "${quoted}" - ${reason}`;
-  if (fitsOneSms(make(note))) return make(note);
-  const chars = [...note];
+function fitQuoted(make: (quoted: string) => string, text: string, fallback: string): string {
+  const tidied = text.trim().replace(/\s+/g, " ");
+  if (fitsOneSms(make(tidied))) return make(tidied);
+  const chars = [...tidied];
   for (let length = chars.length - 1; length > 0; length--) {
     const reply = make(`${chars.slice(0, length).join("").trimEnd()}...`);
     if (fitsOneSms(reply)) return reply;
   }
-  return `Not saved: ${reason}`;
+  return fallback;
 }
+
+/**
+ * A "not saved" reply naming the note: `Not saved: "<start of the note>..." - <reason>`, with the quoted
+ * start cut short so the whole reply fits in one SMS.
+ */
+export function notSavedReply(noteText: string, reason: string): string {
+  return fitQuoted((quoted) => `Not saved: "${quoted}" - ${reason}`, noteText, `Not saved: ${reason}`);
+}
+
+/**
+ * The confirmation texted back for a saved note, for users the admin has turned confirmations on for:
+ * `Saved to <tab>: "<title>"` (", cut short" after the tab when the title was too long), fitted into one SMS.
+ */
+export function savedReply(tabName: string, title: string, cut: boolean): string {
+  const heading = `Saved to ${tabName}${cut ? ", cut short" : ""}`;
+  return fitQuoted((quoted) => `${heading}: "${quoted}"`, title, fitsOneSms(`${heading}.`) ? `${heading}.` : "Saved.");
+}
+
+/** The confirmation texted back for a tab email: `Emailed <tab> (<n> notes) to <email>.`, fitted into one SMS. */
+export function emailedReply(tabName: string, noteCount: number, email: string): string {
+  const notes = noteCount === 1 ? "1 note" : `${noteCount} notes`;
+  for (const reply of [`Emailed ${tabName} (${notes}) to ${email}.`, `Emailed ${tabName} (${notes}).`]) {
+    if (fitsOneSms(reply)) return reply;
+  }
+  return `Emailed (${notes}).`;
+}
+
+/** The confirmation texted back when a phone is linked, for users with confirmations on. */
+export const LINKED_REPLY = "Phone linked: notes you text from it will be added to nwsnotes.";
 
 /** A UK number in the usual form ("07700 900123"); any other in E.164 as given. */
 export function formatPhoneNumber(e164: string): string {

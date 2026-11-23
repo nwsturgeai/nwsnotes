@@ -294,6 +294,59 @@ test("texts go to the linked user's own notebook, and a turned-off account gets 
   }
 });
 
+test("the admin can turn on a text back confirming each text that works, from the users page", async ({ page }) => {
+  await linkPhone(page.request);
+  expect(reply((await text(page.request, "Work, before it's on")).body)).toBeUndefined();
+
+  // Turned on in the admin's own Edit form; the row then says so.
+  await page.goto("/settings/users");
+  const row = page.getByRole("list", { name: "Users" }).getByRole("listitem").filter({ hasText: "admin@example.com" });
+  await expect(row).not.toContainText("Texts back");
+  await row.getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByLabel("Text back to confirm each text")).not.toBeChecked();
+  await page.getByLabel("Text back to confirm each text").check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(row).toContainText("Texts back");
+
+  // Each note saved, tab email and phone linked gets a text back.
+  expect(reply((await text(page.request, "Work, ring the bank")).body)).toBe(`Saved to Work: "Ring the bank"`);
+  expect(reply((await text(page.request, "No tab for this one")).body)).toBe(`Saved to All: "No tab for this one"`);
+  const long = reply((await text(page.request, `Work ${"word ".repeat(120)}`)).body)!;
+  expect(long).toMatch(/^Saved to Work, cut short: "Word word .*\.\.\."$/);
+  expect(long.length).toBeLessThanOrEqual(160);
+  expect(reply((await text(page.request, "App email tab work")).body)).toMatch(/^Emailed Work \(\d+ notes\) to admin@example\.com\.$/);
+  const code = (await (await page.request.post("/api/me/sms/link-code")).json()) as { code: string };
+  expect(reply((await text(page.request, code.code)).body)).toBe("Phone linked: notes you text from it will be added to nwsnotes.");
+  // Failures are as before, and ignored texts still get nothing.
+  expect(reply((await text(page.request, "Work")).body)).toBe("Nothing to save after the tab name.");
+  expect(reply((await text(page.request, "STOP")).body)).toBeUndefined();
+
+  // Turned off again (through the API, as the page does): no more texts back.
+  const me = (await (await page.request.get("/api/me")).json()) as { id: number };
+  const off = await page.request.put(`/api/users/${me.id}`, { data: { smsConfirmations: false } });
+  expect(((await off.json()) as { smsConfirmations: boolean }).smsConfirmations).toBe(false);
+  expect(reply((await text(page.request, "Work, after it's off")).body)).toBeUndefined();
+  expect((await page.request.put(`/api/users/${me.id}`, { data: { smsConfirmations: "yes" } })).status()).toBe(400);
+});
+
+test("texts back are set for each user: another user's texts aren't confirmed", async ({ page, browser }) => {
+  const added = await page.request.post("/api/users", { data: { displayName: "Sam", loginName: "sam@example.com" } });
+  const { user, password } = (await added.json()) as { user: { id: number }; password: string };
+  const sam = await browser.newContext({ baseURL: test.info().project.use.baseURL, storageState: { cookies: [], origins: [] } });
+  try {
+    expect((await sam.request.post("/api/login", { data: { loginName: "sam@example.com", password } })).ok()).toBe(true);
+    await linkPhone(sam.request, "+447700900456");
+    await linkPhone(page.request);
+    await page.request.put(`/api/users/${user.id}`, { data: { smsConfirmations: true } });
+    expect(reply((await text(page.request, "For Sam", { from: "+447700900456" })).body)).toBe(`Saved to All: "For Sam"`);
+    expect(reply((await text(page.request, "For the admin")).body)).toBeUndefined();
+    // Only the admin can set it.
+    expect((await sam.request.put(`/api/users/${user.id}`, { data: { smsConfirmations: false } })).status()).toBe(403);
+  } finally {
+    await sam.close();
+  }
+});
+
 // ---- Emailing a tab ---------------------------------------------------------------
 
 interface SentEmail {

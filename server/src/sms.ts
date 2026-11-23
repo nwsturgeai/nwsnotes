@@ -5,13 +5,16 @@ import {
   SHARED_CATEGORY_ID,
   LIFETIME_NEW,
   TITLE_MAX_LENGTH,
+  LINKED_REPLY,
   emailTabCommand,
   emailTabTarget,
+  emailedReply,
   fitsOneSms,
   formatPhoneNumber,
   isValidLoginName,
   matchSpokenTab,
   notSavedReply,
+  savedReply,
   type SmsLinkCode,
   type SmsStatus,
   type Tab,
@@ -95,7 +98,8 @@ function twiml(res: Response, message?: string): void {
 /**
  * Adding notes by text message (see Specs/text-messages.md). Twilio posts each text sent to the nwsnotes
  * number to the webhook; a text from a linked phone becomes a note in its user's notebook, put in the tab
- * its first words name. Each saved note gets a notification; a note that couldn't be saved gets a text back.
+ * its first words name. Each saved note gets a notification; a note that couldn't be saved gets a text back,
+ * and so does a saved one for users the admin has turned confirmations on for.
  */
 export class SmsNotes {
   /** Linking codes waiting to be texted in: code → user and when it stops working. Memory only. */
@@ -218,14 +222,15 @@ export class SmsNotes {
         console.error("Couldn't link a phone:", error);
         return undefined;
       }
-      log(`linking code: the phone is now linked to user ${waiting.userId}.`);
+      const confirm = users.byId(waiting.userId)?.smsConfirmations === true;
+      log(`linking code: the phone is now linked to user ${waiting.userId}${confirm ? "; confirmed by text" : ""}.`);
       this.live.notifyChanged(waiting.userId, undefined);
       await this.push.notify(waiting.userId, {
         title: "Phone linked",
         body: `Notes texted from ${formatPhoneNumber(from)} will be added here.`,
         tag: "sms-linked",
       });
-      return undefined;
+      return confirm ? LINKED_REPLY : undefined;
     }
 
     const user = users.byPhoneNumber(from);
@@ -307,7 +312,8 @@ export class SmsNotes {
       }
       const { note } = added;
       this.live.notifyChanged(user.id, undefined);
-      log(`saved as user ${user.id}'s note ${note.id}, ${tab ? `in tab ${tab.id}` : "with no tab"}.`);
+      const confirm = user.smsConfirmations === true;
+      log(`saved as user ${user.id}'s note ${note.id}, ${tab ? `in tab ${tab.id}` : "with no tab"}${confirm ? "; confirmed by text" : ""}.`);
 
       const lifetime = tab?.categories.find((filter) => filter.categoryId === LIFETIME_CATEGORY_ID);
       const notes = [
@@ -320,7 +326,7 @@ export class SmsNotes {
         body: [title, ...notes].join("\n"),
         tag: `sms-note-${note.id}`,
       });
-      return undefined;
+      return confirm ? savedReply(tab?.name ?? "All", title, cut) : undefined;
     } catch (error) {
       const status = (error as { status?: unknown }).status;
       if (status === 409) {
@@ -362,13 +368,14 @@ export class SmsNotes {
       await this.mailer.send(email);
       sent.push(now);
       const tabName = tab === "all" ? "All" : tab.name;
-      log(`emailed ${tab === "all" ? "the All tab" : `tab ${tab.id}`} (${email.noteCount} notes) to user ${user.id}.`);
+      const confirm = user.smsConfirmations === true;
+      log(`emailed ${tab === "all" ? "the All tab" : `tab ${tab.id}`} (${email.noteCount} notes) to user ${user.id}${confirm ? "; confirmed by text" : ""}.`);
       await this.push.notify(user.id, {
         title: `Emailed ${tabName}`,
         body: `${email.noteCount === 1 ? "1 note" : `${email.noteCount} notes`}, sent to ${user.loginName}.`,
         tag: `sms-emailed-${now}`,
       });
-      return undefined;
+      return confirm ? emailedReply(tabName, email.noteCount, user.loginName) : undefined;
     } catch (error) {
       log(`not emailed: an error (below) emailing user ${user.id}'s tab.`);
       console.error(`Couldn't email user ${user.id}'s tab:`, error);
