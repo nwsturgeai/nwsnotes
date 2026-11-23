@@ -5,6 +5,7 @@ import {
   isValidLoginName,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  PASSWORD_LINK_NOT_WORKING,
   NOTE_LIMIT_DEFAULT,
   NOTE_LIMIT_MAX,
   stylusNoteLimitOf,
@@ -468,6 +469,23 @@ export class Users {
         throw new RequestError(400, "The current password isn't right.");
       }
       const next = { ...existing, passwordHash: hashPassword(validNewPassword(newPassword, "The new password")), sessionVersion: existing.sessionVersion + 1 };
+      await this.save(next);
+      return next;
+    });
+  }
+
+  /**
+   * Choosing a new password with an emailed link (already checked with readPasswordResetToken, whose user
+   * this is): logs them out everywhere. The password hash is checked again here, in the queue, so the same
+   * link can't be used twice even by two saves at once. Returns the user as it now is.
+   */
+  resetPasswordByLink(checked: User, raw: unknown): Promise<User> {
+    return this.enqueue(async () => {
+      const existing = this.users.get(checked.id);
+      if (!existing || existing.disabled || existing.passwordHash !== checked.passwordHash) {
+        throw new RequestError(400, PASSWORD_LINK_NOT_WORKING);
+      }
+      const next = { ...existing, passwordHash: hashPassword(validNewPassword(raw, "The new password")), sessionVersion: existing.sessionVersion + 1 };
       await this.save(next);
       return next;
     });

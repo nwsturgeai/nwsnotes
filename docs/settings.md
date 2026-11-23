@@ -22,7 +22,7 @@ These are kept separately on each of your devices, so your phone and tablet can 
 
 ## Your account
 
-- **Change password:** choose your own password. Your other devices are logged out, and you log in there again with the new one.
+- **Change password:** choose your own password. Your other devices are logged out, and you log in there again with the new one. You're emailed to say it was changed, so you'd know if someone else did it.
 - **Log out.**
 
 Each person's notes are completely separate: nobody else can see yours.

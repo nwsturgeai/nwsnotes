@@ -14,6 +14,8 @@ import {
   type Me,
   type NewUserRequest,
   type PasswordChangeRequest,
+  type PasswordResetConfirmRequest,
+  type PasswordResetRequest,
   type UserSummary,
   type UserUpdateRequest,
   type NewNoteRequest,
@@ -100,6 +102,8 @@ async function request<T>(method: string, url: string, body?: unknown, extraHead
     throw new ApiError(message, method, url, response.status, response.statusText, text);
   }
 
+  // An answer with nothing to say (204).
+  if (text === "") return undefined as T;
   try {
     return JSON.parse(text) as T;
   } catch (error) {
@@ -184,6 +188,10 @@ export const api = {
   resetPassword: (id: number) => request<{ password: string }>("POST", `/api/users/${id}/reset-password`),
   /** The public sign-up page: asking for an account, which an admin then confirms. */
   requestAccount: (body: AccountRequestBody) => request<{ ok: true }>("POST", "/api/account-requests", body),
+  /** Forgotten passwords (public): asking for the emailed link, checking it, and choosing the new password. */
+  askForPasswordLink: (body: PasswordResetRequest) => request<void>("POST", "/api/password-reset", body),
+  checkPasswordLink: (token: string) => request<{ loginName: string }>("POST", "/api/password-reset/check", { token }),
+  resetPasswordByLink: (body: PasswordResetConfirmRequest) => request<void>("POST", "/api/password-reset/confirm", body),
   /** Account requests waiting to be confirmed (admin only). */
   accountRequests: () => request<AccountRequest[]>("GET", "/api/users/requests"),
   /** Makes the user; `emailed` says whether they were emailed that it's ready. */

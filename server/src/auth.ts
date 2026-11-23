@@ -126,3 +126,42 @@ export function requireSession(users: Users, secret: string) {
 export function userOf(res: Response): User {
   return res.locals.user as User;
 }
+
+/*
+ * Emailed links to choose a new password (a forgotten one): "<user id>.<expiry ms>.<signature>", signed
+ * with the session secret over "password-reset.<user id>.<expiry ms>.<the user's current password hash>".
+ * Nothing is stored: changing the password in any way changes the hash, so a link works only once, and
+ * older links stop working. The "password-reset." start keeps a session's signature from ever passing as a
+ * link's, or a link's as a session's.
+ */
+export const PASSWORD_RESET_LENGTH_MS = 60 * 60 * 1000;
+
+function signPasswordReset(userId: number | string, expires: number | string, passwordHash: string, secret: string): string {
+  return sign(`password-reset.${userId}.${expires}.${passwordHash}`, secret);
+}
+
+export function createPasswordResetToken(
+  secret: string,
+  user: Pick<User, "id" | "passwordHash">,
+  expires = Date.now() + PASSWORD_RESET_LENGTH_MS,
+): string {
+  return `${user.id}.${expires}.${signPasswordReset(user.id, expires, user.passwordHash, secret)}`;
+}
+
+/**
+ * The user an emailed link is for, if it's signed right, hasn't expired, their password hasn't changed
+ * since, and their account is still there and turned on.
+ */
+export function readPasswordResetToken(token: unknown, secret: string, users: Users, now = Date.now()): User | undefined {
+  if (typeof token !== "string") return undefined;
+  const parts = token.split(".");
+  if (parts.length !== 3) return undefined;
+  const [userId, expires, signature] = parts as [string, string, string];
+  if (!/^\d+$/.test(userId) || !/^\d+$/.test(expires) || !(Number(expires) > now)) return undefined;
+  const user = users.byId(Number(userId));
+  if (!user || user.disabled) return undefined;
+  const expected = Buffer.from(signPasswordReset(userId, expires, user.passwordHash, secret));
+  const actual = Buffer.from(signature);
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return undefined;
+  return user;
+}

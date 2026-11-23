@@ -29,6 +29,11 @@ async function addUser(request: APIRequestContext, displayName: string, loginNam
   return { id: user.id, password };
 }
 
+/** The emails the test server would have sent to this address, oldest first. */
+async function emailsTo(request: APIRequestContext, to: string): Promise<{ subject: string; text: string; html: string }[]> {
+  return (await (await request.get(`/api/test/emails?to=${encodeURIComponent(to)}`)).json()) as { subject: string; text: string; html: string }[];
+}
+
 /** A page on a new device, logged in as this user and showing their notes page. */
 async function loggedIn(browser: Browser, loginName: string, password: string): Promise<Page> {
   const page = await (await newDevice(browser)).newPage();
@@ -278,6 +283,14 @@ test("changing your own password: the old one stops working, this window stays l
   await expect(alex.getByRole("status").filter({ hasText: "Password changed." })).toHaveText(
     "Password changed. Your other devices have been logged out.",
   );
+  // They're emailed to say so, once.
+  await expect.poll(async () => (await emailsTo(page.request, "alex@example.com")).map((email) => email.subject)).toEqual([
+    "Your nwsnotes password was changed",
+  ]);
+  const [changed] = await emailsTo(page.request, "alex@example.com");
+  expect(changed!.text).toContain("The password for your nwsnotes account, alex@example.com, has just been changed, in Settings.");
+  expect(changed!.text).toContain("Your other devices have been logged out.");
+  expect(changed!.text).toMatch(/If this wasn't you, choose a new password straight away at http:\/\/localhost:\d+\/forgot-password, and tell the admin\./);
 
   // The other device is logged out; this one stays logged in, even after a reload.
   await expectLoggedOut(alexElsewhere);
@@ -320,6 +333,8 @@ test("resetting a password and turning an account off log that user out; turned 
   await dialog.getByRole("button", { name: "Done" }).click();
 
   await expectLoggedOut(jo);
+  // The admin passes the new password on themselves, so no "password changed" email is sent.
+  expect(await emailsTo(page.request, "jody@example.com")).toEqual([]);
   await logIn(jo, "jody@example.com", password);
   await expect(jo.getByRole("alert")).toHaveText("Incorrect email or password.");
   await logIn(jo, "jody@example.com", newPassword);
