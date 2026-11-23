@@ -37,6 +37,8 @@ export interface UserData {
   smsPhoneNumber?: string;
   /** When it was linked. */
   smsLinkedDateTime?: string;
+  /** Set by the admin: each text of theirs that works gets a text back confirming it (missing means off). */
+  smsConfirmations?: boolean;
 }
 
 /** A user's maximum number of notes. */
@@ -354,6 +356,7 @@ export class Users {
       ...(user.lastLoginDateTime !== undefined && { lastLoginDateTime: user.lastLoginDateTime }),
       ...noteStatsOf(user, counts),
       smsLinked: user.smsPhoneNumber !== undefined,
+      smsConfirmations: user.smsConfirmations === true,
     };
   }
 
@@ -392,7 +395,7 @@ export class Users {
   update(id: number, raw: unknown): Promise<{ user: User; loggedOut: boolean }> {
     return this.enqueue(async () => {
       const existing = this.required(id);
-      const body = (raw ?? {}) as { loginName?: unknown; displayName?: unknown; disabled?: unknown; noteLimit?: unknown };
+      const body = (raw ?? {}) as { loginName?: unknown; displayName?: unknown; disabled?: unknown; noteLimit?: unknown; smsConfirmations?: unknown };
       const next: User = { ...existing };
       // A name made before login names had to be email addresses can be kept as it is, so the rest can still be edited.
       const unchanged = typeof body.loginName === "string" && body.loginName.trim() === existing.loginName;
@@ -404,6 +407,11 @@ export class Users {
           throw new RequestError(400, `The note limit must be a whole number from 1 to ${NOTE_LIMIT_MAX.toLocaleString("en-GB")}.`);
         }
         next.noteLimit = limit;
+      }
+      if (body.smsConfirmations !== undefined) {
+        if (typeof body.smsConfirmations !== "boolean") throw new RequestError(400, '"smsConfirmations" must be true or false.');
+        if (body.smsConfirmations) next.smsConfirmations = true;
+        else delete next.smsConfirmations;
       }
       let loggedOut = false;
       if (body.disabled !== undefined) {
@@ -464,7 +472,7 @@ export class Users {
       this.requests.clear();
       for (const id of others) this.users.delete(id);
       const admin = this.required(ADMIN_ID);
-      const { noteLimit: _limit, ...asStarted } = withoutPhone(admin);
+      const { noteLimit: _limit, smsConfirmations: _confirmations, ...asStarted } = withoutPhone(admin);
       await this.save({
         ...asStarted,
         loginName: adminLoginName,
