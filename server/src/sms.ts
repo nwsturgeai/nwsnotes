@@ -2,6 +2,7 @@ import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import express, { type Request, type Response } from "express";
 import {
   LIFETIME_CATEGORY_ID,
+  SHARED_CATEGORY_ID,
   LIFETIME_NEW,
   TITLE_MAX_LENGTH,
   emailTabCommand,
@@ -19,7 +20,9 @@ import { requireSession, userOf } from "./auth.js";
 import type { SmsConfig } from "./config.js";
 import type { Mailer } from "./email.js";
 import type { LiveUpdates } from "./live.js";
+import { actingUser } from "./context.js";
 import type { Notebooks } from "./notebooks.js";
+import type { Sharing } from "./sharing.js";
 import type { PushReminders } from "./push.js";
 import { tabSummaryEmail } from "./tabEmail.js";
 import { noteLimitOf, type User } from "./users.js";
@@ -111,6 +114,7 @@ export class SmsNotes {
     private readonly push: PushReminders,
     private readonly sessionSecret: string,
     private readonly mailer: Mailer,
+    private readonly sharing: Sharing,
   ) {}
 
   /** The webhook (signed by Twilio, no session) and the logged-in user's routes under /api/me/sms. */
@@ -276,9 +280,32 @@ export class SmsNotes {
       }
       const { title, cut } = cutToLimit(spokenTitle);
       // The first tag of each category the tab filters on (they're in the category's tag order). Lifetime
-      // isn't set: new notes are always New.
-      const tagIds = (tab?.categories ?? []).filter((filter) => filter.categoryId !== LIFETIME_CATEGORY_ID).flatMap((filter) => filter.tagIds.slice(0, 1));
-      const { note } = await store.add({ titleText: title }, tagIds, undefined, undefined, { noteLimit: noteLimitOf(user), source: "sms" });
+      // isn't set: new notes are always New. A tab of tags shared with the user adds to their owner's
+      // notebook, which needs one shared tag chosen: a text can't choose between several.
+      const shared = tab?.categories.find((filter) => filter.categoryId === SHARED_CATEGORY_ID);
+      if (shared && shared.tagIds.length > 1) {
+        log(`not saved: tab ${tab!.id} has several shared tags, for user ${user.id}.`);
+        return this.failed(user.id, text, `the tab "${tab!.name}" has several tags shared with you, so a text can't choose one. Add it in the app.`);
+      }
+      const tagIds = shared
+        ? shared.tagIds
+        : (tab?.categories ?? []).filter((filter) => filter.categoryId !== LIFETIME_CATEGORY_ID).flatMap((filter) => filter.tagIds.slice(0, 1));
+      let added;
+      try {
+        added = await actingUser.run({ userId: user.id, displayName: user.displayName }, () =>
+          this.sharing.addNote(user, { titleText: title }, tagIds, undefined, undefined, { source: "sms" }),
+        );
+      } catch (error) {
+        const status = (error as { status?: unknown }).status;
+        // Refused for sharing's reasons (e.g. a read-only shared tag, or the owner's notebook being full).
+        if (shared && (status === 400 || status === 403 || status === 409)) {
+          log(`not saved: refused (${String(status)}) adding to a shared tag, for user ${user.id}.`);
+          const message = (error as Error).message;
+          return this.failed(user.id, text, `${message.charAt(0).toLowerCase()}${message.slice(1)}`);
+        }
+        throw error;
+      }
+      const { note } = added;
       this.live.notifyChanged(user.id, undefined);
       log(`saved as user ${user.id}'s note ${note.id}, ${tab ? `in tab ${tab.id}` : "with no tab"}.`);
 
@@ -324,8 +351,8 @@ export class SmsNotes {
       return this.notEmailed(user.id, `you've had ${EMAILS_PER_DAY} tab emails in the last day. Try again later.`);
     }
     try {
-      const store = await this.notebooks.for(user.id);
-      const data = store.getAll();
+      // With the notes shared with them, as the app shows the tab.
+      const data = await this.sharing.dataFor(user.id);
       const tab = emailTabTarget<Tab>(named, data.tabs);
       if (!tab) {
         log(`not emailed: no tab matched, for user ${user.id}.`);

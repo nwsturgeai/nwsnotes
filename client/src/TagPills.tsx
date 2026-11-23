@@ -4,6 +4,8 @@ import {
   LIFETIME_BIN,
   LIFETIME_NEW,
   LIFETIME_WAITING,
+  pillLabel,
+  shortOwnerName,
   type Category,
 } from "@nwsnotes/shared";
 
@@ -52,8 +54,8 @@ export function TagPills({
             </button>
           </li>
         ) : (
-          <li key={tag.id} title={category.name}>
-            {tag.name}
+          <li key={tag.id} title={tag.ownerName !== undefined ? `Shared by ${shortOwnerName(tag.ownerName)}` : category.name}>
+            {pillLabel(tag, categories)}
           </li>
         ),
       )}

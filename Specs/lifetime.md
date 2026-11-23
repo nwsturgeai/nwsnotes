@@ -70,6 +70,6 @@ Empty Bin: Clicking this button will delete all notes with the "Bin" tag.  There
   - Each button ends with the number of notes it would change, in brackets: "Reset New (3)", "Archived to Bin (5)", "Empty Bin (4)". The counts come from the notes the page has loaded, so they update after each change, made here or on another page. A count of 0 shows as "(0)".
   - The confirmations are the app's own pop-up windows (not the browser's), with the count. If there's nothing to change, the button says so (e.g. "There are no archived notes.") instead of asking.
   - Emptied notes are gone from the app, but can be brought back from the History page for 30 days, within the last 500 changes (see "History and revert" in [data.md](data.md)).
-- **Note ids are never reused:** the save-file stores `lastNoteId`, the highest id ever given, and new notes get `lastNoteId + 1`. Files without it start from the highest id present.
+- **Note ids are never reused:** new notes get their id from the database's note-id sequence, shared by all users (see "Global note and tag ids" in [sharing.md](sharing.md)).
 - **Live updates:** every lifetime change reloads other open pages, as for other changes.
 - **Live updates:** if another page changes the note being edited, the last Update wins; the open edit isn't changed by live updates.

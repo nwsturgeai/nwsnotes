@@ -2,7 +2,7 @@
 
 ## Requirements
 
-The app can be used by several people, each with their own completely separate notebook. Nobody can see or change anyone else's notes, categories, tabs, history or settings. There are no shared notes.
+The app can be used by several people, each with their own completely separate notebook. Nobody can see or change anyone else's notes, categories, tabs, history or settings. The one exception is tags an owner chooses to share, described in [sharing.md](sharing.md).
 
 ### Accounts
 - People ask for an account themselves on a public sign-up page (`/signup`), which the admin shares with family and friends, choosing their own password. The admin confirms each request before it can be used. The admin can also still add an account directly, with a generated password.
@@ -83,8 +83,8 @@ The app can be used by several people, each with their own completely separate n
 - **Protected on the server:** all `/api/users` routes answer 403 for anyone but the admin.
 
 ### Separate notebooks
-- **Everything that's now "the data" becomes per user:** notes, categories, tabs, the All tab's placement, the shared note order, `lastNoteId`, the History, backups, and reminder devices.
-- **Ids are per user:** each notebook's note, category and tab ids start at 1, exactly as now. So a notebook, its API responses and its save-files look the same as a single-user one.
+- **Everything that's now "the data" becomes per user:** notes, categories, tabs, the All tab's placement, the shared note order, the History, backups, and reminder devices.
+- **Ids:** each notebook's category and tab ids start at 1. Note and tag ids are unique across all users, so they can be shared (see "Global note and tag ids" in [sharing.md](sharing.md)).
 - **Database:**
   - `notes`, `categories` and `tabs` get a `user_id` column, and their primary keys become `(user_id, id)`.
   - `meta` gets `user_id`, and its key becomes `(user_id, name)`.

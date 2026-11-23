@@ -38,6 +38,90 @@ export interface Note {
    * offline add retried after its reply was lost) returns this note instead of making a second.
    */
   clientId?: string;
+  /**
+   * Only on another user's note in a recipient's view (GET /api/notes): whose it is, and what the
+   * recipient may do with it. Never stored. Such a note's `tagIds` hold only the tags shared with the
+   * recipient (and its Lifetime).
+   */
+  shared?: NoteShare;
+}
+
+/** What a recipient may do with notes that have a tag shared with them. Each level includes the ones before it. */
+export type SharePermission = "read" | "edit" | "delete";
+export const SHARE_PERMISSIONS: SharePermission[] = ["read", "edit", "delete"];
+export const SHARE_PERMISSION_NAMES: Record<SharePermission, string> = {
+  read: "Read-only",
+  edit: "Edit",
+  delete: "Edit and delete",
+};
+
+/** Whether `permission` includes `needed`. */
+export function allows(permission: SharePermission, needed: SharePermission): boolean {
+  return SHARE_PERMISSIONS.indexOf(permission) >= SHARE_PERMISSIONS.indexOf(needed);
+}
+
+/** The higher of two permission levels. */
+export function higherPermission(a: SharePermission, b: SharePermission): SharePermission {
+  return allows(a, b) ? a : b;
+}
+
+/** On a note shared with the logged-in user: whose it is, and the most they may do with it (from its shared tags). */
+export interface NoteShare {
+  ownerId: number;
+  ownerName: string;
+  permission: SharePermission;
+}
+
+/** The built-in "Shared with me" category, holding every tag shared with the user (only when there are any). */
+export const SHARED_CATEGORY_ID = -2;
+export const SHARED_CATEGORY_NAME = "Shared with me";
+
+/** Owners' display names are shortened to this many characters (then "…") beside shared tags. */
+export const OWNER_NAME_SHOWN = 10;
+
+/** An owner's display name as shown beside their shared tags: "Christophe…" for "Christopher". */
+export function shortOwnerName(name: string): string {
+  return name.length > OWNER_NAME_SHOWN ? `${name.slice(0, OWNER_NAME_SHOWN)}…` : name;
+}
+
+/** A tag's name with its owner's, for a shared tag ("Shopping (Pat)"); other tags' names as they are. */
+export function tagLabel(tag: Tag): string {
+  return tag.ownerName === undefined ? tag.name : `${tag.name} (${shortOwnerName(tag.ownerName)})`;
+}
+
+/**
+ * A tag's name on a note's pills: shared tags only show their owner when another tag shared with the
+ * user has the same name (ignoring upper/lower case).
+ */
+export function pillLabel(tag: Tag, categories: Category[]): string {
+  if (tag.ownerName === undefined) return tag.name;
+  const shared = categories.find((category) => category.id === SHARED_CATEGORY_ID)?.tags ?? [];
+  return shared.some((other) => other.id !== tag.id && sameName(other.name, tag.name)) ? tagLabel(tag) : tag.name;
+}
+
+/** A tag shared with the user, as the share dialog lists who it's shared with. */
+export interface TagShare {
+  userId: number;
+  displayName: string;
+  loginName: string;
+  permission: SharePermission;
+}
+
+/** Body of PUT /api/tags/:id/shares: everyone the tag is shared with (a person by login email), replacing the list. */
+export interface TagSharesRequest {
+  shares: { loginName: string; permission: SharePermission }[];
+}
+
+/** GET /api/shares/people: users the logged-in user is already linked with by sharing, either way. */
+export interface SharePerson {
+  id: number;
+  displayName: string;
+  loginName: string;
+}
+
+/** Body of PUT /api/shared-tags: the recipient's own order and colours for the tags shared with them (every one, once). */
+export interface SharedTagsRequest {
+  tags: { id: number; hue?: number }[];
 }
 
 /** Longest `clientId` the server accepts. */
@@ -54,6 +138,10 @@ export interface Tag {
   name: string;
   /** The tag's colour, as a hue in whole degrees (0-359); notes with the tag are tinted with it. */
   hue?: number;
+  /** Only in "Shared with me": the owner's display name (in full), and what the user may do with its notes. */
+  ownerName?: string;
+  ownerId?: number;
+  permission?: SharePermission;
 }
 
 /** A group of tags. Tags can be added and renamed, but not deleted. */
@@ -67,6 +155,8 @@ export interface Category {
   tags: Tag[];
   /** True for the built-in Lifetime category, which can't be edited and has no new-note dropdown. */
   system?: boolean;
+  /** True for the built-in "Shared with me" category: only its tags' order and colours can be changed, by the user. */
+  shared?: boolean;
 }
 
 /*
@@ -559,8 +649,8 @@ export function validateCategory(
 
   const name = validateName(input.name, "The category name");
   if (!name.ok) return name;
-  if (sameName(name.value, LIFETIME_NAME)) {
-    return { ok: false, error: `The name "${LIFETIME_NAME}" is used by the built-in category.` };
+  for (const builtIn of [LIFETIME_NAME, SHARED_CATEGORY_NAME]) {
+    if (sameName(name.value, builtIn)) return { ok: false, error: `The name "${builtIn}" is used by a built-in category.` };
   }
   const clash = categories.find((other) => other.id !== existing?.id && sameName(other.name, name.value));
   if (clash) {

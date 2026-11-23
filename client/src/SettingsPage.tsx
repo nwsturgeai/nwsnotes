@@ -12,6 +12,8 @@ import {
   LIFETIME_NEW,
   NOTE_LIMIT_SHOWN_FROM,
   TABS_MAX,
+  allows,
+  tagLabel,
   type Category,
   type Me,
   type Note,
@@ -170,7 +172,7 @@ export function SettingsPage({
 
   /** Moves a user category up or down with its arrows. */
   function moveCategory(id: number, by: -1 | 1) {
-    const next = moved(categories.filter((category) => !category.system), id, by);
+    const next = moved(categories.filter((category) => !builtIn(category)), id, by);
     if (!next) return;
     focusAfterMove(`category-${id}`, by, next.findIndex((c) => c.id === id), next.length);
     void saveCategoryOrder(next);
@@ -179,7 +181,7 @@ export function SettingsPage({
   /** The user categories in a new order (arrows or a drop): shown at once, and saved straight away (reverted if that fails). */
   async function saveCategoryOrder(next: Category[]) {
     setOrderError(undefined);
-    onCategoriesReordered([...next, ...categories.filter((category) => category.system)]);
+    onCategoriesReordered([...next, ...categories.filter(builtIn)]);
     try {
       await api.reorderCategories(next.map((category) => category.id));
     } catch (error) {
@@ -216,8 +218,8 @@ export function SettingsPage({
     }
   }
   /** Dragging categories and tabs by their grips (the shared list drag); a drop is saved straight away. */
-  const userCategories = categories.filter((category) => !category.system);
-  const systemCategories = categories.filter((category) => category.system);
+  const userCategories = categories.filter((category) => !builtIn(category));
+  const systemCategories = categories.filter(builtIn);
   const categoryListRef = useRef<HTMLUListElement>(null);
   const tabListRef = useRef<HTMLUListElement>(null);
   const { drag: categoryDrag, gripHandlers: categoryGrip } = useListDrag(categoryListRef, (id, target) => {
@@ -252,9 +254,10 @@ export function SettingsPage({
   }
 
   // Each Lifetime button shows how many notes it would change, e.g. "Empty Bin (4)".
-  const newCount = notes.filter((note) => lifetimeOf(note) === LIFETIME_NEW).length;
-  const archivedCount = notes.filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED).length;
-  const binCount = notes.filter((note) => lifetimeOf(note) === LIFETIME_BIN).length;
+  // Reset New also covers notes shared with you that you may edit; the others are only your own notes.
+  const newCount = notes.filter((note) => lifetimeOf(note) === LIFETIME_NEW && (!note.shared || allows(note.shared.permission, "edit"))).length;
+  const archivedCount = notes.filter((note) => !note.shared && lifetimeOf(note) === LIFETIME_ARCHIVED).length;
+  const binCount = notes.filter((note) => !note.shared && lifetimeOf(note) === LIFETIME_BIN).length;
 
   async function run(action: BulkAction, done: (count: number) => string) {
     setConfirming(undefined);
@@ -497,7 +500,7 @@ export function SettingsPage({
               const details = (
                 <>
                   <span className="category-name">{category.name}</span>
-                  {category.system && <span className="category-kind">built-in</span>}
+                  {builtIn(category) && <span className="category-kind">built-in</span>}
                   {category.multiSelect && <span className="category-kind">multi-select</span>}
                   <span className="category-tags">
                     {category.tags.map((tag, index) => (
@@ -507,7 +510,7 @@ export function SettingsPage({
                         {tag.hue !== undefined && (
                           <span className="hue-dot" style={{ background: hueColour(tag.hue, "swatch") }} aria-hidden />
                         )}
-                        {tag.name}
+                        {tagLabel(tag)}
                       </span>
                     ))}
                   </span>
@@ -519,16 +522,17 @@ export function SettingsPage({
               return (
                 <li
                   key={category.id}
-                  {...(!category.system && { "data-drag-id": category.id })}
+                  {...(!builtIn(category) && { "data-drag-id": category.id })}
                   className={dragging ? "dragging" : undefined}
                   style={dragging ? draggedStyle(categoryDrag) : undefined}
                 >
-                  {category.system ? (
+                  {builtIn(category) ? (
                     <span className="drag-grip-space" aria-hidden />
                   ) : (
                     <DragGrip label={`Drag ${category.name}`} handlers={categoryGrip(category.id)} />
                   )}
-                  {/* The built-in Lifetime category can't be edited or moved (it's always last), so it isn't a link. */}
+                  {/* The built-in categories can't be moved. Lifetime can't be edited (it's always last), so it isn't a link;
+                      "Shared with me" is, for the order and colours of its tags. */}
                   {category.system ? (
                     <span className="tab-entry">{details}</span>
                   ) : (
@@ -536,7 +540,7 @@ export function SettingsPage({
                       {details}
                     </a>
                   )}
-                  {category.system ? (
+                  {builtIn(category) ? (
                     <span className="order-buttons" aria-hidden />
                   ) : (
                     <OrderButtons
@@ -933,4 +937,9 @@ function AppVersion() {
       ) : null}
     </section>
   );
+}
+
+/** The built-in categories: Lifetime, and "Shared with me" (when anything is shared with you). They can't be moved. */
+function builtIn(category: Category): boolean {
+  return category.system === true || category.shared === true;
 }

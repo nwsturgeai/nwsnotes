@@ -30,14 +30,21 @@ import {
   type TabPlacement,
   withoutMarkers,
 } from "@nwsnotes/shared";
+import { actingUser } from "./context.js";
 import { databaseUnreachable, type Db } from "./db.js";
 import { RequestError } from "./errors.js";
 import {
   emptyNotebook,
+  idList,
+  idsOfOtherUsers,
   listChanges,
   loadSnapshot,
+  markSetUp,
+  nextNoteId,
+  nextTagIds,
   oldTabOrders,
   revertedSnapshot,
+  syncIdSequences,
   withoutNoteOrder,
   writeChange,
   type ChangeRecord,
@@ -59,7 +66,10 @@ interface SaveFile {
   categories: Category[];
   /** Missing in files saved before tabs existed. */
   tabs?: Tab[];
-  /** The highest note id ever given, so ids are never reused. Missing in older files. */
+  /**
+   * Files saved before note ids were unique across all users: the highest note id that notebook had given.
+   * Ignored now (ids come from the database's sequence), and no longer written.
+   */
   lastNoteId?: number;
   /** Where the built-in "All" tab shows. Missing in older files (and then "top"). */
   allTabPlacement?: TabPlacement;
@@ -155,8 +165,11 @@ function fileNameFor(date: Date): string {
   return `notes-${date.toISOString().replace(/[:.]/g, "-")}.json`;
 }
 
+/** A save-file's contents, as the store reads them. */
+type ParsedSaveFile = Required<Omit<SaveFile, "lastNoteId">>;
+
 /** Reads a save-file of either version as the current version. */
-function parseSaveFile(name: string, text: string): Required<SaveFile> {
+function parseSaveFile(name: string, text: string): ParsedSaveFile {
   const content = JSON.parse(text) as SaveFile | SaveFileV1;
   if (!Array.isArray(content.notes)) {
     throw new Error(`Save-file ${name} has no "notes" list.`);
@@ -168,7 +181,6 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
       notes: content.notes.map((note) => ({ ...note, tagIds: [] })),
       categories: [],
       tabs: [],
-      lastNoteId: Math.max(0, ...content.notes.map((n) => n.id)),
       allTabPlacement: "top",
       noteOrder: [],
     };
@@ -179,22 +191,21 @@ function parseSaveFile(name: string, text: string): Required<SaveFile> {
   // Files saved before tabs existed have no "tabs" list.
   const tabs = Array.isArray(content.tabs) ? content.tabs : [];
   const ids = new Set(content.notes.map((n) => n.id));
+  const { lastNoteId: _ignored, ...rest } = content;
   return {
-    ...content,
+    ...rest,
     tabs: tabs.map(withoutNoteOrder),
     // Files from before the order was shared have the tabs' own orders instead: one is made from them.
     noteOrder: (Array.isArray(content.noteOrder)
       ? [...new Set(content.noteOrder.filter((id) => Number.isInteger(id)))]
       : mergeNoteOrders(oldTabOrders(tabs))
     ).filter((id) => ids.has(id)),
-    // Files saved before notes could be deleted have no "lastNoteId"; the highest id present is right for them.
-    lastNoteId: typeof content.lastNoteId === "number" ? content.lastNoteId : Math.max(0, ...content.notes.map((n) => n.id)),
     allTabPlacement: content.allTabPlacement === "left" ? "left" : "top",
   };
 }
 
 /** A save-file's contents as the store's data, with notes from before Lifetime and tag-change times brought up to date. */
-function snapshotOf(content: Required<SaveFile>): Snapshot {
+function snapshotOf(content: ParsedSaveFile): Snapshot {
   return {
     // Notes saved before Lifetime existed become Active, and notes saved before tag-change times
     // existed get their created time.
@@ -205,12 +216,19 @@ function snapshotOf(content: Required<SaveFile>): Snapshot {
     })),
     categories: content.categories,
     tabs: content.tabs,
-    lastNoteId: content.lastNoteId,
     allTabPlacement: content.allTabPlacement,
     noteOrder: content.noteOrder,
   };
 }
 
+
+/** An empty notebook. */
+const EMPTY: Snapshot = { notes: [], categories: [], tabs: [], allTabPlacement: "top", noteOrder: [] };
+
+/** Every tag id in the categories. */
+function tagIdsOf(categories: Category[]): number[] {
+  return categories.flatMap((category) => category.tags.map((tag) => tag.id));
+}
 
 /** Options for saving a change. */
 interface SaveOptions {
@@ -229,8 +247,6 @@ export class NoteStore {
   private notes: Note[] = [];
   private categories: Category[] = [];
   private tabs: Tab[] = [];
-  /** The highest note id ever given; new notes get the next one, so ids are never reused. */
-  private lastNoteId = 0;
   /** Where the built-in "All" tab shows. */
   private allTabPlacement: TabPlacement = "top";
   /** The shared order of the notes, for every tab. */
@@ -242,9 +258,11 @@ export class NoteStore {
    * Set when the latest change was an update of this long-form note: the next autosave of the same note
    * joins that change. Anything else (creating it, other changes, a restart) clears it.
    */
-  private lastLongFormUpdate: { noteId: number; changeId: number } | undefined;
+  private lastLongFormUpdate: { noteId: number; changeId: number; userId: number } | undefined;
   /** Changes run one at a time, in order. */
   private queue: Promise<unknown> = Promise.resolve();
+  /** Called after each change is saved (Notebooks uses it to tell the pages of users this notebook shares tags with). */
+  onSaved?: () => void;
 
   constructor(
     private readonly db: Db,
@@ -265,9 +283,9 @@ export class NoteStore {
         `Loaded user ${this.userId}'s ${this.notes.length} notes, ${this.categories.length} categories and ${this.tabs.length} tabs from the database.`,
       );
     } else {
-      // A new notebook: marks it as set up (lastNoteId is stored), so later starts load it.
-      const empty: Snapshot = { notes: [], categories: [], tabs: [], lastNoteId: 0, allTabPlacement: "top", noteOrder: [] };
-      await writeChange(this.db, this.userId, { ...empty, lastNoteId: -1 }, empty, this.nextSaveTime(), undefined);
+      // A new notebook: marks it as set up, so later starts load it.
+      await this.db.transaction((query) => markSetUp(query, this.userId));
+      this.apply(EMPTY);
       console.log(`User ${this.userId} has no notes yet.`);
     }
     this.ready = true;
@@ -278,7 +296,6 @@ export class NoteStore {
       notes: this.notes,
       categories: this.categories,
       tabs: this.tabs,
-      lastNoteId: this.lastNoteId,
       allTabPlacement: this.allTabPlacement,
       noteOrder: this.noteOrder,
     };
@@ -288,7 +305,6 @@ export class NoteStore {
     this.notes = snapshot.notes;
     this.categories = snapshot.categories;
     this.tabs = snapshot.tabs;
-    this.lastNoteId = snapshot.lastNoteId;
     this.allTabPlacement = snapshot.allTabPlacement;
     this.noteOrder = snapshot.noteOrder;
   }
@@ -318,7 +334,6 @@ export class NoteStore {
       notes: this.notes,
       categories: this.categories,
       tabs: this.tabs,
-      lastNoteId: this.lastNoteId,
       allTabPlacement: this.allTabPlacement,
       noteOrder: this.noteOrder,
     };
@@ -367,9 +382,18 @@ export class NoteStore {
   restore(name: string, text: string): Promise<number> {
     return this.enqueue(async () => {
       const content = snapshotOf(parseSaveFile(name, text));
-      await this.save(this.nextSaveTime(), { ...content, lastNoteId: Math.max(content.lastNoteId, this.lastNoteId) }, {
-        record: { summary: `Restored from ${name}` },
-      });
+      // Ids are unique across all users, so a file holding someone else's ids is from another notebook.
+      const others = await idsOfOtherUsers(this.db, this.userId, content.notes.map((note) => note.id), tagIdsOf(content.categories));
+      if (others.notes.length > 0 || others.tags.length > 0) {
+        const which = [
+          others.notes.length > 0 && idList("note", others.notes.slice(0, 10)),
+          others.tags.length > 0 && idList("tag", others.tags.slice(0, 10)),
+        ].filter(Boolean).join(" and ");
+        throw new Error(`${name} has ${which}, which belong${others.notes.length + others.tags.length === 1 ? "s" : ""} to another user, so it isn't this user's backup. Nothing was restored.`);
+      }
+      await this.save(this.nextSaveTime(), content, { record: { summary: `Restored from ${name}` } });
+      // New ids must come after the restored ones.
+      await this.db.transaction((query) => syncIdSequences(query));
       return this.notes.length;
     });
   }
@@ -414,6 +438,8 @@ export class NoteStore {
       stylusNoteLimit?: number;
       /** "sms": texted in, which the History says. */
       source?: "sms";
+      /** Set when someone a tag is shared with adds the note: this notebook's owner, for the limits' messages. */
+      ownerName?: string;
     } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
@@ -430,10 +456,12 @@ export class NoteStore {
       if (options.noteLimit !== undefined && this.notes.length >= options.noteLimit) {
         throw new RequestError(
           409,
-          `You've reached your limit of ${options.noteLimit} notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
+          options.ownerName !== undefined
+            ? `${options.ownerName}'s notebook is full, so this note can't be added.`
+            : `You've reached your limit of ${options.noteLimit} notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
         );
       }
-      if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
+      if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       if (details && title.titleText === undefined) {
@@ -454,7 +482,7 @@ export class NoteStore {
       const timestamp = now.toISOString();
       const createdDateTime = offlineTime(options.createdDateTime, now) ?? timestamp;
       const note: Note = {
-        id: this.lastNoteId + 1,
+        id: await nextNoteId(this.db),
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
@@ -466,7 +494,7 @@ export class NoteStore {
         tagIds: [...tagIds.value, LIFETIME_NEW],
         ...(clientId !== undefined && { clientId }),
       };
-      await this.save(now, { notes: [...this.notes, note], lastNoteId: note.id }, {
+      await this.save(now, { notes: [...this.notes, note] }, {
         record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}${options.source === "sms" ? " by text message" : ""}` },
       });
       return { note, created: true };
@@ -477,11 +505,13 @@ export class NoteStore {
    * Refuses a new stylus note when the notebook already has `limit` of them (archived and Bin included).
    * Called in the queue of changes, so two at once can't both slip under it.
    */
-  private checkStylusNoteLimit(limit: number | undefined): void {
+  private checkStylusNoteLimit(limit: number | undefined, ownerName?: string): void {
     if (limit === undefined || this.notes.filter(isStylusNote).length < limit) return;
     throw new RequestError(
       409,
-      `You've reached your limit of ${limit} stylus notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
+      ownerName !== undefined
+        ? `${ownerName}'s notebook has no room for more stylus notes, so this one can't be saved.`
+        : `You've reached your limit of ${limit} stylus notes. Empty the Bin to make room, or ask the admin for a higher limit.`,
     );
   }
 
@@ -498,7 +528,7 @@ export class NoteStore {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; stylusNoteLimit?: number } = {},
+    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; stylusNoteLimit?: number; ownerName?: string } = {},
   ): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
@@ -536,7 +566,7 @@ export class NoteStore {
       const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       // A typed note converted to a long-form note with handwritten details becomes a stylus note.
-      if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit);
+      if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
 
       const now = this.nextSaveTime();
       // Editing keeps the note's Lifetime.
@@ -650,9 +680,9 @@ export class NoteStore {
     });
   }
 
-  /** The Settings "Reset New" button: every New note becomes Active. Returns how many changed. */
-  resetNew(): Promise<number> {
-    return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE);
+  /** The Settings "Reset New" button: every New note becomes Active (with `rawNoteIds`, only those). Returns how many changed. */
+  resetNew(rawNoteIds?: unknown): Promise<number> {
+    return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE, rawNoteIds);
   }
 
   /**
@@ -781,7 +811,7 @@ export class NoteStore {
         id: this.categories.reduce((max, c) => Math.max(max, c.id), 0) + 1,
         name: check.category.name,
         multiSelect: check.category.multiSelect,
-        tags: this.withTagIds(check.category.tags),
+        tags: await this.withTagIds(check.category.tags),
       };
       await this.save(this.nextSaveTime(), { categories: [...this.categories, category] }, {
         record: { summary: `Added category "${category.name}"` },
@@ -803,7 +833,7 @@ export class NoteStore {
         name: check.category.name,
         multiSelect: check.category.multiSelect,
         // The tags keep the order they were sent in: that is the category's tag order.
-        tags: this.withTagIds(check.category.tags),
+        tags: await this.withTagIds(check.category.tags),
       };
       const categories = this.categories.map((c) => (c.id === id ? category : c));
       const record = { summary: `Changed category "${category.name}"` };
@@ -853,10 +883,10 @@ export class NoteStore {
     });
   }
 
-  /** Checks and adds a new tab, then saves. */
-  addTab(raw: unknown): Promise<Tab> {
+  /** Checks and adds a new tab, then saves. `shared`: the user's "Shared with me" category, if they have one. */
+  addTab(raw: unknown, shared: Category[] = []): Promise<Tab> {
     return this.enqueue(async () => {
-      const check = validateTab(raw, this.tabs, this.allCategories());
+      const check = validateTab(raw, this.tabs, [...this.categories, ...shared, LIFETIME_CATEGORY]);
       if (!check.ok) throw new RequestError(400, check.error);
 
       const tab: Tab = { id: this.tabs.reduce((max, t) => Math.max(max, t.id), 0) + 1, ...check.tab };
@@ -866,11 +896,11 @@ export class NoteStore {
   }
 
   /** Checks and replaces a tab's name and filters, then saves. */
-  updateTab(id: number, raw: unknown): Promise<Tab> {
+  updateTab(id: number, raw: unknown, shared: Category[] = []): Promise<Tab> {
     return this.enqueue(async () => {
       const existing = this.tabs.find((t) => t.id === id);
       if (!existing) throw new RequestError(404, `There is no tab with id ${id}.`);
-      const check = validateTab(raw, this.tabs, this.allCategories(), existing);
+      const check = validateTab(raw, this.tabs, [...this.categories, ...shared, LIFETIME_CATEGORY], existing);
       if (!check.ok) throw new RequestError(400, check.error);
 
       const tab: Tab = { id, ...check.tab };
@@ -881,15 +911,18 @@ export class NoteStore {
     });
   }
 
-  /** Replaces the shared note order (moving notes in any tab), keeping only existing notes' ids, once each. */
-  setNoteOrder(raw: unknown): Promise<number[]> {
+  /**
+   * Replaces the shared note order (moving notes in any tab), keeping only existing notes' ids, once each:
+   * this notebook's, and `sharedIds` (other users' notes this user can see, which they order too).
+   */
+  setNoteOrder(raw: unknown, sharedIds: ReadonlySet<number> = new Set()): Promise<number[]> {
     return this.enqueue(async () => {
       const order = (raw as { noteOrder?: unknown } | undefined)?.noteOrder;
       if (!Array.isArray(order) || !order.every((n) => Number.isInteger(n))) {
         throw new RequestError(400, '"noteOrder" must be an array of note ids.');
       }
       const ids = new Set(this.notes.map((n) => n.id));
-      const noteOrder = [...new Set(order as number[])].filter((noteId) => ids.has(noteId));
+      const noteOrder = [...new Set(order as number[])].filter((noteId) => ids.has(noteId) || sharedIds.has(noteId));
       await this.save(this.nextSaveTime(), { noteOrder }, { record: { summary: "Changed the order of the notes" } });
       return noteOrder;
     });
@@ -927,10 +960,10 @@ export class NoteStore {
     });
   }
 
-  /** Gives new tags the next ids; tag ids are unique across all categories. */
-  private withTagIds(tags: CategoryRequest["tags"]): Category["tags"] {
-    let nextId = this.categories.flatMap((c) => c.tags).reduce((max, t) => Math.max(max, t.id), 0) + 1;
-    return tags.map((tag) => ({ id: tag.id ?? nextId++, name: tag.name, ...(tag.hue !== undefined && { hue: tag.hue }) }));
+  /** Gives new tags new ids, which are unique across all users' categories and never reused. */
+  private async withTagIds(tags: CategoryRequest["tags"]): Promise<Category["tags"]> {
+    const ids = await nextTagIds(this.db, tags.filter((tag) => tag.id === undefined).length);
+    return tags.map((tag) => ({ id: tag.id ?? ids.shift()!, name: tag.name, ...(tag.hue !== undefined && { hue: tag.hue }) }));
   }
 
   private enqueue<T>(change: () => Promise<T>): Promise<T> {
@@ -948,10 +981,15 @@ export class NoteStore {
   resetTo(seedText: string): Promise<void> {
     return this.enqueue(async () => {
       const seed = snapshotOf(parseSaveFile("seed", seedText));
-      await this.db.transaction((query) => emptyNotebook(query, this.userId));
-      this.apply({ notes: [], categories: [], tabs: [], lastNoteId: -1, allTabPlacement: "top", noteOrder: [] });
+      await this.db.transaction(async (query) => {
+        await emptyNotebook(query, this.userId);
+        await markSetUp(query, this.userId);
+      });
+      this.apply(EMPTY);
       this.lastLongFormUpdate = undefined;
       await this.save(this.nextSaveTime(), seed, { record: { summary: "Imported the test data" } });
+      // Every other notebook has just been removed, so new ids start again straight after the seed's.
+      await this.db.transaction((query) => syncIdSequences(query, true));
     });
   }
 
@@ -967,16 +1005,26 @@ export class NoteStore {
    * previous change if it was an update of the same note, so a long editing session is one change.
    */
   private async save(now: Date, change: Partial<Snapshot>, options: SaveOptions = {}): Promise<void> {
+    // A change made by someone a tag is shared with says who, in this notebook's History.
+    const acting = actingUser.getStore();
+    if (options.record && acting && acting.userId !== this.userId) {
+      options = { ...options, record: { ...options.record, summary: `${options.record.summary} (by ${acting.displayName})` } };
+    }
     const before = this.snapshot();
     const after: Snapshot = { ...before, ...change };
+    // Only the same person's autosaves join: someone else's start a change of their own.
+    const actingId = acting?.userId ?? this.userId;
     const join =
-      options.longFormUpdateId !== undefined && this.lastLongFormUpdate?.noteId === options.longFormUpdateId
+      options.longFormUpdateId !== undefined &&
+      this.lastLongFormUpdate?.noteId === options.longFormUpdateId &&
+      this.lastLongFormUpdate.userId === actingId
         ? this.lastLongFormUpdate.changeId
         : undefined;
     const changeId = await writeChange(this.db, this.userId, before, after, now, options.record, join);
     this.apply(after);
     this.lastSaveMs = now.getTime();
     this.lastLongFormUpdate =
-      options.longFormUpdateId !== undefined && changeId !== undefined ? { noteId: options.longFormUpdateId, changeId } : undefined;
+      options.longFormUpdateId !== undefined && changeId !== undefined ? { noteId: options.longFormUpdateId, changeId, userId: actingId } : undefined;
+    this.onSaved?.();
   }
 }

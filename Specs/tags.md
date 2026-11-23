@@ -96,7 +96,7 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
 
 ### Tags
 - Shared types in `shared/`: `Tag { id, name }`, `Category { id, name, multiSelect, tags: Tag[] }`, and `Note` gains `tagIds: number[]`. The name and tag rules are checked by shared functions used by both the website and the server, like the note title.
-- Ids: a new category gets the highest category id + 1; a new tag gets the highest tag id across all categories + 1. Both start at 1.
+- Ids: a new category gets the highest category id + 1, starting at 1, in each user's notebook. A new tag's id comes from the database's tag-id sequence, so tag ids are unique across all users and never reused, even after a tag is deleted (see "Global note and tag ids" in [sharing.md](sharing.md)).
 - Category and tag names are trimmed, can't be empty and are at most 40 characters. Category names must be unique, and tag names unique within their category; both checks ignore upper/lower case ("Work" and "work" count as the same).
 - A tag can't have the same name as its own category (ignoring upper/lower case), as the category name is what an unset dropdown shows. Tags in other categories may share it. Categories saved before this rule still load and work; saving one that breaks it is refused, with a message naming the clashing tag, until the tag or the category is renamed.
 - No user category can be called "Lifetime" (ignoring upper/lower case); that name belongs to the built-in category.

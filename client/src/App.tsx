@@ -214,8 +214,8 @@ export function App() {
         ...data,
         categories: data.categories.some((c) => c.id === category.id)
           ? data.categories.map((c) => (c.id === category.id ? category : c))
-          : // New categories go before the built-in Lifetime one, which the server always sends last.
-            [...data.categories.filter((c) => !c.system), category, ...data.categories.filter((c) => c.system)],
+          : // New categories go before the built-in ones (Shared with me, then Lifetime), which the server always sends last.
+            [...data.categories.filter((c) => !c.system && !c.shared), category, ...data.categories.filter((c) => c.system || c.shared)],
       })),
     [applySaved],
   );

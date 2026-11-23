@@ -25,6 +25,10 @@ import {
   type SmsLinkCode,
   type SmsStatus,
   type TabRequest,
+  type SharedTagsRequest,
+  type SharePerson,
+  type TagShare,
+  type TagSharesRequest,
 } from "@nwsnotes/shared";
 import { connectionId } from "./live";
 
@@ -139,6 +143,10 @@ export const api = {
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
   /** The user categories' order (every id, once each); returns all categories, Lifetime last. */
+  tagShares: (tagId: number) => request<TagShare[]>("GET", `/api/tags/${tagId}/shares`),
+  setTagShares: (tagId: number, body: TagSharesRequest) => request<TagShare[]>("PUT", `/api/tags/${tagId}/shares`, body, changeHeaders()),
+  sharePeople: () => request<SharePerson[]>("GET", "/api/shares/people"),
+  setSharedTags: (body: SharedTagsRequest) => request<Category | null>("PUT", "/api/shared-tags", body, changeHeaders()),
   reorderCategories: (ids: number[]) => request<Category[]>("PUT", "/api/categories/order", { ids }, changeHeaders()),
   /** The tabs' order (every id, once each). */
   reorderTabs: (ids: number[]) => request<Tab[]>("PUT", "/api/tabs/order", { ids }, changeHeaders()),

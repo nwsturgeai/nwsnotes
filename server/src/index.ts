@@ -7,6 +7,7 @@ import { loadConfig } from "./config.js";
 import { openDatabase } from "./db.js";
 import { LiveUpdates } from "./live.js";
 import { PushReminders } from "./push.js";
+import { Sharing } from "./sharing.js";
 import { Notebooks } from "./notebooks.js";
 import { Mailer } from "./email.js";
 import { SmsNotes } from "./sms.js";
@@ -21,7 +22,7 @@ function option(name: string): string | undefined {
 async function main() {
   const config = loadConfig();
   const db = await openDatabase(config);
-  const users = new Users(db, { loginName: config.adminLoginName, passwordHash: config.passwordHash });
+  const users = new Users(db, { loginName: config.adminLoginName, passwordHash: config.passwordHash }, config.testMode);
   const notebooks = new Notebooks(db, config.dataDir, users);
 
   // `node server.cjs --restore <file> --user <login email>`: replaces that user's notebook with a backup
@@ -57,14 +58,15 @@ async function main() {
   }
 
   await notebooks.init();
+  const sharing = new Sharing(db, notebooks);
   const push = new PushReminders(config.dataDir, config.pushContact, notebooks, config.testMode);
   await push.init();
   const live = new LiveUpdates(users, config.sessionSecret);
   const mailer = new Mailer(config.email, !config.production);
   if (config.email) console.log(`Emails are sent from ${config.email.from}, through Brevo.`);
-  const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, mailer);
+  const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, mailer, sharing);
   if (config.sms) console.log(`Notes can be texted to ${config.sms.number}.`);
-  const app = createApp(config, notebooks, live, push, db, sms, mailer);
+  const app = createApp(config, notebooks, live, push, db, sharing, sms, mailer);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {

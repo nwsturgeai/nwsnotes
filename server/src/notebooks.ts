@@ -17,6 +17,8 @@ const RETRY_START_MS = 30_000;
  */
 export class Notebooks {
   private readonly stores = new Map<number, Promise<NoteStore>>();
+  /** Called after any notebook saves a change, with whose notebook it is (to tell the pages of users it's shared with). */
+  onNotebookSaved?: (userId: number) => void;
 
   constructor(
     private readonly db: Db,
@@ -58,6 +60,7 @@ export class Notebooks {
     let store = this.stores.get(userId);
     if (!store) {
       const made = new NoteStore(this.db, userId);
+      made.onSaved = () => this.onNotebookSaved?.(userId);
       store = made.load().then(() => made);
       this.stores.set(userId, store);
       // If it couldn't be loaded (e.g. the database is unreachable), the next request tries again.
@@ -111,7 +114,8 @@ export class Notebooks {
       for (const id of removed) await emptyNotebook(query, id);
       // Anything else left by a user no longer there.
       for (const table of ["changes", "notes", "categories", "tabs", "meta"]) {
-        await query(`DELETE FROM nwsnotes.${table} WHERE user_id <> $1`, [ADMIN_ID]);
+        // (`meta` rows of user 0 belong to no user, and are kept.)
+        await query(`DELETE FROM nwsnotes.${table} WHERE user_id <> $1${table === "meta" ? " AND user_id <> 0" : ""}`, [ADMIN_ID]);
       }
     });
     for (const id of removed) this.stores.delete(id);
