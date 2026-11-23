@@ -82,6 +82,19 @@ test("Columns: the first column is filled to the bottom of the list before notes
   await expect.poll(columnLefts).toBeGreaterThan(1);
 });
 
+test.describe("expanded add area", () => {
+  test.use({ addAreaStartsCollapsed: false });
+
+  test("the pills reach right down to the bottom of the page", async ({ page }) => {
+    const gap = await page.evaluate(() => {
+      const area = document.querySelector(".new-note.full")!.getBoundingClientRect();
+      const pills = document.querySelector(".new-note.full .tag-pill-picker")!.getBoundingClientRect();
+      return area.bottom - pills.bottom;
+    });
+    expect(gap).toBe(0);
+  });
+});
+
 test("tab counts: each tab shows its number of notes, by its own filters only", async ({ page }) => {
   await expect(topTabs(page)).toHaveText(["All", "Work", "Home", "On hold"]);
   await openSettings(page);

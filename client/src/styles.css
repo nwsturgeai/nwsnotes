@@ -920,6 +920,8 @@ body:has(.note-list li.dragging) {
 
 .new-note.full {
   overflow: hidden;
+  /* The pills scroll right down to the bottom of the page; their own padding (below) is scrolled with them. */
+  padding-bottom: 0;
 }
 
 .new-note.full form,
@@ -945,6 +947,8 @@ body:has(.note-list li.dragging) {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* Space under the last pills, only seen once scrolled to the end. */
+  padding-bottom: 0.6rem;
 }
 
 .notes-page.full-tag-list .toast {
