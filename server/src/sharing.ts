@@ -181,6 +181,31 @@ export class Sharing {
     };
   }
 
+  // --- What an owner sees ---------------------------------------------------------------
+
+  /** The owner's categories, each shared tag marked with the most any of its recipients may do (`sharedOut`). */
+  async withSharedOut<C extends Category>(ownerId: number, categories: C[]): Promise<C[]> {
+    await this.ready();
+    const most = new Map<number, SharePermission>();
+    for (const row of this.rows) {
+      if (row.ownerId !== ownerId || !this.users.byId(row.recipientId)) continue;
+      const before = most.get(row.tagId);
+      most.set(row.tagId, before ? higherPermission(before, row.permission) : row.permission);
+    }
+    if (most.size === 0) return categories;
+    return categories.map((category) =>
+      category.system || category.shared
+        ? category
+        : {
+            ...category,
+            tags: category.tags.map((tag) => {
+              const sharedOut = most.get(tag.id);
+              return sharedOut ? { ...tag, sharedOut } : tag;
+            }),
+          },
+    );
+  }
+
   /** The user's "Shared with me" category, as a list (empty if nothing is shared with them), for checking tabs. */
   async sharedCategories(userId: number): Promise<Category[]> {
     const { category } = await this.sharedWith(userId);
@@ -197,7 +222,7 @@ export class Sharing {
         return view ? [view] : [];
       }),
     );
-    const userCategories = own.categories.filter((c) => !c.system);
+    const userCategories = await this.withSharedOut(userId, own.categories.filter((c) => !c.system));
     return {
       ...own,
       notes: [...own.notes, ...sharedNotes],

@@ -113,7 +113,7 @@ test("tab counts: each tab shows its number of notes, by its own filters only", 
 
   // Bin notes don't count (the Broken lamp is in the bin); archived ones do.
   await expect(topTabs(page)).toHaveText(["All (8)", "Work (3)", "Home (5)", "On hold (1)"]);
-  for (const tab of await topTabs(page).all()) expect((await tab.boundingBox())!.width).toBeGreaterThanOrEqual(75);
+  for (const tab of await topTabs(page).all()) expect((await tab.boundingBox())!.width).toBeGreaterThanOrEqual(95);
 
   // The filter row and search don't change them.
   await setFilter(page, "Topic", "Ideas", true);

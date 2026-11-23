@@ -8,6 +8,7 @@ import {
   shortOwnerName,
   type Category,
 } from "@nwsnotes/shared";
+import { SharingIcons } from "./sharingIcons";
 
 /** Lifetime tags notes don't show: Active is the usual state, and Waiting, Archived and Bin rows have their own colour. */
 const HIDDEN_ON_NOTES = [LIFETIME_ACTIVE, LIFETIME_WAITING, LIFETIME_ARCHIVED, LIFETIME_BIN];
@@ -24,6 +25,8 @@ interface Props {
   /** Makes the "New" pill a button (the notes list's "reset the New tags"). */
   onNewClick?: () => void;
   newClickDisabled?: boolean;
+  /** Your own shared tags show the sharing icons after their names (on notes). */
+  showSharing?: boolean;
 }
 
 /** Tags shown as small pills, in category order then tag order. Hovering a pill shows its category. */
@@ -35,6 +38,7 @@ export function TagPills({
   hideCategoryIds = [],
   onNewClick,
   newClickDisabled,
+  showSharing,
 }: Props) {
   const pills = categories
     .filter((category) => !hideCategoryIds.includes(category.id))
@@ -56,6 +60,7 @@ export function TagPills({
         ) : (
           <li key={tag.id} title={tag.ownerName !== undefined ? `Shared by ${shortOwnerName(tag.ownerName)}` : category.name}>
             {pillLabel(tag, categories)}
+            {showSharing && tag.sharedOut && <SharingIcons permission={tag.sharedOut} />}
           </li>
         ),
       )}

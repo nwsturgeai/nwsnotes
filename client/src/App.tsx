@@ -28,6 +28,7 @@ import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
 import { UsersPage } from "./UsersPage";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
+import { tabSharedOut } from "./sharingIcons";
 import { useColumns, useStylusMode, useTabCounts } from "./stylusMode";
 import { TabEditPage } from "./TabEditPage";
 import type { TagSelection } from "./TagPickers";
@@ -307,6 +308,7 @@ export function App() {
             page={page}
             stylusMode={stylusMode}
             tabs={tabs.filter((tab) => tab.placement !== "left")}
+            categories={state.data.categories}
             allOnTop={!allOnLeft}
             leftStrip={allOnLeft || tabs.some((tab) => tab.placement === "left")}
             tabCounts={tabCounts}
@@ -415,7 +417,12 @@ export function App() {
               selectedTab={selectedTab}
               leftTabs={[
                 ...(allOnLeft ? [{ id: undefined, name: ALL_TAB_NAME, count: tabCounts?.get("all") }] : []),
-                ...tabs.filter((tab) => tab.placement === "left").map((tab) => ({ id: tab.id, name: tab.name, count: tabCounts?.get(tab.id) })),
+                ...tabs.filter((tab) => tab.placement === "left").map((tab) => ({
+                  id: tab.id,
+                  name: tab.name,
+                  count: tabCounts?.get(tab.id),
+                  sharedOut: tabSharedOut(tab, state.data.categories),
+                })),
               ]}
               onSelectTab={selectTab}
               tabsBlocked={editingNote !== undefined || bulkActive}

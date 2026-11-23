@@ -405,14 +405,15 @@ export function createApp(
   categoriesRouter.post("/", async (req, res) => {
     const category = await notebookOf(res).addCategory(req.body);
     notifyChanged(req, res);
-    res.status(201).json(category);
+    res.status(201).json((await sharing.withSharedOut(userOf(res).id, [category]))[0]);
   });
 
   // The categories' order (the settings page's up and down buttons). Before "/:id", which would match it.
   categoriesRouter.put("/order", async (req, res) => {
     const categories = await notebookOf(res).reorderCategories(req.body);
     notifyChanged(req, res);
-    res.json(categories);
+    // Shared tags keep their sharing icons.
+    res.json(await sharing.withSharedOut(userOf(res).id, categories));
   });
 
   categoriesRouter.put("/:id", async (req: Request<{ id: string }>, res) => {
@@ -425,7 +426,7 @@ export function createApp(
     notifyChanged(req, res);
     // Deleted tags are no longer shared.
     notifyUsers(await sharing.pruneDeletedTags(userOf(res).id));
-    res.json(category);
+    res.json((await sharing.withSharedOut(userOf(res).id, [category]))[0]);
   });
 
   app.use("/api/categories", categoriesRouter);
@@ -449,10 +450,11 @@ export function createApp(
     res.json(await sharing.sharesOfTag(userOf(res).id, tagIdOf(req)));
   });
 
-  // Replaces who one of your tags is shared with. Their pages reload to show the change.
+  // Replaces who one of your tags is shared with. Their pages reload to show the change, and so do all
+  // of yours (this one too), for the sharing icons on the tag's pills.
   sharingRouter.put("/tags/:id/shares", ...signedIn, async (req: Request<{ id: string }>, res) => {
     const { shares, changed } = await sharing.setSharesOfTag(userOf(res), tagIdOf(req), req.body);
-    notifyUsers(changed);
+    notifyUsers([...changed, userOf(res).id]);
     res.json(shares);
   });
 

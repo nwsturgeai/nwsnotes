@@ -1112,6 +1112,7 @@ export function NotesPage({
                           categories={categories}
                           extra={specialPills(note)}
                           hideCategoryIds={filteredSingleSelect}
+                          showSharing
                           // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
                           // Offline it's plain too: resetting the New tags needs the server.
                           onNewClick={bulk || offline || !canEdit ? undefined : () => setConfirmResetNew(true)}
