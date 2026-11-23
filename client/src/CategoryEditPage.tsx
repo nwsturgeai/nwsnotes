@@ -1,7 +1,18 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp, faShareNodes, faTrashCan } from "@fortawesome/free-solid-svg-icons";
-import { NAME_MAX_LENGTH, TAGS_PER_CATEGORY_MAX, tagLabel, validateCategory, type Category, type CategoryRequest, type Note, type Tag } from "@nwsnotes/shared";
+import {
+  NAME_MAX_LENGTH,
+  TAGS_PER_CATEGORY_MAX,
+  tagLabel,
+  validateCategory,
+  validateTab,
+  type Category,
+  type CategoryRequest,
+  type Note,
+  type Tab,
+  type Tag,
+} from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { hueColour } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -15,6 +26,10 @@ interface Props {
   categories: Category[];
   /** All notes, to say how many a deleted tag is removed from. */
   notes: Note[];
+  /** The tabs, to offer a tab for each tag of a single-select category that no tab uses. */
+  tabs: Tab[];
+  /** A tab made here with "Create Tab for this Tag" (saved straight away, without saving the category). */
+  onTabSaved: (tab: Tab) => void;
   onSaved: (category: Category) => void;
   /** Returns to the settings page (after saving or cancelling). */
   onClose: () => void;
@@ -55,6 +70,8 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 function CategoryForm({
   categories,
   notes,
+  tabs,
+  onTabSaved,
   existing,
   onSaved,
   onClose,
@@ -76,12 +93,60 @@ function CategoryForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
   /** Asking before saving, when deleted tags are on notes or a change to single-select trims notes' tags. */
-  const [confirming, setConfirming] = useState<{ message: string; confirmLabel: string; request: CategoryRequest }>();
+  const [confirming, setConfirming] = useState<{ message: string; confirmLabel: string; request: CategoryRequest; tabRowKey?: number }>();
   const focusKey = useRef<number>(undefined);
   /** The tag row whose colour is being chosen. */
   const [pickingHueFor, setPickingHueFor] = useState<TagRow>();
   /** The saved tag whose sharing is being changed. */
   const [sharing, setSharing] = useState<{ id: number; name: string }>();
+
+  /** "Create Tab for this Tag": the tag row whose tab is being made, and what happened (by row key). */
+  const [makingTabFor, setMakingTabFor] = useState<number>();
+  const [tabResults, setTabResults] = useState<Map<number, { made: boolean; message: string }>>(new Map());
+  const setTabResult = (key: number, outcome: { made: boolean; message: string }) =>
+    setTabResults((current) => new Map(current).set(key, outcome));
+
+  /**
+   * While editing a single-select category, each tag that no tab's filters use (a new one included) gets
+   * "Create Tab for this Tag" under its name. Clicking it saves the category as it is, then makes the tab.
+   */
+  function offersTab(row: TagRow): boolean {
+    if (!existing || existing.system || sharedLayout || multiSelect || row.shared || row.name.trim() === "") return false;
+    return row.id === undefined || !tabs.some((tab) => tab.categories.some((filter) => filter.tagIds.includes(row.id!)));
+  }
+
+  function createTabFor(row: TagRow) {
+    if (!existing || saving) return;
+    // The tab's name is checked first, so the category isn't saved for a tab that can't be made. (The tag may be
+    // new, with no id until the category is saved, so one of its saved tags stands in for it in the filter.)
+    const standIn = existing.tags[0];
+    if (standIn) {
+      const check = validateTab({ name: row.name.trim(), categories: [{ categoryId: existing.id, tagIds: [standIn.id] }] }, tabs, categories);
+      if (!check.ok) {
+        setTabResult(row.key, { made: false, message: `The tab wasn't made: ${check.error}` });
+        return;
+      }
+    }
+    submit(row.key);
+  }
+
+  /** After the category is saved: makes a tab named after the tag, showing only notes with that tag. */
+  async function makeTab(rowKey: number, category: Category, tag: Tag) {
+    setMakingTabFor(rowKey);
+    try {
+      const tab = await api.addTab({ name: tag.name, categories: [{ categoryId: category.id, tagIds: [tag.id] }] });
+      onTabSaved(tab);
+      setTabResult(rowKey, { made: true, message: `Saved the category and made the tab "${tab.name}".` });
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setTabResult(rowKey, { made: false, message: `The category was saved, but the tab wasn't made: ${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setMakingTabFor(undefined);
+    }
+  }
 
   function setRowHue(key: number, hue: number | undefined) {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, hue } : row)));
@@ -89,6 +154,13 @@ function CategoryForm({
 
   function setRowName(key: number, value: string) {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, name: value } : row)));
+    // Why a tab couldn't be made was about the name as it was.
+    setTabResults((current) => {
+      if (current.get(key)?.made !== false) return current;
+      const next = new Map(current);
+      next.delete(key);
+      return next;
+    });
   }
 
   /** A category has room for at most TAGS_PER_CATEGORY_MAX tag rows. */
@@ -164,7 +236,14 @@ function CategoryForm({
       void saveSharedLayout();
       return;
     }
+    submit();
+  }
 
+  /**
+   * Checks and saves the category (asking first where Save would), then goes back to Settings. With
+   * `tabRowKey` ("Create Tab for this Tag"), it stays on the page and makes that tag's tab instead.
+   */
+  function submit(tabRowKey?: number) {
     const request: CategoryRequest = {
       name,
       multiSelect,
@@ -201,10 +280,11 @@ function CategoryForm({
         message: messages.join(" "),
         confirmLabel: affected > 0 && narrowed > 0 ? "Save" : affected > 0 ? "Delete and save" : "Change and save",
         request: check.category,
+        ...(tabRowKey !== undefined && { tabRowKey }),
       });
       return;
     }
-    void send(check.category);
+    void send(check.category, tabRowKey);
   }
 
   /** "Shared with me": saves your order and colours for its tags. */
@@ -225,14 +305,14 @@ function CategoryForm({
     }
   }
 
-  async function send(request: CategoryRequest) {
+  async function send(request: CategoryRequest, tabRowKey?: number) {
     setConfirming(undefined);
     setSaving(true);
     setError(undefined);
+    let saved: Category;
     try {
-      const saved = existing ? await api.updateCategory(existing.id, request) : await api.addCategory(request);
+      saved = existing ? await api.updateCategory(existing.id, request) : await api.addCategory(request);
       onSaved(saved);
-      onClose();
     } catch (err) {
       if (err instanceof ApiError && err.isUnauthorized) {
         onSessionExpired();
@@ -240,7 +320,21 @@ function CategoryForm({
       }
       setError(`The category wasn't saved: ${err instanceof Error ? err.message : String(err)}`);
       setSaving(false);
+      return;
     }
+    if (tabRowKey === undefined) {
+      onClose();
+      return;
+    }
+    // Staying on the page: the rows become the tags as saved (new ones now have ids, empty new rows are gone),
+    // each keeping its row's key, matched by name, so what's shown under it stays put.
+    const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+    const keyOf = (tag: Tag) => rows.find((row) => sameName(row.name, tag.name))?.key;
+    setRows(saved.tags.map((tag) => ({ ...newRow(tag), key: keyOf(tag) ?? nextKey.current++ })));
+    setSaving(false);
+    const target = rows.find((row) => row.key === tabRowKey);
+    const tag = target && saved.tags.find((t) => sameName(t.name, target.name));
+    if (tag) await makeTab(tabRowKey, saved, tag);
   }
 
   return (
@@ -291,25 +385,9 @@ function CategoryForm({
             const row = entry.item;
             const index = rows.indexOf(row);
             const dragging = tagDrag?.id === row.key;
-            return (
-            <div
-              key={row.key}
-              data-drag-id={row.key}
-              className={dragging ? "tag-row dragging" : "tag-row"}
-              style={dragging ? draggedStyle(tagDrag) : undefined}
-            >
-              <DragGrip label={`Drag ${row.name || `tag ${index + 1}`}`} handlers={tagGrip(row.key)} />
-              {/* The tag's colour: tapping opens the hue picker. Saved with the category. */}
-              <button
-                type="button"
-                className={row.hue === undefined ? "hue-box none" : "hue-box"}
-                style={row.hue === undefined ? undefined : { background: hueColour(row.hue, "swatch") }}
-                aria-label={`Colour of ${row.name || `tag ${index + 1}`}: ${row.hue === undefined ? "none" : `hue ${row.hue}°`}`}
-                title={row.hue === undefined ? "Choose a colour" : `Colour: hue ${row.hue}°`}
-                disabled={saving}
-                onClick={() => setPickingHueFor(row)}
-              />
-              {row.shared ? (
+            const tabResult = tabResults.get(row.key);
+            const tabLink = offersTab(row);
+            const nameBox = row.shared ? (
                 <span className="shared-tag-name">{tagLabel(row.shared)}</span>
               ) : (
               <input
@@ -329,6 +407,49 @@ function CategoryForm({
                 onChange={(event) => setRowName(row.key, event.target.value)}
                 onKeyDown={onTagKeyDown}
               />
+              );
+            const underName = tabResult ?? (tabLink ? "link" : undefined);
+            return (
+            <div
+              key={row.key}
+              data-drag-id={row.key}
+              className={["tag-row", dragging && "dragging", underName && "with-note"].filter(Boolean).join(" ")}
+              style={dragging ? draggedStyle(tagDrag) : undefined}
+            >
+              <DragGrip label={`Drag ${row.name || `tag ${index + 1}`}`} handlers={tagGrip(row.key)} />
+              {/* The tag's colour: tapping opens the hue picker. Saved with the category. */}
+              <button
+                type="button"
+                className={row.hue === undefined ? "hue-box none" : "hue-box"}
+                style={row.hue === undefined ? undefined : { background: hueColour(row.hue, "swatch") }}
+                aria-label={`Colour of ${row.name || `tag ${index + 1}`}: ${row.hue === undefined ? "none" : `hue ${row.hue}°`}`}
+                title={row.hue === undefined ? "Choose a colour" : `Colour: hue ${row.hue}°`}
+                disabled={saving}
+                onClick={() => setPickingHueFor(row)}
+              />
+              {underName ? (
+                // The name box, with "Create Tab for this Tag" (or what came of it) in small text underneath.
+                <div className="tag-name">
+                  {nameBox}
+                  {tabLink && tabResult?.made !== true && (
+                    <button
+                      type="button"
+                      className="tag-tab-link"
+                      aria-label={`Create Tab for ${row.name.trim()}`}
+                      disabled={saving || makingTabFor !== undefined}
+                      onClick={() => createTabFor(row)}
+                    >
+                      {makingTabFor === row.key ? "Creating tab…" : "Create Tab for this Tag"}
+                    </button>
+                  )}
+                  {tabResult && (
+                    <span className={tabResult.made ? "tag-tab-result" : "tag-tab-result error"} role={tabResult.made ? "status" : "alert"}>
+                      {tabResult.message}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                nameBox
               )}
               {/* Up and down change the tag order; like renames and deletes, it's saved with the category. */}
               <button
@@ -428,7 +549,7 @@ function CategoryForm({
         <ConfirmDialog
           message={confirming.message}
           confirmLabel={confirming.confirmLabel}
-          onConfirm={() => void send(confirming.request)}
+          onConfirm={() => void send(confirming.request, confirming.tabRowKey)}
           onCancel={() => setConfirming(undefined)}
         />
       )}
