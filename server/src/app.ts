@@ -189,9 +189,13 @@ export function createApp(
     next();
   });
 
-  usersRouter.get("/", async (_req, res) => {
+  // `changesSince`: where "today and the 6 days before" starts in the admin's time zone (their midnight 6 days
+  // ago). Without it (or if it isn't a date), the last 7 days from now.
+  usersRouter.get("/", async (req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json(await users.summaries());
+    const asked = typeof req.query.changesSince === "string" ? new Date(req.query.changesSince) : undefined;
+    const since = asked && !Number.isNaN(asked.getTime()) ? asked : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    res.json(await users.summaries(since));
   });
 
   // The whole database's size, for the users page.

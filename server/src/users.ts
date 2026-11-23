@@ -16,7 +16,7 @@ import {
 import { generatePassword, hashPassword, verifyPassword } from "./auth.js";
 import { databaseUnreachable, type Db, type Query } from "./db.js";
 import { RequestError } from "./errors.js";
-import { ensureSchema, markSetUp } from "./persist.js";
+import { ensureSchema, HISTORY_MAX_CHANGES, markSetUp } from "./persist.js";
 
 /** What the `users` table's `data` column holds. */
 export interface UserData {
@@ -340,10 +340,31 @@ export class Users {
     return stats;
   }
 
-  /** The users page's list, with each user's number of notes and their size. */
-  async summaries(): Promise<UserSummary[]> {
-    const stats = await this.noteStats();
-    return this.list().map((user) => this.summary(user, stats.get(user.id)));
+  /**
+   * Each user's number of changes since `since`, from their History. Its oldest changes are dropped once it
+   * has HISTORY_MAX_CHANGES, so when it's full and the oldest kept is since then, some may be gone: `more`.
+   */
+  async recentChanges(since: Date): Promise<Map<number, { count: number; more: boolean }>> {
+    const rows = await this.db.query<{ user_id: number; recent: number; total: number; oldest: Date | string }>(
+      `SELECT user_id, count(*) FILTER (WHERE time >= $1)::int AS recent, count(*)::int AS total, min(time) AS oldest
+       FROM nwsnotes.changes GROUP BY user_id`,
+      [since.toISOString()],
+    );
+    return new Map(
+      rows.map((row) => [
+        Number(row.user_id),
+        { count: Number(row.recent), more: Number(row.total) >= HISTORY_MAX_CHANGES && new Date(row.oldest) >= since },
+      ]),
+    );
+  }
+
+  /** The users page's list, with each user's number of notes and their size, and their changes since `changesSince`. */
+  async summaries(changesSince: Date): Promise<UserSummary[]> {
+    const [stats, changes] = await Promise.all([this.noteStats(), this.recentChanges(changesSince)]);
+    return this.list().map((user) => ({
+      ...this.summary(user, stats.get(user.id)),
+      recentChanges: changes.get(user.id) ?? { count: 0, more: false },
+    }));
   }
 
   summary(user: User, counts: NoteCounts = NO_NOTES): UserSummary {

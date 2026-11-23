@@ -105,6 +105,39 @@ test("the admin adds a user, whose password is shown once, and who starts with a
   await sam.context().close();
 });
 
+test("each user's row shows how many changes they've made today and in the 6 days before", async ({ page, browser }) => {
+  const { password } = await addUser(page.request, "Sam Smith", "sam@example.com");
+  await openUsersPage(page);
+  await expect(userRow(page, "sam@example.com")).toContainText("0 changes in the last 7 days");
+
+  const sam = await loggedIn(browser, "sam@example.com", password);
+  await addNote(sam, "First of Sam's notes");
+  await page.reload();
+  await expect(userRow(page, "sam@example.com")).toContainText("1 change in the last 7 days");
+  await addNote(sam, "Second of Sam's notes");
+  await page.reload();
+  await expect(userRow(page, "sam@example.com")).toContainText("2 changes in the last 7 days");
+
+  // Editing the user keeps the count.
+  await userRow(page, "sam@example.com").getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Display name").first().fill("Sam Jones");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(userRow(page, "sam@example.com")).toContainText("Sam Jones");
+  await expect(userRow(page, "sam@example.com")).toContainText("2 changes in the last 7 days");
+
+  // Counted from the time the page sends: from midnight 6 days ago on the admin's device.
+  const counted = async (since: Date) => {
+    const list = (await (await page.request.get(`/api/users?changesSince=${encodeURIComponent(since.toISOString())}`)).json()) as {
+      loginName: string;
+      recentChanges: { count: number; more: boolean };
+    }[];
+    return list.find((user) => user.loginName === "sam@example.com")!.recentChanges;
+  };
+  expect(await counted(new Date(Date.now() - 60_000))).toEqual({ count: 2, more: false });
+  expect(await counted(new Date(Date.now() + 60_000))).toEqual({ count: 0, more: false });
+  await sam.context().close();
+});
+
 test("two users' notebooks are separate; note and tag ids are unique across users, category and tab ids are each user's own", async ({
   page,
   browser,
