@@ -51,7 +51,7 @@ Whilst the page is loading, show text "Loading...".  If there is an error on sta
 - Always light: dark text on light backgrounds, whatever the device's dark-mode setting (`color-scheme: light`, no dark-mode colours).
 - **Font:** Atkinson Hyperlegible Next everywhere, shipped with the app from `@fontsource-variable/atkinson-hyperlegible-next` (every weight in one file, upright only, Latin and Latin Extended). It's cached by the service worker like the app's other files, so it works offline. The device's own font is the fallback while it loads.
   - The italic version isn't included, so wherever italic is used the browser slants the upright letters. Their widths stay the same, which the long-form formatting relies on (see [formatting.md](formatting.md)).
-- **Width:** the app is at most 1280px wide. On a wider window it's centred, with the extra space split equally either side; the side areas are a slightly darker shade, with a thin line at the app's edges. The long-form editor stays within the same 1280px column.
+- **Width:** the app is at most 1280px wide. On a wider window it's centred, with the extra space split equally either side; the side areas are a slightly darker shade, with a thin line at the app's edges. The app itself keeps its usual background, so pages like Settings look the same as on a narrower window. The long-form editor stays within the same 1280px column.
 
 ### Header and settings page
 - The header strip has a fixed height and the same background colour as the new-note area. Below it, the note list fills the page above the fixed 150px new-note area.

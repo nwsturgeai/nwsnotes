@@ -95,6 +95,15 @@ test.describe("expanded add area", () => {
   });
 });
 
+test("on a window wider than 1280px, the settings page keeps the usual background; only the sides are darker", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await openSettings(page);
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(231, 228, 220)");
+  // What shows behind the settings page is the app's own background, the same as on a narrower window.
+  await expect(page.locator(".settings-page")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(page.locator(".app")).toHaveCSS("background-color", "rgb(246, 244, 239)");
+});
+
 test("tab counts: each tab shows its number of notes, by its own filters only", async ({ page }) => {
   await expect(topTabs(page)).toHaveText(["All", "Work", "Home", "On hold"]);
   await openSettings(page);

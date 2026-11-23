@@ -105,6 +105,8 @@ input:disabled {
   height: 100vh;
   height: 100dvh;
   margin: 0 auto;
+  /* Its own background, so pages without one (like Settings) don't show the darker sides on a wide window. */
+  background: var(--bg);
 }
 
 :root {
