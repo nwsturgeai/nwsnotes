@@ -15,6 +15,12 @@ You can share any of your Tags with other people who use nwsnotes. They then see
 
 Open the same dialog to change what someone may do, or tap the **×** beside them to stop sharing with them.
 
+## Seeing what you've shared
+
+On your notes, a Tag you've shared has two small icons after its name: people, then a "/", then what the people you've shared it with can do. If anyone can edit and delete, it's a **trash can**; otherwise, if anyone can edit, a **pencil**; if everyone can only read, a **crossed-out pencil**.
+
+A [Tab](tabs.md) that shows one of your shared Tags has the same icons after its name, so you can tell which Tabs show notes other people can see.
+
 ## What they see, and what they can't do
 
 - They see the whole of each note with that Tag, so only share a Tag whose notes you're happy for them to read.

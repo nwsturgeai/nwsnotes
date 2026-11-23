@@ -13,6 +13,11 @@ A user (the **owner**) can share any of their own tags with other users (**recip
 - A recipient can't share the owner's tags onwards.
 - Showing the owner which of their tags are shared (and with whom) on the settings and category pages is for later, not now.
 
+### Showing the owner what they've shared
+- On the owner's notes, the pill of a tag they've shared shows two icons after the tag's name, separated by "/": people (`fa-users`), then what the most generous of its shares allows: a trash can (`fa-trash-can`, regular) if anyone has edit-and-delete; otherwise a pencil (`fa-pencil`) if anyone has edit; otherwise (read-only shares only) a crossed-out pencil. Font Awesome's `fa-pen-slash` is Pro only, so the app draws its own: the free pencil with a diagonal line through it, in the style of the free "-slash" icons. Hovering says what it means, e.g. "Shared by you; someone can edit".
+- **Tabs:** a tab whose filters hide a tag's pills (a single-select category it filters on) would hide these icons too. So a tab that filters on any of the owner's shared tags shows the same icons after its name (and count), for the most generous share among those tags. Top tabs and left tabs both show them. To make room, tabs are 20px wider than before at their narrowest: 75px, or 95px with tab counts on.
+- Recipients don't see these icons. They change straight away when the owner changes a tag's sharing, on all the owner's devices.
+
 ### What each level allows
 No level lets a recipient change the tags of the owner's notes, apart from the Lifetime changes listed here.
 - **Read-only:** see the notes. No note buttons.
@@ -82,6 +87,9 @@ Before sharing is built, note ids and tag ids become unique across all users. It
   - `GET /api/shares/people`: the people for the share dialog's list (`SharePerson[]`).
   - `PUT /api/shared-tags` with `{ tags: [{ id, hue? }] }`: the recipient's order and colours for every tag shared with them, once each.
 - **Deleted tags:** after a category is saved, or the owner goes back in the History, shares of the owner's tags that no longer exist are removed.
+
+### What the owner's app is told
+- `GET /api/notes`, and the categories sent back after adding, saving or reordering categories, mark each of the owner's shared tags with `sharedOut`: the highest permission of its shares (not stored). Saving the share dialog (`PUT /api/tags/:id/shares`) tells all the owner's pages to reload, the one that saved included.
 
 ### A recipient's view
 - `GET /api/notes` returns the recipient's own notebook plus, for each owner, the owner's notes with a tag shared with them. Each such note has `tagIds` holding only its shared tags and its Lifetime, and `shared: { ownerId, ownerName, permission }`, its permission being the highest of its shared tags'. `reminderSentFor` is left out.

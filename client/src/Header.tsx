@@ -1,15 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCloud, faEllipsis, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
-import { ALL_TAB_NAME, type Tab } from "@nwsnotes/shared";
+import { ALL_TAB_NAME, type Category, type SharePermission, type Tab } from "@nwsnotes/shared";
 import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
+import { SharingIcons, tabSharedOut } from "./sharingIcons";
 
 interface Props {
   page: Page;
   stylusMode: boolean;
   /** The tabs along the top (Left tabs are in the notes page's left strip). */
   tabs: Tab[];
+  /** For the sharing icons on tabs that filter on tags you've shared. */
+  categories: Category[];
   /** Whether the built-in "All" tab is along the top (rather than in the left strip). */
   allOnTop: boolean;
   /** Whether the notes page has a left strip (some tab is set to Left): the top tabs then line up with it. */
@@ -44,6 +47,7 @@ export function Header({
   page,
   stylusMode,
   tabs,
+  categories,
   allOnTop,
   leftStrip,
   tabCounts,
@@ -80,6 +84,7 @@ export function Header({
         {page.name === "notes" && (
           <TabStrip
             tabs={tabs}
+            categories={categories}
             allOnTop={allOnTop}
             tabCounts={tabCounts}
             selectedTabId={selectedTabId}
@@ -155,14 +160,17 @@ export function Header({
 }
 
 /** No tab is narrower than this (wider with tab counts); tabs that would be go into the "…" menu instead. */
-const TAB_MIN_PX = 55;
-const TAB_MIN_WITH_COUNTS_PX = 75;
+const TAB_MIN_PX = 75;
+const TAB_MIN_WITH_COUNTS_PX = 95;
 /** The gap between tabs (0.15rem), and the "…" button's width (2.25rem). */
 const TAB_GAP_PX = 2.4;
 const MORE_BUTTON_PX = 36;
 
-/** A tab as the strips show it; `count` (its number of notes) only with the Tab counts setting on. */
-export type TabEntry = { id: number | undefined; name: string; count?: number };
+/**
+ * A tab as the strips show it; `count` (its number of notes) only with the Tab counts setting on, and
+ * `sharedOut` when it filters on tags you've shared (the most any of their recipients may do).
+ */
+export type TabEntry = { id: number | undefined; name: string; count?: number; sharedOut?: SharePermission };
 
 /** A tab's name and, with tab counts on, its count: only the name is cut short, so the count always shows. */
 function TabLabel({ tab }: { tab: TabEntry }) {
@@ -170,6 +178,7 @@ function TabLabel({ tab }: { tab: TabEntry }) {
     <>
       <span className="tab-name-text">{tab.name}</span>
       {tab.count !== undefined && <span className="tab-count">{`\u00a0(${tab.count})`}</span>}
+      {tab.sharedOut && <SharingIcons permission={tab.sharedOut} />}
     </>
   );
 }
@@ -247,15 +256,16 @@ function splitTabs(
  */
 function TabStrip({
   tabs,
+  categories,
   allOnTop,
   tabCounts,
   selectedTabId,
   onSelectTab,
   editing,
-}: Pick<Props, "tabs" | "allOnTop" | "tabCounts" | "selectedTabId" | "onSelectTab" | "editing">) {
+}: Pick<Props, "tabs" | "categories" | "allOnTop" | "tabCounts" | "selectedTabId" | "onSelectTab" | "editing">) {
   const all: TabEntry[] = [
     ...(allOnTop ? [{ id: undefined, name: ALL_TAB_NAME, count: tabCounts?.get("all") }] : []),
-    ...tabs.map((tab) => ({ id: tab.id, name: tab.name, count: tabCounts?.get(tab.id) })),
+    ...tabs.map((tab) => ({ id: tab.id, name: tab.name, count: tabCounts?.get(tab.id), sharedOut: tabSharedOut(tab, categories) })),
   ];
   const stripRef = useRef<HTMLDivElement>(null);
   /** The strip's width: the room the header leaves it (it doesn't depend on the tabs inside). */

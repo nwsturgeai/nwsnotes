@@ -142,6 +142,11 @@ export interface Tag {
   ownerName?: string;
   ownerId?: number;
   permission?: SharePermission;
+  /**
+   * Only on the user's own tags that they've shared, as the server sends them (never stored): the most
+   * any of the people it's shared with may do. Shown as icons on the tag's pills on notes.
+   */
+  sharedOut?: SharePermission;
 }
 
 /** A group of tags. Tags can be added and renamed, but not deleted. */

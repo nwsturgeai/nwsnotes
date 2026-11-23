@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp } from "@fortawesome/free-solid-svg-icons";
 import { formatBytes } from "./sizes";
@@ -60,7 +60,14 @@ interface Props {
   pendingCount: number;
   /** A message to show at the top (e.g. after changing the password). */
   notice?: string;
+  /** The section to show when the page opens: coming back from editing a category or a tab. */
+  scrollTo?: SettingsSection;
+  /** Called once it has been scrolled to, so the next visit opens at the top again. */
+  onScrolled?: () => void;
 }
+
+/** The settings sections the page can open at. */
+export type SettingsSection = "categories" | "tabs";
 
 /** Up and down buttons, in the space at the right of a category's or tab's row. */
 function OrderButtons({
@@ -148,7 +155,18 @@ export function SettingsPage({
   me,
   pendingCount,
   notice,
+  scrollTo,
+  onScrolled,
 }: Props) {
+  const categoriesRef = useRef<HTMLElement>(null);
+  const tabsRef = useRef<HTMLElement>(null);
+  // Back from editing a category or a tab: open at that section, not at the top of the page.
+  useLayoutEffect(() => {
+    if (!scrollTo) return;
+    (scrollTo === "tabs" ? tabsRef : categoriesRef).current?.scrollIntoView({ block: "start" });
+    onScrolled?.();
+    // Only when the page opens.
+  }, []);
   const [confirmingLogout, setConfirmingLogout] = useState(false);
   const [confirming, setConfirming] = useState<{ action: BulkAction; message: string; label: string }>();
   /** A failed reorder, shown under that section's list. */
@@ -294,6 +312,16 @@ export function SettingsPage({
   return (
     <main className="settings-page">
       <h1>Settings</h1>
+
+      {/* The help pages are their own pages (not part of the app), so this is a plain link. */}
+      <section>
+        <h2>Help</h2>
+        <p>How to use nwsnotes, from the basics to every feature.</p>
+        <a className="button" href="/docs/">
+          Help pages
+        </a>
+      </section>
+
       {/* How many notes you have and the space they take; nothing if it can't be found out. */}
       {stats !== "failed" && (
         <p className="note-stats">
@@ -411,6 +439,15 @@ export function SettingsPage({
       </section>
 
       <section>
+        <h2>Backup</h2>
+        <p>Download a file with all your notes, categories, tags and tabs.</p>
+        {/* A plain link: the session cookie is sent with it, and the server names the file. */}
+        <a className="button" href="/api/notes/download" download>
+          Download backup
+        </a>
+      </section>
+
+      <section>
         <h2>Lifetime</h2>
         <p>Every note is New, Active, Archived or in the Bin.</p>
         <div className="lifetime-buttons">
@@ -470,7 +507,7 @@ export function SettingsPage({
         )}
       </section>
 
-      <section>
+      <section ref={categoriesRef}>
         <h2>Categories</h2>
         <p>Tags are arranged into categories. Click a category to rename it or its tags, or to add tags.</p>
         {categories.length > 0 && (
@@ -555,7 +592,7 @@ export function SettingsPage({
         )}
       </section>
 
-      <section>
+      <section ref={tabsRef}>
         <h2>Tabs</h2>
         <p>A tab shows only the notes with the tags it lists. Click a tab to change or delete it.</p>
         <ul className="category-list" ref={tabListRef}>
@@ -626,20 +663,11 @@ export function SettingsPage({
         )}
       </section>
 
+      <AppVersion />
+
       <Reminders />
 
       <TextMessages notes={notes} tabs={tabs} onSessionExpired={onSessionExpired} />
-
-      <section>
-        <h2>Backup</h2>
-        <p>Download a file with all your notes, categories, tags and tabs.</p>
-        {/* A plain link: the session cookie is sent with it, and the server names the file. */}
-        <a className="button" href="/api/notes/download" download>
-          Download backup
-        </a>
-      </section>
-
-      <AppVersion />
 
       {me.admin && (
         <section>
@@ -650,15 +678,6 @@ export function SettingsPage({
           </a>
         </section>
       )}
-
-      {/* The help pages are their own pages (not part of the app), so this is a plain link. */}
-      <section>
-        <h2>Help</h2>
-        <p>How to use nwsnotes, from the basics to every feature.</p>
-        <a className="button" href="/docs/">
-          Help pages
-        </a>
-      </section>
 
       <section>
         <h2>Account</h2>

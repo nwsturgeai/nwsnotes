@@ -14,17 +14,21 @@ I created this to help me manage my day-to-day work, I also use it for any notes
 
 ## Why a new app?
 
-Over many years I have tried different ways of keeping notes and remembering all the things I want to do.  I feel there should be a good way to do this using technology, but haven't found it previously.  So I had a go building my own - AI now makes this easy and relatively cheap!
+I make lots of notes - scribbling a few words to remind myself of something I want to do later but not right now.
+
+Over many years I have tried different ways of capturing these notes and remembering all the things I want to do.  I feel there should be a good way to do this using technology, but haven't found it previously.  So I had a go building my own - AI now makes this easy and relatively cheap!
 
 ## What is special / different about this notes app?
 
-- Make it as easy and quick as possible to create / capture a new note.
+This app is focussed on creating and managing short / quick notes.  (Longer notes are supported but the app is deliberately optimised for short ones.)
+
+- It should be as easy and quick as possible to create / capture a new note.
 - Notes can be crossed out and eventually removed altogether.
 - Collect notes into different groups.  Easily change the groupings anytime.
+- Notes should be easily accessible from any device.
 - If you have a tablet with a pen/stylus, you should be able to write notes instead of typing.
-- Notes should be easily accessible from any device
 
-Also, I love being able to tweak the app easily, and add new features.  If you try the app and would like it to work differently, or do something extra, I'd be delighted for you to tell me please!
+I love being able to tweak the app easily, and add new features.  If you try the app and would like it to work differently, or do something extra, I'd be delighted for you to tell me please!
 
 ## Do you think this might be useful to you?
 

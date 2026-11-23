@@ -181,19 +181,54 @@ test.describe("tabs", () => {
   });
 });
 
-test("the Pen section shows only in stylus mode, and History comes just before Lifetime", async ({ page }) => {
+test("the settings sections are in order: Help first, Backup after History, App version before Reminders; Pen only in stylus mode", async ({ page }) => {
   const headings = page.locator(".settings-page h2");
+  const rest = ["History", "Backup", "Lifetime", "Categories", "Tabs", "App version", "Reminders", "Text messages", "Users", "Account"];
   await expect(page.getByRole("heading", { name: "Pen" })).toHaveCount(0);
-  await expect(headings.first()).toHaveText("History");
-  await expect(headings.nth(1)).toHaveText("Lifetime");
+  await expect(headings).toHaveText(["Help", ...rest]);
 
   await page.locator("label.switch").filter({ hasText: "Stylus mode" }).click();
-  await expect(headings.first()).toHaveText("Pen");
-  await expect(headings.nth(1)).toHaveText("History");
-  await expect(headings.nth(2)).toHaveText("Lifetime");
+  await expect(headings).toHaveText(["Help", "Pen", ...rest]);
 
   await page.locator("label.switch").filter({ hasText: "Stylus mode" }).click();
   await expect(page.getByRole("heading", { name: "Pen" })).toHaveCount(0);
+});
+
+test("back from saving or cancelling a tab or a category, the settings page opens at that section", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 500 });
+  await page.reload();
+  const settings = page.locator("main.settings-page");
+  /** How far a section's heading is below the top of the settings page's visible area. */
+  const offset = (heading: string) =>
+    section(page, heading)
+      .getByRole("heading", { name: heading, exact: true })
+      .evaluate((h2) => h2.getBoundingClientRect().top - h2.closest("main")!.getBoundingClientRect().top);
+
+  await section(page, "Tabs").getByRole("link", { name: /^Work/ }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect.poll(() => offset("Tabs")).toBeLessThan(40);
+  await expect.poll(() => offset("Tabs")).toBeGreaterThanOrEqual(0);
+
+  await section(page, "Tabs").getByRole("link", { name: /^Home/ }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect.poll(() => offset("Tabs")).toBeLessThan(40);
+
+  await editCategory(page, "Area");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect.poll(() => offset("Categories")).toBeLessThan(40);
+  await expect.poll(() => offset("Categories")).toBeGreaterThanOrEqual(0);
+
+  await editCategory(page, "Area");
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect.poll(() => offset("Categories")).toBeLessThan(40);
+
+  // Opened any other way, it starts at the top.
+  await page.getByRole("link", { name: "← Notes" }).click();
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect.poll(() => settings.evaluate((main) => main.scrollTop)).toBe(0);
 });
 
 test("stylus mode and columns are remembered on this device", async ({ page }) => {

@@ -17,8 +17,8 @@ After the user begins to add or edit a tab, there should be "Save" and "Cancel" 
 When the browser window is too narrow, the rightmost tabs are replaced with an ellipsis button (fa-ellipsis).  Tabs that don't fit well in the limited width are hidden; clicking the ellipsis opens a dropdown listing all of the hidden tabs.  The user can click on one of those tabs: it becomes selected and appears in the visible list of tabs, bumping the previous rightmost visible tab so that it is no longer visible but instead appears in the ellipsis dropdown list.
 
 ### Note counts on tabs
-A new on/off setting shows each tab's note count alongside its name, e.g. "All (153)". When it's on, the minimum tab width goes up to 75 pixels.
-No tab should be narrower than 55 pixels; tabs that would be narrower than that go into the ellipsis dropdown.
+A new on/off setting shows each tab's note count alongside its name, e.g. "All (153)". When it's on, the minimum tab width goes up to 95 pixels.
+No tab should be narrower than 75 pixels; tabs that would be narrower than that go into the ellipsis dropdown.
 
 The first Tab should be called "All" and should have no filters.  This Tab cannot be edited or deleted.
 
@@ -89,8 +89,8 @@ If any text is typed into the search box, the list of notes shown in the main ar
   - **What shows:** while it's on, every tab's name is followed by its count in brackets, e.g. "All (153)", "Work (12)", "Home (0)": in the top strip, the left strip (in the same vertical text) and the "…" menu.
   - **What's counted:** the notes the tab's own filters show, as when it's opened with nothing ticked in the filter row and no search. Bin notes count only if the tab's own filters include Bin. The filter row and search never change the counts, so they stay steady while filtering. They update straight away when notes change, here or (by live update) elsewhere.
   - **Long names:** only the name is cut short ("…"); the count always shows, e.g. "Very long na… (12)".
-  - **Width:** while it's on, no top tab is narrower than 75px (instead of 55px), so fewer may fit before the "…" menu.
-- **Tabs menu:** no tab is narrower than 55px (75px with tab counts on). When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
+  - **Width:** while it's on, no top tab is narrower than 95px (instead of 75px), so fewer may fit before the "…" menu.
+- **Tabs menu:** no tab is narrower than 75px (95px with tab counts on; both were 20px less before tabs could show the sharing icons, see [sharing.md](sharing.md)). When the tabs can't all fit at that width, the app shows as many as fit, sharing the space, and puts the rest in a menu.
   - How many fit is worked out from the tab strip's actual width (measured whenever it changes), with no breakpoints.
   - The menu opens from a narrow "…" button (`fa-ellipsis`) in the last place on the right. It's a list like the tag dropdowns, with each hidden tab's full name, in the tabs' usual order.
   - Choosing a tab there selects it and closes the menu.

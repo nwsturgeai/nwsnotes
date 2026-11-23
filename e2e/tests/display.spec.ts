@@ -19,6 +19,13 @@ test("the lines between notes are see-through black, so they show on every tag c
   await expect(noteRow(page, "Buy milk")).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0.2)");
 });
 
+test("the line between columns matches them, in its own gap so tag colours don't hide it", async ({ page }) => {
+  const list = page.locator(".note-list ul").first();
+  await expect(list).toHaveCSS("column-rule-color", "rgba(0, 0, 0, 0.2)");
+  await expect(list).toHaveCSS("column-rule-width", "1px");
+  await expect(list).toHaveCSS("column-gap", "1px");
+});
+
 test("Columns: Single, Wide, Medium or Narrow, as many as fit in the list (Medium by default)", async ({ page }) => {
   const list = page.locator(".note-list ul").first();
   const listWidth = () => page.locator(".note-list").evaluate((element) => element.clientWidth);
@@ -57,6 +64,46 @@ test("Columns are worked out again when the list's width changes", async ({ page
   await expect(list).toHaveCSS("column-count", "2");
 });
 
+test("Columns: the first column is filled to the bottom of the list before notes go into the next", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  await openSettings(page);
+  await columnChoice(page, "Narrow").click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  const list = page.locator(".note-list ul").first();
+  await expect(list).toHaveCSS("column-count", "3");
+  const columnLefts = () =>
+    list.evaluate((ul) => [...new Set([...ul.children].map((li) => Math.round(li.getBoundingClientRect().left)))].length);
+
+  // The few seeded notes all fit down the first column.
+  await expect.poll(columnLefts).toBe(1);
+
+  // On a short screen they don't, so they go on into the other columns.
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await expect.poll(columnLefts).toBeGreaterThan(1);
+});
+
+test.describe("expanded add area", () => {
+  test.use({ addAreaStartsCollapsed: false });
+
+  test("the pills reach right down to the bottom of the page", async ({ page }) => {
+    const gap = await page.evaluate(() => {
+      const area = document.querySelector(".new-note.full")!.getBoundingClientRect();
+      const pills = document.querySelector(".new-note.full .tag-pill-picker")!.getBoundingClientRect();
+      return area.bottom - pills.bottom;
+    });
+    expect(gap).toBe(0);
+  });
+});
+
+test("on a window wider than 1280px, the settings page keeps the usual background; only the sides are darker", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await openSettings(page);
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(231, 228, 220)");
+  // What shows behind the settings page is the app's own background, the same as on a narrower window.
+  await expect(page.locator(".settings-page")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(page.locator(".app")).toHaveCSS("background-color", "rgb(246, 244, 239)");
+});
+
 test("tab counts: each tab shows its number of notes, by its own filters only", async ({ page }) => {
   await expect(topTabs(page)).toHaveText(["All", "Work", "Home", "On hold"]);
   await openSettings(page);
@@ -66,7 +113,7 @@ test("tab counts: each tab shows its number of notes, by its own filters only", 
 
   // Bin notes don't count (the Broken lamp is in the bin); archived ones do.
   await expect(topTabs(page)).toHaveText(["All (8)", "Work (3)", "Home (5)", "On hold (1)"]);
-  for (const tab of await topTabs(page).all()) expect((await tab.boundingBox())!.width).toBeGreaterThanOrEqual(75);
+  for (const tab of await topTabs(page).all()) expect((await tab.boundingBox())!.width).toBeGreaterThanOrEqual(95);
 
   // The filter row and search don't change them.
   await setFilter(page, "Topic", "Ideas", true);
