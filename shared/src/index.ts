@@ -403,6 +403,8 @@ export interface UserSummary extends Me {
   stylusNoteLimit: number;
   /** Whether they've linked a phone for adding notes by text message. */
   smsLinked: boolean;
+  /** Whether each text they send that works gets a text back confirming it (set by the admin). */
+  smsConfirmations: boolean;
   /**
    * How many changes they've made today and in the 6 days before (as their History lists them), counted from
    * the `changesSince` GET /api/users is given. `more` when their History has already dropped some of those
@@ -470,6 +472,8 @@ export interface UserUpdateRequest {
   disabled?: boolean;
   /** The most notes they can have: a whole number from 1 to NOTE_LIMIT_MAX. */
   noteLimit?: number;
+  /** Text back a confirmation for each text of theirs that works. */
+  smsConfirmations?: boolean;
 }
 
 /**

@@ -145,7 +145,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
   /** A password to show once. */
   const [shown, setShown] = useState<{ displayName: string; password: string }>();
   /** The user being edited; the note limit as typed in its box. */
-  const [editing, setEditing] = useState<{ id: number; displayName: string; loginName: string; noteLimit: string }>();
+  const [editing, setEditing] = useState<{ id: number; displayName: string; loginName: string; noteLimit: string; smsConfirmations: boolean }>();
   const [confirming, setConfirming] = useState<{ user: UserSummary; action: "reset" | "turn-off" }>();
   /** Account requests from the sign-up page, waiting to be confirmed or declined. */
   const [requests, setRequests] = useState<AccountRequest[]>();
@@ -254,6 +254,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
         displayName: editing.displayName,
         loginName: editing.loginName,
         noteLimit: Number(editing.noteLimit),
+        smsConfirmations: editing.smsConfirmations,
       });
       replace(user);
       if (user.id === me.id) onMeChanged({ id: user.id, loginName: user.loginName, displayName: user.displayName, admin: user.admin });
@@ -364,6 +365,20 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                       ? `: ${plural(stylusNoteLimitOf(Number(editing.noteLimit)), "stylus note")}.`
                       : "."}
                   </p>
+                  <label className="checkbox" htmlFor={`edit-${user.id}-sms-confirmations`}>
+                    <input
+                      id={`edit-${user.id}-sms-confirmations`}
+                      type="checkbox"
+                      checked={editing.smsConfirmations}
+                      disabled={busy}
+                      onChange={(event) => setEditing({ ...editing, smsConfirmations: event.target.checked })}
+                    />
+                    Text back to confirm each text
+                  </label>
+                  <p className="hint">
+                    Each note or command they text in that works gets a text back saying so, as well as the notification.
+                    Texts that fail always get one. Each text back costs about $0.05.
+                  </p>
                   <div className="form-buttons">
                     <button type="submit" disabled={busy}>
                       Save
@@ -381,6 +396,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                     {!isValidLoginName(user.loginName) && <span className="user-label off">Not an email address</span>}
                     {user.disabled && <span className="user-label off">Turned off</span>}
                     {user.smsLinked && <span className="user-label">Phone</span>}
+                    {user.smsConfirmations && <span className="user-label">Texts back</span>}
                   </div>
                   <p className="user-details">
                     Created {when(user.createdDateTime)} · Last logged in {user.lastLoginDateTime ? when(user.lastLoginDateTime) : "Never"} ·{" "}
@@ -395,7 +411,13 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                       className="button"
                       disabled={busy}
                       onClick={() =>
-                        setEditing({ id: user.id, displayName: user.displayName, loginName: user.loginName, noteLimit: String(user.noteLimit) })
+                        setEditing({
+                          id: user.id,
+                          displayName: user.displayName,
+                          loginName: user.loginName,
+                          noteLimit: String(user.noteLimit),
+                          smsConfirmations: user.smsConfirmations,
+                        })
                       }
                     >
                       Edit

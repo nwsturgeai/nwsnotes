@@ -80,6 +80,7 @@ The app can be used by several people, each with their own completely separate n
   - **Edit:** change the display name or login email (`PUT /api/users/:id`).
   - **Reset password:** after "Reset <display name>'s password? They'll be logged out everywhere.", a new password is shown in the same pop-up as when adding (`POST /api/users/:id/reset-password` returns `{ password }`).
   - **Turn off / Turn on:** turning off asks first, "Turn off <display name>'s account? They'll be logged out everywhere and can't log in until it's turned on again." (`PUT /api/users/:id` with `{ disabled: true }`).
+- **Confirmations by text:** Edit also has "Text back to confirm each text", and rows with it on show "Texts back" (see "Confirmations" in [text-messages.md](text-messages.md)).
 - **The admin can't** turn their own account off or reset their own password here (they change it like anyone else).
 - **Protected on the server:** all `/api/users` routes answer 403 for anyone but the admin.
 

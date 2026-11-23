@@ -1,5 +1,16 @@
 import { expect, test } from "@playwright/test";
-import { emailTabCommand, emailTabTarget, fitsOneSms, formatPhoneNumber, matchSpokenTab, normaliseSpoken, notSavedReply, spokenNameError } from "../../shared/src/sms";
+import {
+  emailTabCommand,
+  emailTabTarget,
+  emailedReply,
+  fitsOneSms,
+  formatPhoneNumber,
+  matchSpokenTab,
+  normaliseSpoken,
+  notSavedReply,
+  savedReply,
+  spokenNameError,
+} from "../../shared/src/sms";
 
 // Unit tests of the shared text-message code: no browser or server needed, so they run once (desktop).
 test.beforeEach(() => {
@@ -91,6 +102,21 @@ test("a not-saved reply fits in one text, cutting the quoted note short", () => 
   expect(fitsOneSms(emoji)).toBe(true);
   expect(emoji).toContain("🎉");
   expect(emoji.length).toBeLessThanOrEqual(70);
+});
+
+test("confirmations texted back fit in one text", () => {
+  expect(savedReply("Shopping", "Oat milk", false)).toBe(`Saved to Shopping: "Oat milk"`);
+  expect(savedReply("Shopping", "Oat milk", true)).toBe(`Saved to Shopping, cut short: "Oat milk"`);
+  const long = savedReply("Shopping", "word ".repeat(100), true);
+  expect(fitsOneSms(long)).toBe(true);
+  expect(long).toMatch(/^Saved to Shopping, cut short: "word word .*\.\.\."$/);
+  // A tab name too long to quote anything after it.
+  expect(savedReply("x".repeat(150), "Oat milk", false)).toBe(`Saved to ${"x".repeat(150)}.`);
+  expect(savedReply("x".repeat(200), "Oat milk", false)).toBe("Saved.");
+
+  expect(emailedReply("Work", 1, "pat@example.com")).toBe("Emailed Work (1 note) to pat@example.com.");
+  expect(emailedReply("Work", 3, "pat@example.com")).toBe("Emailed Work (3 notes) to pat@example.com.");
+  expect(emailedReply("Work", 3, `${"p".repeat(150)}@example.com`)).toBe("Emailed Work (3 notes).");
 });
 
 test("UK numbers are shown in the usual form", () => {
