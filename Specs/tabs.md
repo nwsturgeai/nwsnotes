@@ -131,6 +131,17 @@ If any text is typed into the search box, the list of notes shown in the main ar
 - **TOTAL line:** the last line of each of these dropdowns, under a thin divider, is "TOTAL: n", the number of notes the list shows now (search included), in grey. It can't be clicked or chosen.
 - **Reset filters only when needed:** the "reset filters" button is shown only while at least one tag is ticked in the row. When it's hidden, it takes no space, so the search button moves left into its place.
 
+### Properties filter
+- **Dropdown:** after the category dropdowns in the filter row (before "reset filters" and search) is a "Properties" check-list dropdown. It's on every tab, "All" included. Its options are rules about the note itself rather than its tags:
+  - **Long-form:** long-form notes.
+  - **Due date set:** notes with a due date.
+  - **Due today:** notes due before the next local midnight (so overdue ones too).
+  - **Overdue:** notes whose due date has passed.
+- **Matching:** like a tag dropdown: with nothing ticked it doesn't filter; otherwise a note must pass any one of the ticked rules, as well as the tab, the other dropdowns and the search. The due-date rules follow the clock (checked each minute), so e.g. a note joins "Due today" after midnight without a reload.
+- **Counts and TOTAL:** each rule shows how many notes it would list if it were the only rule ticked, with every other filter as it is; the TOTAL line is the same as the other dropdowns'. The tag dropdowns' counts take the ticked rules into account.
+- **Like the other filters:** ticking a rule turns the row yellow and shows "reset filters", which clears it too. The ticks are remembered per tab, per device, with the row's tag choices. There's no "select all".
+- **New notes:** the rules don't change the new-note dropdowns. A new note that doesn't pass them is still added, with the notice "Note added, but it doesn't match the Properties filter." An empty list says "No notes match the Properties filter."
+
 ### Search
 - **Button:** `fa-magnifying-glass`, the same 24px size, just right of the "reset filters" button. While search is on it's filled in green, like the list-check button. It's on every tab, "All" included.
 - **Search box:** a single-line text box on its own line at the bottom of the filter row, shown while search is on. It gets the focus when search is turned on. While a note is being edited it's blocked, like the rest of the row.
