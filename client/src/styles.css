@@ -605,6 +605,24 @@ a:focus-visible {
   break-inside: avoid;
 }
 
+/* The last column with notes in it, when the ones to its right are empty: its own line down its right-hand
+   edge, in the 1px column gap where the line between columns would be (set from NotesPage). */
+.note-list > ul > li[data-last-column] {
+  position: relative;
+}
+
+.note-list > ul > li[data-last-column]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -1px;
+  /* Down over the note's bottom line too, so the lines meet. */
+  bottom: -1px;
+  width: 1px;
+  background: rgb(0 0 0 / 0.2);
+  pointer-events: none;
+}
+
 /* ---- Edit-order mode: a grip on each note, and the note being dragged --- */
 
 /* In the row's left padding, the full height of the note. Pressing it starts a drag at once. */

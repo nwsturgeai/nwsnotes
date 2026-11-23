@@ -82,6 +82,31 @@ test("Columns: the first column is filled to the bottom of the list before notes
   await expect.poll(columnLefts).toBeGreaterThan(1);
 });
 
+test("Columns: with empty columns to its right, the last column with notes has a line down its right-hand edge", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  await openSettings(page);
+  await columnChoice(page, "Narrow").click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  const list = page.locator(".note-list ul").first();
+  await expect(list).toHaveCSS("column-count", "3");
+
+  // The few seeded notes all fit down the first column, so the other two are empty.
+  const row = noteRow(page, "Buy milk");
+  await expect(row).toHaveAttribute("data-last-column", "");
+  const edge = await row.evaluate((li) => {
+    const after = getComputedStyle(li, "::after");
+    return { colour: after.backgroundColor, width: after.width, right: after.right };
+  });
+  expect(edge).toEqual({ colour: "rgba(0, 0, 0, 0.2)", width: "1px", right: "-1px" });
+
+  // In one column there's no line beside the notes.
+  await openSettings(page);
+  await columnChoice(page, "Single").click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  await expect(list).toHaveCSS("column-count", "1");
+  await expect(row).not.toHaveAttribute("data-last-column");
+});
+
 test.describe("expanded add area", () => {
   test.use({ addAreaStartsCollapsed: false });
 
