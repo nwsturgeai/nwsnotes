@@ -26,6 +26,14 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 /** Everyone's notes or their sizes, added up. */
 const total = (users: UserSummary[], field: "noteCount" | "noteBytes" | "historyBytes") => users.reduce((sum, user) => sum + user[field], 0);
 
+/**
+ * "12 changes in the last 7 days" (today and the 6 days before). "500+" when their History has already dropped
+ * some of them. A user added on this page has none yet.
+ */
+function recentChangesText(recent: UserSummary["recentChanges"] = { count: 0, more: false }): string {
+  return `${recent.count}${recent.more ? "+" : ""} change${recent.count === 1 && !recent.more ? "" : "s"} in the last 7 days`;
+}
+
 /** E.g. "18 Nov 2026, 09:40", in this device's time zone. */
 function when(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -163,7 +171,11 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
     // Fetched alongside the list; if it fails, the line is just left out.
     void api.databaseSize().then(({ bytes }) => setDatabaseBytes(bytes), () => setDatabaseBytes(undefined));
     try {
-      const [list, waiting] = await Promise.all([api.users(), api.accountRequests()]);
+      // Changes made today and in the 6 days before: from midnight 6 days ago, in this device's time zone.
+      const since = new Date();
+      since.setHours(0, 0, 0, 0);
+      since.setDate(since.getDate() - 6);
+      const [list, waiting] = await Promise.all([api.users(since), api.accountRequests()]);
       setUsers(list);
       setRequests(waiting);
     } catch (err) {
@@ -219,7 +231,8 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
     }
   }
 
-  const replace = (user: UserSummary) => setUsers((list) => list?.map((u) => (u.id === user.id ? user : u)));
+  // Only the list comes with each user's recent changes, so an edited user keeps theirs.
+  const replace = (user: UserSummary) => setUsers((list) => list?.map((u) => (u.id === user.id ? { ...u, ...user } : u)));
 
   function add(event: FormEvent) {
     event.preventDefault();
@@ -387,6 +400,7 @@ export function UsersPage({ me, onMeChanged, onClose, onSessionExpired }: Props)
                   </div>
                   <p className="user-details">
                     Created {when(user.createdDateTime)} · Last logged in {user.lastLoginDateTime ? when(user.lastLoginDateTime) : "Never"} ·{" "}
+                    {recentChangesText(user.recentChanges)} ·{" "}
                     {user.noteCount} of {plural(user.noteLimit, "note")} · {user.stylusNoteCount} of{" "}
                     {plural(user.stylusNoteLimit, "stylus note")} · {formatBytes(user.noteBytes)} ·{" "}
                     {formatBytes(user.historyBytes)} History

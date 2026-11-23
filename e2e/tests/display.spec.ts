@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { addArea, expect, filterRow, noteRow, openNotes, setFilter, test } from "./fixtures";
+import { addArea, expect, filterRow, noteRow, openNotes, seed, setFilter, test } from "./fixtures";
 
 const topTabs = (page: Page) => page.getByRole("tablist", { name: "Tabs", exact: true }).getByRole("tab");
 
@@ -82,6 +82,31 @@ test("Columns: the first column is filled to the bottom of the list before notes
   await expect.poll(columnLefts).toBeGreaterThan(1);
 });
 
+test("Columns: with empty columns to its right, the last column with notes has a line down its right-hand edge", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  await openSettings(page);
+  await columnChoice(page, "Narrow").click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  const list = page.locator(".note-list ul").first();
+  await expect(list).toHaveCSS("column-count", "3");
+
+  // The few seeded notes all fit down the first column, so the other two are empty.
+  const row = noteRow(page, "Buy milk");
+  await expect(row).toHaveAttribute("data-last-column", "");
+  const edge = await row.evaluate((li) => {
+    const after = getComputedStyle(li, "::after");
+    return { colour: after.backgroundColor, width: after.width, right: after.right };
+  });
+  expect(edge).toEqual({ colour: "rgba(0, 0, 0, 0.2)", width: "1px", right: "-1px" });
+
+  // In one column there's no line beside the notes.
+  await openSettings(page);
+  await columnChoice(page, "Single").click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  await expect(list).toHaveCSS("column-count", "1");
+  await expect(row).not.toHaveAttribute("data-last-column");
+});
+
 test.describe("expanded add area", () => {
   test.use({ addAreaStartsCollapsed: false });
 
@@ -92,6 +117,31 @@ test.describe("expanded add area", () => {
       return area.bottom - pills.bottom;
     });
     expect(gap).toBe(0);
+  });
+
+  test("with no categories (a new account), the add area is still the full width, up to 768px", async ({ page }) => {
+    const empty = { ...(seed as object), categories: [], tabs: [], notes: [], noteOrder: [], lastNoteId: 0 };
+    expect((await page.request.post("/api/test/reset", { data: empty })).ok()).toBe(true);
+    const widths = () =>
+      page.evaluate(() => {
+        const area = document.querySelector(".new-note.full")!;
+        const style = getComputedStyle(area);
+        const inside = area.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        return { inside, form: document.querySelector(".new-note.full form")!.getBoundingClientRect().width };
+      });
+
+    // A phone: the form fills the area.
+    await page.setViewportSize({ width: 412, height: 900 });
+    await page.goto("/");
+    await expect(page.getByText("No notes yet. Add your first one below.")).toBeVisible();
+    await expect(page.locator(".new-note.full .tag-pill-picker")).toHaveCount(0);
+    let { inside, form } = await widths();
+    expect(Math.abs(form - inside)).toBeLessThan(1);
+
+    // A wide window: 768px, as with categories.
+    await page.setViewportSize({ width: 1200, height: 900 });
+    ({ inside, form } = await widths());
+    expect(Math.round(form)).toBe(768);
   });
 });
 

@@ -176,7 +176,7 @@ export const api = {
   /** Changing your own password: this page stays logged in, your other devices are logged out. */
   changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
   /** The users page (admin only). */
-  users: () => request<UserSummary[]>("GET", "/api/users"),
+  users: (changesSince: Date) => request<UserSummary[]>("GET", `/api/users?changesSince=${encodeURIComponent(changesSince.toISOString())}`),
   /** The whole database's size (bytes), from pg_database_size. */
   databaseSize: () => request<{ bytes: number }>("GET", "/api/users/database-size"),
   addUser: (body: NewUserRequest) => request<{ user: UserSummary; password: string }>("POST", "/api/users", body),

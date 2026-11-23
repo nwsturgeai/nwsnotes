@@ -74,6 +74,7 @@ The app can be used by several people, each with their own completely separate n
 ### The users page (admin only)
 - **Where:** a "Users" section in Settings, shown only to the admin, just above Account, with a "Manage users" link to `/settings/users`.
 - **The list:** every user, in id order: display name, login name, "Admin" or "Turned off" labels, when it was created, and when it last logged in ("Never" if not yet).
+- **Recent changes:** each user's details also say how many changes they've made today and in the 6 days before, as their History lists them: "<n> changes in the last 7 days" ("1 change" for one). "Today" is the admin's: the page sends its midnight 6 days ago as `GET /api/users?changesSince=<ISO time>` (without it, the last 7 × 24 hours), and each `UserSummary` in that list has `recentChanges: { count, more }`. A History keeps only its newest 500 changes, so when it's full and its oldest is within those days, some have been dropped: `more`, shown as "500+ changes in the last 7 days". Editing a user keeps the count shown.
 - **Add user:** display name and "Email (to log in with)", then "Add". The new password is then shown in a pop-up, "Send this password to <display name>. It won't be shown again.", with a "Copy" button and "Done". `POST /api/users` with `{ loginName, displayName }` returns `{ user, password }`.
 - **For each user** (other than the admin's own row, which only has Edit):
   - **Edit:** change the display name or login email (`PUT /api/users/:id`).

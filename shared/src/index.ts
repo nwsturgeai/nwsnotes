@@ -405,6 +405,12 @@ export interface UserSummary extends Me {
   smsLinked: boolean;
   /** Whether each text they send that works gets a text back confirming it (set by the admin). */
   smsConfirmations: boolean;
+  /**
+   * How many changes they've made today and in the 6 days before (as their History lists them), counted from
+   * the `changesSince` GET /api/users is given. `more` when their History has already dropped some of those
+   * days' changes (it keeps only the newest 500), so there were at least `count`. Only in GET /api/users.
+   */
+  recentChanges?: { count: number; more: boolean };
 }
 
 /** GET /api/me/sms: adding notes by text message. */

@@ -384,6 +384,8 @@ export function App() {
               id={page.id}
               categories={state.data.categories}
               notes={state.data.notes}
+              tabs={tabs}
+              onTabSaved={saveTab}
               onSaved={(category) => {
                 saveCategory(category);
                 // Deleted tags were also removed from notes and tabs on the server; reload to match.

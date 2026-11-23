@@ -199,15 +199,24 @@ export function NotesPage({
     if (columnTotal <= 1) {
       ul.style.height = "";
       ul.style.columnFill = "";
-      return;
+    } else {
+      ul.style.columnFill = "auto";
+      ul.style.height = `${list.clientHeight}px`;
+      // More notes than the columns hold at that height spill out to the side: balance them instead.
+      if (ul.scrollWidth > ul.clientWidth + 1) {
+        ul.style.height = "";
+        ul.style.columnFill = "balance";
+      }
     }
-    ul.style.columnFill = "auto";
-    ul.style.height = `${list.clientHeight}px`;
-    // More notes than the columns hold at that height spill out to the side: balance them instead.
-    if (ul.scrollWidth > ul.clientWidth + 1) {
-      ul.style.height = "";
-      ul.style.columnFill = "balance";
-    }
+    // The browser only draws the line between columns where there are notes on both sides, so when the columns
+    // to the right are empty, the notes in the last column with any get a line down their own right-hand edge.
+    // (The note being dragged floats above the list, so it isn't in a column.)
+    const rows = [...ul.children].filter((li) => !li.classList.contains("dragging"));
+    const lefts = rows.map((li) => Math.round(li.getBoundingClientRect().left));
+    const lastLeft = Math.max(...lefts);
+    const emptyColumns = columnTotal > 1 && new Set(lefts).size < columnTotal;
+    for (const li of ul.children) li.toggleAttribute("data-last-column", false);
+    rows.forEach((li, i) => li.toggleAttribute("data-last-column", emptyColumns && lefts[i] === lastLeft));
   }, [columnTotal]);
   useLayoutEffect(fitColumns);
   const inputRef = useRef<HTMLInputElement>(null);

@@ -605,6 +605,24 @@ a:focus-visible {
   break-inside: avoid;
 }
 
+/* The last column with notes in it, when the ones to its right are empty: its own line down its right-hand
+   edge, in the 1px column gap where the line between columns would be (set from NotesPage). */
+.note-list > ul > li[data-last-column] {
+  position: relative;
+}
+
+.note-list > ul > li[data-last-column]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -1px;
+  /* Down over the note's bottom line too, so the lines meet. */
+  bottom: -1px;
+  width: 1px;
+  background: rgb(0 0 0 / 0.2);
+  pointer-events: none;
+}
+
 /* ---- Edit-order mode: a grip on each note, and the note being dragged --- */
 
 /* In the row's left padding, the full height of the note. Pressing it starts a drag at once. */
@@ -1129,7 +1147,11 @@ body:has(.note-list li.dragging) {
 }
 
 .new-note form {
-  /* At most 768px wide, centred on a wider screen. */
+  box-sizing: border-box;
+  /* The full width, at most 768px, centred on a wider screen. The width is set, not left to stretch: in the
+     expanded area the form is a flex item, which its auto margins would otherwise shrink to fit its contents
+     (narrow with no tag pills, e.g. a new account with no categories). */
+  width: 100%;
   max-width: 48rem;
   margin: 0 auto;
 }
@@ -2151,6 +2173,50 @@ body:has(.dragging) {
 
 .tag-row input[type="text"] {
   flex: 1;
+}
+
+/* A row with small text under its name: its buttons stay level with the name box, not the text. */
+.tag-row.with-note {
+  align-items: flex-start;
+}
+
+.tag-name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.tag-name input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* "Create Tab for this Tag": small text, like a link. */
+.tag-tab-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.tag-tab-link:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.tag-tab-result {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.tag-tab-result.error {
+  color: var(--error);
 }
 
 .category-form .hint {

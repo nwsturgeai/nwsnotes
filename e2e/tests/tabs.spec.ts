@@ -211,3 +211,113 @@ test('the filter row\'s "Properties" dropdown filters by long-form and due dates
   await expectTitles(page, ALL);
   await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
 });
+
+type SavedCategory = { id: number; name: string; multiSelect: boolean; tags: { id: number; name: string }[] };
+type NotesData = { categories: SavedCategory[]; tabs: { name: string; categories: unknown }[] };
+
+test("a single-select category's tags that no tab uses offer \"Create Tab for this Tag\", which saves the category and makes a tab of just that tag", async ({ page }) => {
+  const places = (await (await page.request.post("/api/categories", {
+    data: { name: "Places", multiSelect: false, tags: [{ name: "Paris" }, { name: "Rome" }] },
+  })).json()) as SavedCategory;
+  const rome = places.tags.find((tag) => tag.name === "Rome")!;
+  // Rome already has a tab of its own; Paris has none.
+  expect((await page.request.post("/api/tabs", { data: { name: "Rome trips", categories: [{ categoryId: places.id, tagIds: [rome.id] }] } })).ok()).toBe(true);
+  const topics = (await (await page.request.post("/api/categories", {
+    data: { name: "Topics", multiSelect: true, tags: [{ name: "Cooking" }] },
+  })).json()) as SavedCategory;
+  await page.reload();
+
+  const createLink = (name: string) => page.getByRole("button", { name: `Create Tab for ${name}`, exact: true });
+  const multiSelect = page.getByLabel("Multi-select: a note can have several tags from this category");
+
+  // A multi-select category offers none.
+  await page.goto(`/settings/categories/${topics.id}`);
+  await expect(page.getByRole("textbox", { name: "Tag 1" })).toHaveValue("Cooking");
+  await expect(createLink("Cooking")).toHaveCount(0);
+
+  await page.goto(`/settings/categories/${places.id}`);
+  await expect(page.getByRole("textbox", { name: "Tag 1" })).toHaveValue("Paris");
+  await expect(createLink("Rome")).toHaveCount(0);
+  await expect(createLink("Paris")).toHaveText("Create Tab for this Tag");
+  await expect(createLink("Paris")).toHaveCSS("font-size", "12.8px");
+
+  // Not while Multi-select is ticked.
+  await multiSelect.check();
+  await expect(createLink("Paris")).toHaveCount(0);
+  await multiSelect.uncheck();
+
+  // Unsaved edits: the category's name, a renamed tag and a new one. Creating the tab saves them all first.
+  await page.getByLabel("Name", { exact: true }).fill("Cities");
+  await page.getByRole("textbox", { name: "Tag 1" }).fill("Paris, France");
+  await page.getByRole("button", { name: "Add tag" }).click();
+  await page.getByRole("textbox", { name: "Tag 3" }).fill("Lisbon");
+  await expect(createLink("Lisbon")).toBeVisible();
+  await createLink("Paris, France").click();
+  await expect(page.getByRole("status")).toHaveText('Saved the category and made the tab "Paris, France".');
+  await expect(createLink("Paris, France")).toHaveCount(0);
+  // Still on the page, with the tags as saved.
+  await expect(page.getByRole("heading", { name: "Edit category" })).toBeVisible();
+  await expect(createLink("Lisbon")).toBeVisible();
+
+  const data = (await (await page.request.get("/api/notes")).json()) as NotesData;
+  const cities = data.categories.find((category) => category.id === places.id)!;
+  expect(cities.name).toBe("Cities");
+  expect(cities.tags.map((tag) => tag.name)).toEqual(["Paris, France", "Rome", "Lisbon"]);
+  const paris = cities.tags.find((tag) => tag.name === "Paris, France")!;
+  expect(paris.id).toBe(places.tags.find((tag) => tag.name === "Paris")!.id);
+  expect(data.tabs.find((tab) => tab.name === "Paris, France")?.categories).toEqual([{ categoryId: places.id, tagIds: [paris.id] }]);
+
+  // A tag that was new a moment ago, now saved, gets its tab too, and saving again doesn't add it twice.
+  await createLink("Lisbon").click();
+  await expect(page.getByRole("status").filter({ hasText: "Lisbon" })).toHaveText('Saved the category and made the tab "Lisbon".');
+  const again = (await (await page.request.get("/api/notes")).json()) as NotesData;
+  expect(again.categories.find((category) => category.id === places.id)!.tags.map((tag) => tag.name)).toEqual(["Paris, France", "Rome", "Lisbon"]);
+
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  const tabStrip = page.getByRole("tablist", { name: "Tabs", exact: true });
+  await expect(tabStrip.getByRole("tab", { name: "Paris, France" })).toBeVisible();
+  await expect(tabStrip.getByRole("tab", { name: "Lisbon" })).toBeVisible();
+});
+
+test("\"Create Tab for this Tag\" says why when the tab can't be made, and then doesn't save the category", async ({ page }) => {
+  const places = (await (await page.request.post("/api/categories", {
+    data: { name: "Places", multiSelect: false, tags: [{ name: "Work" }] },
+  })).json()) as SavedCategory;
+  await page.reload();
+  await page.goto(`/settings/categories/${places.id}`);
+  await page.getByLabel("Name", { exact: true }).fill("Somewhere");
+  // The seed already has a tab called "Work".
+  await page.getByRole("button", { name: "Create Tab for Work" }).click();
+  await expect(page.getByRole("alert")).toHaveText('The tab wasn\'t made: There is already a tab called "Work".');
+  await expect(page.getByRole("button", { name: "Create Tab for Work" })).toBeVisible();
+  const data = (await (await page.request.get("/api/notes")).json()) as NotesData;
+  expect(data.categories.find((category) => category.id === places.id)!.name).toBe("Places");
+});
+
+test("\"Create Tab for this Tag\" asks first where Save would, and saves only once it's confirmed", async ({ page }) => {
+  // Multi-select, with a note that has both tags: changing it to single-select trims that note.
+  const places = (await (await page.request.post("/api/categories", {
+    data: { name: "Places", multiSelect: true, tags: [{ name: "Paris" }, { name: "Rome" }] },
+  })).json()) as SavedCategory;
+  const tagIds = places.tags.map((tag) => tag.id);
+  expect((await page.request.post("/api/notes", { data: { titleText: "City break", tagIds } })).ok()).toBe(true);
+  await page.reload();
+  await page.goto(`/settings/categories/${places.id}`);
+  await page.getByLabel("Multi-select: a note can have several tags from this category").uncheck();
+  await page.getByRole("button", { name: "Create Tab for Paris", exact: true }).click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Change to single-select?");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  let data = (await (await page.request.get("/api/notes")).json()) as NotesData;
+  expect(data.categories.find((category) => category.id === places.id)!.multiSelect).toBe(true);
+  expect(data.tabs.some((tab) => tab.name === "Paris")).toBe(false);
+
+  await page.getByRole("button", { name: "Create Tab for Paris", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Change and save" }).click();
+  await expect(page.getByRole("status")).toHaveText('Saved the category and made the tab "Paris".');
+  data = (await (await page.request.get("/api/notes")).json()) as NotesData;
+  expect(data.categories.find((category) => category.id === places.id)!.multiSelect).toBe(false);
+  expect(data.tabs.some((tab) => tab.name === "Paris")).toBe(true);
+});
