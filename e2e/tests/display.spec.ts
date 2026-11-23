@@ -57,6 +57,24 @@ test("Columns are worked out again when the list's width changes", async ({ page
   await expect(list).toHaveCSS("column-count", "2");
 });
 
+test("Columns: the first column is filled to the bottom of the list before notes go into the next", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  await openSettings(page);
+  await columnChoice(page, "Narrow").click();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  const list = page.locator(".note-list ul").first();
+  await expect(list).toHaveCSS("column-count", "3");
+  const columnLefts = () =>
+    list.evaluate((ul) => [...new Set([...ul.children].map((li) => Math.round(li.getBoundingClientRect().left)))].length);
+
+  // The few seeded notes all fit down the first column.
+  await expect.poll(columnLefts).toBe(1);
+
+  // On a short screen they don't, so they go on into the other columns.
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await expect.poll(columnLefts).toBeGreaterThan(1);
+});
+
 test("tab counts: each tab shows its number of notes, by its own filters only", async ({ page }) => {
   await expect(topTabs(page)).toHaveText(["All", "Work", "Home", "On hold"]);
   await openSettings(page);

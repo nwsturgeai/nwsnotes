@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -173,11 +174,39 @@ export function NotesPage({
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    const observer = new ResizeObserver(() => setListWidth(list.clientWidth));
+    const observer = new ResizeObserver(() => {
+      setListWidth(list.clientWidth);
+      setListHeight(list.clientHeight);
+    });
     observer.observe(list);
     return () => observer.disconnect();
   }, []);
+  /** The note list's visible height: with several columns, each is filled to this before the next one starts. */
+  const [listHeight, setListHeight] = useState(0);
   const columnTotal = columnCount(columns, listWidth);
+  const columnsRef = useRef<HTMLUListElement>(null);
+  /**
+   * With several columns, the first is filled down to the bottom of the list before notes go on into the next.
+   * Once every column is full, they're balanced instead and the list scrolls up and down as before.
+   */
+  const fitColumns = useCallback(() => {
+    const ul = columnsRef.current;
+    const list = listRef.current;
+    if (!ul || !list) return;
+    if (columnTotal <= 1) {
+      ul.style.height = "";
+      ul.style.columnFill = "";
+      return;
+    }
+    ul.style.columnFill = "auto";
+    ul.style.height = `${list.clientHeight}px`;
+    // More notes than the columns hold at that height spill out to the side: balance them instead.
+    if (ul.scrollWidth > ul.clientWidth + 1) {
+      ul.style.height = "";
+      ul.style.columnFill = "balance";
+    }
+  }, [columnTotal]);
+  useLayoutEffect(fitColumns);
   const inputRef = useRef<HTMLInputElement>(null);
   const padRef = useRef<StylusPadHandle>(null);
   const [title, setTitle] = useState("");
@@ -1001,7 +1030,8 @@ export function NotesPage({
               </p>
             ) : (
               // Notes run top to bottom down each column, then on to the next column to the right.
-              <ul style={{ columnCount: columnTotal }}>
+              // A handwritten note's picture loading can change how much fits, so the columns are worked out again.
+              <ul ref={columnsRef} style={{ columnCount: columnTotal }} onLoadCapture={fitColumns}>
                 {rows.map((row) => {
                   if ("gap" in row) return <li key="drag-gap" className="drag-gap" style={{ height: row.gap }} aria-hidden />;
                   const note = row.note;
