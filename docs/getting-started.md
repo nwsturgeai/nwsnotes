@@ -38,6 +38,9 @@ Once notes have been archived, you can choose when to remove them from your note
 
 To delete archived notes in your current tab, click the notes-ordering button just under the settings cog in the top-right.  Then a button saying "Archived -> Bin" should appear, which you can click.
 
+## A quick note about privacy
+
+Other users can't see your notes, unless you explicitly share them.  As the admin of this app, I (Nick Sturge) could see your notes if I wanted (pretty unlikely) - they are saved in the database as plain text. Let me know if you think I should add encryption :-).
 
 ## That's all you need to get started!
 
