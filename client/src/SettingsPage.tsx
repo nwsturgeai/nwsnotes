@@ -291,6 +291,16 @@ export function SettingsPage({
   return (
     <main className="settings-page">
       <h1>Settings</h1>
+
+      {/* The help pages are their own pages (not part of the app), so this is a plain link. */}
+      <section>
+        <h2>Help</h2>
+        <p>How to use nwsnotes, from the basics to every feature.</p>
+        <a className="button" href="/docs/">
+          Help pages
+        </a>
+      </section>
+
       {/* How many notes you have and the space they take; nothing if it can't be found out. */}
       {stats !== "failed" && (
         <p className="note-stats">
@@ -404,6 +414,15 @@ export function SettingsPage({
         <p>See your last 500 changes from the past 30 days, and go back to how things were after any of them.</p>
         <a className="button" href={pathFor({ name: "history" })} onClick={(event) => go(event, { name: "history" })}>
           History
+        </a>
+      </section>
+
+      <section>
+        <h2>Backup</h2>
+        <p>Download a file with all your notes, categories, tags and tabs.</p>
+        {/* A plain link: the session cookie is sent with it, and the server names the file. */}
+        <a className="button" href="/api/notes/download" download>
+          Download backup
         </a>
       </section>
 
@@ -622,20 +641,11 @@ export function SettingsPage({
         )}
       </section>
 
+      <AppVersion />
+
       <Reminders />
 
       <TextMessages notes={notes} tabs={tabs} onSessionExpired={onSessionExpired} />
-
-      <section>
-        <h2>Backup</h2>
-        <p>Download a file with all your notes, categories, tags and tabs.</p>
-        {/* A plain link: the session cookie is sent with it, and the server names the file. */}
-        <a className="button" href="/api/notes/download" download>
-          Download backup
-        </a>
-      </section>
-
-      <AppVersion />
 
       {me.admin && (
         <section>
@@ -646,15 +656,6 @@ export function SettingsPage({
           </a>
         </section>
       )}
-
-      {/* The help pages are their own pages (not part of the app), so this is a plain link. */}
-      <section>
-        <h2>Help</h2>
-        <p>How to use nwsnotes, from the basics to every feature.</p>
-        <a className="button" href="/docs/">
-          Help pages
-        </a>
-      </section>
 
       <section>
         <h2>Account</h2>
