@@ -27,7 +27,7 @@ import { usePage } from "./route";
 import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
 import { UsersPage } from "./UsersPage";
-import { SettingsPage } from "./SettingsPage";
+import { SettingsPage, type SettingsSection } from "./SettingsPage";
 import { useColumns, useStylusMode, useTabCounts } from "./stylusMode";
 import { TabEditPage } from "./TabEditPage";
 import type { TagSelection } from "./TagPickers";
@@ -287,6 +287,8 @@ export function App() {
   const sessionExpired = useCallback(() => setState({ screen: "login" }), []);
   /** A message for the settings page after coming back to it (e.g. after changing the password). */
   const [settingsNotice, setSettingsNotice] = useState<string>();
+  /** The settings section to open at, after saving or cancelling a category or a tab. */
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>();
   useEffect(() => {
     if (page.name !== "settings" && page.name !== "password") setSettingsNotice(undefined);
   }, [page.name]);
@@ -356,6 +358,8 @@ export function App() {
               me={state.me}
               pendingCount={offlineState.pendingCount}
               notice={settingsNotice}
+              scrollTo={settingsSection}
+              onScrolled={() => setSettingsSection(undefined)}
             />
           ) : page.name === "password" ? (
             <PasswordPage
@@ -383,7 +387,10 @@ export function App() {
                 // Deleted tags were also removed from notes and tabs on the server; reload to match.
                 void refreshNotes();
               }}
-              onClose={() => navigate({ name: "settings" })}
+              onClose={() => {
+                setSettingsSection("categories");
+                navigate({ name: "settings" });
+              }}
               onSessionExpired={sessionExpired}
             />
           ) : page.name === "tab" ? (
@@ -395,7 +402,10 @@ export function App() {
               categories={state.data.categories}
               onSaved={saveTab}
               onDeleted={deleteTab}
-              onClose={() => navigate({ name: "settings" })}
+              onClose={() => {
+                setSettingsSection("tabs");
+                navigate({ name: "settings" });
+              }}
               onSessionExpired={sessionExpired}
             />
           ) : (
