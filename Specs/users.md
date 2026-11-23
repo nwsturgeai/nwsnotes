@@ -94,7 +94,7 @@ The app can be used by several people, each with their own completely separate n
 
 ### Settings for every user
 - **Account section** (at the bottom, as now): "Logged in as <display name> (<login name>)", a "Change password" button and "Log out".
-- **Change password** page (`/settings/password`): "Current password", "New password" and "New password again", and "Change password". Saved with `PUT /api/me/password` and `{ currentPassword, newPassword }`. Errors: "The current password isn't right.", "The new password must be at least 10 characters.", "The new passwords don't match." (checked in the page). On success it goes back to Settings with "Password changed. Your other devices have been logged out.", and they're emailed to say so (see "The \"password changed\" email" under Forgotten passwords).
+- **Change password** page (`/settings/password`): "Current password", "New password" and "New password again", and "Change password". Saved with `PUT /api/me/password` and `{ currentPassword, newPassword }`. Errors: "The current password isn't right.", "The new password must be at least 10 characters.", "The new passwords don't match." (checked in the page). On success it goes back to Settings with "Password changed. Your other devices have been logged out.", and they're emailed to say so (see the "password changed" email under Forgotten passwords).
 - Not available offline, like the rest of Settings.
 
 ### The users page (admin only)
