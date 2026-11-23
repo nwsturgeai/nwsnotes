@@ -552,8 +552,10 @@ a:focus-visible {
   list-style: none;
   margin: 0;
   padding: 0;
-  column-gap: 0;
-  column-rule: 1px solid var(--line);
+  /* The line between columns matches the lines between notes. It's drawn in its own 1px gap: with no gap
+     it would sit under the rows, and their tag colours would hide it. */
+  column-gap: 1px;
+  column-rule: 1px solid rgb(0 0 0 / 0.2);
 }
 
 .note-list > ul > li {

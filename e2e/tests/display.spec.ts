@@ -19,6 +19,13 @@ test("the lines between notes are see-through black, so they show on every tag c
   await expect(noteRow(page, "Buy milk")).toHaveCSS("border-bottom-color", "rgba(0, 0, 0, 0.2)");
 });
 
+test("the line between columns matches them, in its own gap so tag colours don't hide it", async ({ page }) => {
+  const list = page.locator(".note-list ul").first();
+  await expect(list).toHaveCSS("column-rule-color", "rgba(0, 0, 0, 0.2)");
+  await expect(list).toHaveCSS("column-rule-width", "1px");
+  await expect(list).toHaveCSS("column-gap", "1px");
+});
+
 test("Columns: Single, Wide, Medium or Narrow, as many as fit in the list (Medium by default)", async ({ page }) => {
   const list = page.locator(".note-list ul").first();
   const listWidth = () => page.locator(".note-list").evaluate((element) => element.clientWidth);
