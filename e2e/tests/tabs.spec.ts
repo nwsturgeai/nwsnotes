@@ -1,4 +1,4 @@
-import { expect, expectTitles, filterRow, noteRow, openFilter, openNotes, pills, selectTab, setFilter, test } from "./fixtures";
+import { expect, expectTitles, filterRow, noteRow, openFilter, openNotes, pills, seed, selectTab, setFilter, test } from "./fixtures";
 
 /** The seed's notes as the All tab lists them (Bin notes are hidden; the handwritten note has no text). */
 const ALL = ["Plan the team meeting", "Buy milk", "Read the quarterly report", "Old invoice", "", "Holiday plans", "Book flights", "Garden ideas"];
@@ -158,4 +158,56 @@ test("tabs can't be changed while a note is being edited", async ({ page }) => {
   await work.dispatchEvent("click");
   await expect(page.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
   await expectTitles(page, ALL);
+});
+
+test('the filter row\'s "Properties" dropdown filters by long-form and due dates, with counts', async ({ page }) => {
+  // A fixed time (midday in London), and the seed with three due dates: one passed, one later today, one tomorrow.
+  await page.clock.install({ time: new Date("2026-11-23T12:00:00Z") });
+  const data = structuredClone(seed) as { notes: { id: number; dueDateTime?: string }[] };
+  const dueDates: Record<number, string> = { 1: "2026-11-23T10:00:00.000Z", 2: "2026-11-23T20:00:00.000Z", 9: "2026-11-24T10:00:00.000Z" };
+  for (const note of data.notes) if (dueDates[note.id]) note.dueDateTime = dueDates[note.id];
+  expect((await page.request.post("/api/test/reset", { data })).ok()).toBe(true);
+  await openNotes(page);
+
+  const properties = await openFilter(page, "Properties");
+  for (const [rule, count] of [["Long-form", 1], ["Due date set", 3], ["Due today", 2], ["Overdue", 1]] as const) {
+    await expect(properties.getByRole("checkbox", { name: new RegExp(`^${rule}`) }).locator("..")).toContainText(`(${count})`);
+  }
+  await expect(properties).toContainText("TOTAL: 8");
+
+  await properties.getByRole("checkbox", { name: /^Due today/ }).check();
+  await expectTitles(page, ["Plan the team meeting", "Buy milk"]);
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
+  // Like the tag dropdowns, any ticked rule will do.
+  await properties.getByRole("checkbox", { name: /^Long-form/ }).check();
+  await expectTitles(page, ["Plan the team meeting", "Buy milk", "Holiday plans"]);
+  await properties.getByRole("checkbox", { name: /^Long-form/ }).uncheck();
+  await properties.getByRole("checkbox", { name: /^Overdue/ }).check();
+  await properties.getByRole("checkbox", { name: /^Due today/ }).uncheck();
+  await expectTitles(page, ["Plan the team meeting"]);
+  await page.keyboard.press("Escape");
+
+  // The tag dropdowns' counts follow it, and its counts follow them.
+  const area = await openFilter(page, "Area");
+  await expect(area.getByRole("checkbox", { name: /^Work/ }).locator("..")).toContainText("(1)");
+  await expect(area.getByRole("checkbox", { name: /^Home/ }).locator("..")).toContainText("(0)");
+  await area.getByRole("checkbox", { name: /^Home/ }).check();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".note-list")).toContainText("No notes match the Properties filter.");
+  const again = await openFilter(page, "Properties");
+  await expect(again.getByRole("checkbox", { name: /^Due date set/ }).locator("..")).toContainText("(2)");
+  await again.getByRole("checkbox", { name: /^Overdue/ }).uncheck();
+  await again.getByRole("checkbox", { name: /^Due today/ }).check();
+  await expectTitles(page, ["Buy milk"]);
+
+  // After midnight, tomorrow's note is due today.
+  await page.clock.fastForward(13 * 60 * 60 * 1000);
+  await expectTitles(page, ["Buy milk", "Garden ideas"]);
+
+  // Remembered with the tab's other filters, and cleared by Reset filters.
+  await page.reload();
+  await expectTitles(page, ["Buy milk", "Garden ideas"]);
+  await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
+  await expectTitles(page, ALL);
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
 });

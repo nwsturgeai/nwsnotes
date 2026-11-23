@@ -10,6 +10,15 @@ Just above your notes is a row of dropdowns, one for each Category. Tick Tags in
 - Each Tag shows how many notes it would list, in brackets.
 - While anything is ticked, the row turns **yellow**, so you can see the list is narrowed. The **reset** button (a curved arrow) clears it.
 
+After the Category dropdowns is a **Properties** dropdown, for narrowing the list by the notes themselves:
+
+- **Long-form**: only long-form notes.
+- **Due date set**: notes with a due date.
+- **Due today**: notes due before midnight tonight, including overdue ones.
+- **Overdue**: notes whose due date has passed.
+
+As with the Tags, ticking several shows notes that match any of them, and each shows its count in brackets.
+
 Your ticks are remembered for each tab on each device.
 
 While the list is filtered, new notes you add automatically get the Tags that keep them in the list.

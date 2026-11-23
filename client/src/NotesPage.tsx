@@ -63,6 +63,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
 import { useExtraFilters } from "./extraFilters";
+import { PROPERTIES_CATEGORY, PROPERTIES_CATEGORY_ID, noteMatchesProperties, validProperties } from "./propertyFilters";
 import { LongFormEditor } from "./LongFormEditor";
 import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
@@ -323,30 +324,55 @@ export function NotesPage({
   const [searchText, setSearchText] = useState("");
   const searchWords = useMemo(() => searchText.toLowerCase().split(/\s+/).filter(Boolean), [searchText]);
 
+  /** The time due dates are compared with, updated each minute so they turn bold, then red, by themselves
+   * (and the Properties filter's due-date rules follow along). */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /** The filter row's ticked "Properties" rules (kept with the row's tag choices, under a made-up category id). */
+  const properties = useMemo(() => validProperties(extraSelection[PROPERTIES_CATEGORY_ID]), [extraSelection]);
+
   const visibleNotes = useMemo(() => {
-    const matching = notes.filter((note) => noteMatchesFilters(note, allFilters) && matchesSearch(note, searchWords));
+    const matching = notes.filter(
+      (note) =>
+        noteMatchesFilters(note, allFilters) && noteMatchesProperties(note, properties, now) && matchesSearch(note, searchWords),
+    );
     return orderNotes(matching, noteOrder);
-  }, [notes, allFilters, searchWords, noteOrder]);
+  }, [notes, allFilters, properties, now, searchWords, noteOrder]);
 
   /** The filter row's ticked tags, as filters (the reset button only shows while there are some). */
   const extraFilters = useMemo(() => selectionToFilters(extraCategories, extraSelection), [extraCategories, extraSelection]);
 
+  /** Whether the row narrows the list at all: a tag or property ticked (the reset button shows, and the row is yellow). */
+  const rowFiltering = extraFilters.length > 0 || properties.length > 0;
+
   /**
    * The filter row's note counts: for each tag, the notes listed if it were the only tag ticked in its
-   * dropdown, with every other filter (the tab, the other dropdowns, the search) as it is.
+   * dropdown, with every other filter (the tab, the other dropdowns, Properties, the search) as it is.
+   * Properties' counts work the same way, with its own ticks left out.
    */
   const filterCounts = useMemo(() => {
     const searched = notes.filter((note) => matchesSearch(note, searchWords));
+    const withProperties = searched.filter((note) => noteMatchesProperties(note, properties, now));
     const byTag = new Map<number, number>();
     for (const category of extraCategories) {
       const others = [...tabFilters, ...extraFilters.filter((filter) => filter.categoryId !== category.id)];
       for (const tag of category.tags) {
         const filters = [...others, { categoryId: category.id, tagIds: [tag.id] }];
-        byTag.set(tag.id, searched.filter((note) => noteMatchesFilters(note, filters)).length);
+        byTag.set(tag.id, withProperties.filter((note) => noteMatchesFilters(note, filters)).length);
       }
     }
-    return { byTag, total: visibleNotes.length };
-  }, [notes, searchWords, extraCategories, tabFilters, extraFilters, visibleNotes.length]);
+    // Properties' rules aren't tags, so they have their own map (their ids would clash with tag ids).
+    const byProperty = new Map<number, number>();
+    const tagged = searched.filter((note) => noteMatchesFilters(note, allFilters));
+    for (const rule of PROPERTIES_CATEGORY.tags) {
+      byProperty.set(rule.id, tagged.filter((note) => noteMatchesProperties(note, [rule.id], now)).length);
+    }
+    return { byTag, byProperty, total: visibleNotes.length };
+  }, [notes, searchWords, properties, now, extraCategories, tabFilters, extraFilters, allFilters, visibleNotes.length]);
 
   function toggleSearch() {
     setSearchOn(!searchOn);
@@ -423,14 +449,14 @@ export function NotesPage({
   // just leaves the list (archived, moved to the bin, or changed elsewhere), it stays where it is: the
   // browser keeps the notes in view from moving (scroll anchoring).
   useLayoutEffect(() => {
-    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, searchWords]);
+    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, properties, searchWords]);
     const before = listShown.current;
     listShown.current = { key, length: visibleNotes.length };
     const jump = !before || before.key !== key || visibleNotes.length > before.length;
     const list = listRef.current;
     if (list && jump) list.scrollTop = scrollToTop.current ? 0 : list.scrollHeight;
     scrollToTop.current = false;
-  }, [visibleNotes.length, selectedTab?.id, allFilters, searchWords]);
+  }, [visibleNotes.length, selectedTab?.id, allFilters, properties, searchWords]);
 
   /**
    * Puts a just-added note at the top of the tab: straight before the first note the tab lists (or at the
@@ -474,13 +500,6 @@ export function NotesPage({
     const timer = window.setTimeout(() => setNotice(undefined), NOTICE_MS);
     return () => window.clearTimeout(timer);
   }, [notice]);
-
-  /** The time due dates are compared with, updated each minute so they turn bold, then red, by themselves. */
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   /** The due date of the note being added or edited (ISO), saved with it when Add or Update is tapped. */
   const [dueDate, setDueDate] = useState<string>();
@@ -705,6 +724,8 @@ export function NotesPage({
               ? "Note added, but it doesn't match this tab, so it isn't shown here."
               : "Note added, but this tab doesn't show New notes.",
           });
+        } else if (!noteMatchesProperties(note, properties, Date.now())) {
+          setNotice({ text: "Note added, but it doesn't match the Properties filter." });
         } else if (!matchesSearch(note, searchWords)) {
           setNotice({ text: "Note added, but it doesn't match the search." });
         } else if (atTop && note.id < 0) {
@@ -883,9 +904,9 @@ export function NotesPage({
           <LeftTabStrip tabs={leftTabs} selectedTabId={selectedTab?.id} onSelectTab={onSelectTab} editing={tabsBlocked} />
         )}
         <div className="notes-main">
-          {/* Yellow while any of its dropdowns has a tag ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
+          {/* Yellow while any of its dropdowns has something ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
           <div
-            className={extraFilters.length > 0 || searchWords.length > 0 ? "filter-row filtered" : "filter-row"}
+            className={rowFiltering || searchWords.length > 0 ? "filter-row filtered" : "filter-row"}
             aria-label="More filters for this tab"
           >
             {/* The dropdowns, reset and search wrap together like words; edit-order stays top-right. */}
@@ -951,8 +972,17 @@ export function NotesPage({
                     selectAll
                   />
                 )}
-                {/* Only while a tag is ticked; otherwise it takes no space. */}
-                {extraFilters.length > 0 && (
+                {/* Rules about the notes themselves (long-form, due dates), after the category dropdowns. */}
+                <TagPickers
+                  categories={[PROPERTIES_CATEGORY]}
+                  selection={{ [PROPERTIES_CATEGORY_ID]: properties }}
+                  onChange={(selection) => setExtraSelection({ ...extraSelection, [PROPERTIES_CATEGORY_ID]: selection[PROPERTIES_CATEGORY_ID] ?? [] })}
+                  disabled={rowBlocked}
+                  checkLists
+                  counts={{ byTag: filterCounts.byProperty, total: filterCounts.total }}
+                />
+                {/* Only while a tag or property is ticked; otherwise it takes no space. */}
+                {rowFiltering && (
                   <IconButton
                     icon={faReplyAll}
                     label={rowBlocked ? rowHint : "Reset filters"}
@@ -1006,9 +1036,11 @@ export function NotesPage({
               <p className="empty">
                 {searchWords.length > 0
                   ? "No notes match the search."
-                  : allFilters.length > 0
-                    ? "No notes in this tab yet."
-                    : "No notes yet. Add your first one below."}
+                  : properties.length > 0
+                    ? "No notes match the Properties filter."
+                    : allFilters.length > 0
+                      ? "No notes in this tab yet."
+                      : "No notes yet. Add your first one below."}
               </p>
             ) : (
               // Notes run top to bottom down each column, then on to the next column to the right.
