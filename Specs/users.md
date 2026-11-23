@@ -10,6 +10,7 @@ The app can be used by several people, each with their own completely separate n
 - When the admin creates an account, the app generates a password and shows it to the admin once, so the admin can send it to the person.
 - Each person can change their own password in Settings, once logged in.
 - Someone who has forgotten their password can reset it themselves: the login page's "Forgot your password?" emails a link to their login email, and the link lets them choose a new one. It works once, for an hour.
+- Whenever someone changes their own password (by an emailed link or in Settings), they're emailed to say so, so they'd notice if it wasn't them.
 - The admin can reset a person's password (the app generates a new one and shows it once), and can turn an account off and on again. A turned-off account can't log in, and any devices it's logged in on are logged out.
 - The admin can't see anyone else's notes.
 - The existing notes, categories, tabs and history become the admin's own notebook, unchanged.
@@ -18,7 +19,6 @@ The app can be used by several people, each with their own completely separate n
 - A new account starts empty: no notes, no categories and no tabs (only the built-in "All" tab and the built-in Lifetime category). An introduction guide, written separately later, will explain how to start.
 
 ### Later, not now
-- A "Your password was changed" email after a password is changed or reset.
 - iPhone support.
 - Encryption.
 - Deleting an account and its data (an account can be turned off instead).
@@ -67,6 +67,9 @@ The app can be used by several people, each with their own completely separate n
   - **Saved** with `POST /api/password-reset/confirm` and `{ token, newPassword }`: the token is checked again, the new password hashed and stored, and the `sessionVersion` raised, so every device logged in to the account is logged out (204). The device isn't logged in by it: the page goes to the login page, with the email filled in and "Password changed. Log in with your new password."
   - **A link that doesn't work** (expired, already used, changed or cut short, or for an account that has since been turned off or removed), whether on opening or on saving: "This link has expired or has already been used." with "Ask for a new link" (to `/forgot-password`) in place of the boxes. Both routes answer 400 with that message.
   - **Rate limited** like logging in (10 attempts per 15 minutes from one address), shared with the login page's count.
+- **The "password changed" email** (through Brevo), to their login email, after a password is changed by an emailed link (above) or on the Change password page in Settings: subject "Your nwsnotes password was changed"; "Hello <name>," / "The password for your nwsnotes account, <email>, has just been changed, <how>." / "Your other devices have been logged out." / "If this wasn't you, choose a new password straight away at <forgot-password link>, and tell the admin.", as plain text and HTML. <how> is "using a link emailed to you" or "in Settings". The forgot-password link is built from `siteHost` like the reset link (`https://<siteHost>/forgot-password`).
+  - **Not sent** when the admin resets the password on the users page or with `--reset-password` (the admin is passing on the new password themselves), when email isn't set up, or for a name from before the email rule.
+  - **Sent after answering,** like the reset email, so the change never waits for it or fails because of it. If Brevo refuses, it's logged on the server; the password is changed all the same, and the pages don't mention the email.
 - **The admin's reset stays** on the users page, and `--reset-password` on the VM, for anyone who can't be emailed.
 - **Not available offline,** like the sign-up page: without the server, both pages show the usual "Couldn't reach the server" error.
 
@@ -91,7 +94,7 @@ The app can be used by several people, each with their own completely separate n
 
 ### Settings for every user
 - **Account section** (at the bottom, as now): "Logged in as <display name> (<login name>)", a "Change password" button and "Log out".
-- **Change password** page (`/settings/password`): "Current password", "New password" and "New password again", and "Change password". Saved with `PUT /api/me/password` and `{ currentPassword, newPassword }`. Errors: "The current password isn't right.", "The new password must be at least 10 characters.", "The new passwords don't match." (checked in the page). On success it goes back to Settings with "Password changed. Your other devices have been logged out."
+- **Change password** page (`/settings/password`): "Current password", "New password" and "New password again", and "Change password". Saved with `PUT /api/me/password` and `{ currentPassword, newPassword }`. Errors: "The current password isn't right.", "The new password must be at least 10 characters.", "The new passwords don't match." (checked in the page). On success it goes back to Settings with "Password changed. Your other devices have been logged out.", and they're emailed to say so (see "The \"password changed\" email" under Forgotten passwords).
 - Not available offline, like the rest of Settings.
 
 ### The users page (admin only)
@@ -168,7 +171,7 @@ The app can be used by several people, each with their own completely separate n
   - The admin adds a user; the generated password is shown once and has the right form; the new user can log in and sees an empty notebook ("All" only, no categories).
   - Two users' notebooks are separate: notes, categories and tabs added by one never show for the other, through the pages or the API, and their ids both start at 1.
   - Live updates reach only the same user's other windows.
-  - Changing your own password: the old one stops working, this window stays logged in, another window of the same user is logged out.
+  - Changing your own password: the old one stops working, this window stays logged in, another window of the same user is logged out, and one "Your nwsnotes password was changed" email is sent, saying "in Settings". The admin's reset sends none.
   - Resetting a password and turning an account off log that user out; a turned-off account can't log in, with "This account is turned off."; turning it on again lets them log in.
   - A non-admin sees no Users section, and `/api/users` answers 403.
   - The login form refuses a wrong name or password.
@@ -176,7 +179,7 @@ The app can be used by several people, each with their own completely separate n
 - A new `signup.spec.ts`: asking on the sign-up page (with its checks), logging in before it's confirmed; the warning icon appearing live and linking to the users page; confirming (they're emailed the login link, and log in with their own password to an empty notebook) and declining; non-admins seeing no icon or requests; a waiting email refused for Add user; the server's checks and the limit of 20 waiting.
 - A new `password-reset.spec.ts` (reading the sent emails from `/api/test/emails`, as `signup.spec.ts` does):
   - "Forgot your password?" carries the typed email over; asking sends one email, with the link on the test server's address; following it, choosing a new password (with the page's checks) and logging in with it works, and the old password doesn't.
-  - Another window logged in to the same account is logged out by the reset.
+  - Another window logged in to the same account is logged out by the reset, and a "Your nwsnotes password was changed" email is sent, saying "using a link emailed to you", with the forgot-password link on the test server's address.
   - The link works only once; an older link stops working once a newer one is used or the password is changed in Settings; an expired link (made with a past expiry in test mode) and a cut-short one show "This link has expired or has already been used."
   - The token is gone from the address bar once the page has opened.
   - An unknown email, a turned-off account, a waiting request and a name from before the email rule get the same page and 204, and no email is sent.
