@@ -163,7 +163,10 @@ test("tab counts: each tab shows its number of notes, by its own filters only", 
 
   // Bin notes don't count (the Broken lamp is in the bin); archived ones do.
   await expect(topTabs(page)).toHaveText(["All (8)", "Work (3)", "Home (5)", "On hold (1)"]);
-  for (const tab of await topTabs(page).all()) expect((await tab.boundingBox())!.width).toBeGreaterThanOrEqual(95);
+  // Each tab is as wide as its name and count: neither is cut short.
+  for (const tab of await topTabs(page).all()) {
+    expect(await tab.locator(".tab-name-text").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  }
 
   // The filter row and search don't change them.
   await setFilter(page, "Topic", "Ideas", true);
@@ -186,10 +189,12 @@ test("a long tab name is cut short, but its count always shows", async ({ page }
     data: { name: "A very long tab name", categories: [{ categoryId: 1, tagIds: [1] }] },
   });
   expect(renamed.ok()).toBe(true);
-  await page.setViewportSize({ width: 420, height: 800 });
   await page.evaluate(() => localStorage.setItem("nwsnotes.tabCounts", "on"));
   await page.reload();
   const tab = topTabs(page).filter({ hasText: "A very long" });
+  // Selected, it always shows; on a window too narrow for it, it's squeezed rather than moved to the "…" menu.
+  await tab.click();
+  await page.setViewportSize({ width: 220, height: 800 });
   await expect(tab.locator(".tab-count")).toHaveText(/\(3\)$/);
   await expect(tab.locator(".tab-count")).toBeVisible();
   // The name is cut (it's wider than the room it has), the count isn't.
