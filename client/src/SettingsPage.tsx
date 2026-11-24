@@ -32,6 +32,7 @@ import { pathFor, type Page } from "./route";
 import { COLUMN_CHOICES, PEN_WIDTHS, usePenWidth, type ColumnsChoice } from "./stylusMode";
 import { DragGrip, draggedStyle, rowsWithGap, useListDrag } from "./listDrag";
 import { TagPills } from "./TagPills";
+import { ServerLogSection } from "./ServerLogPage";
 
 interface Props {
   notes: Note[];
@@ -678,6 +679,8 @@ export function SettingsPage({
           </a>
         </section>
       )}
+
+      {me.admin && <ServerLogSection onNavigate={onNavigate} onSessionExpired={onSessionExpired} />}
 
       <section>
         <h2>Account</h2>

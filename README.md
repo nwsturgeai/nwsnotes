@@ -194,7 +194,7 @@ Open https://nwsnotes.com in Chrome on the phone, log in, then choose **⋮ → 
 | `/opt/nwsnotes/app` | The deployed app (replaced on every deployment) |
 | Supabase | The users, and each one's notes, categories, tabs and their 30-day history |
 | `/var/lib/nwsnotes/data/backups/<user id>` | A backup file a day for each user, the last seven, e.g. `backups/1/notes-2026-11-18.json` |
-| `/var/lib/nwsnotes/data` | Push-notification keys and devices (and any old save-files from before the database, which the app no longer reads) |
+| `/var/lib/nwsnotes/data` | Push-notification keys and devices, `server-log.json` (the recent errors shown on the admin's Server errors page), and any old save-files from before the database, which the app no longer reads |
 | `/etc/nwsnotes/config.json` | Session secret, the Brevo key and sender (if email is on), the database's connection string, and the admin's email (`adminLoginName`) and first password hash (both only used to make user 1) |
 | `/etc/nwsnotes/supabase-ca.crt` | Supabase's SSL certificate, to check the database connection |
 | `/etc/nwsnotes/certs` | The app's copy of the HTTPS certificate |

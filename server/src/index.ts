@@ -12,6 +12,7 @@ import { Notebooks } from "./notebooks.js";
 import { Mailer } from "./email.js";
 import { SmsNotes } from "./sms.js";
 import { Users } from "./users.js";
+import { serverLog } from "./serverLog.js";
 
 /** The value after a command-line option, e.g. `--user admin`. */
 function option(name: string): string | undefined {
@@ -57,6 +58,9 @@ async function main() {
     process.exit(0);
   }
 
+  // From here on, errors and warnings are also kept for the admin's "Server errors" page. (Not for the
+  // commands above, which print what went wrong themselves, and mustn't write the running server's file.)
+  serverLog.install(config.dataDir);
   await notebooks.init();
   const sharing = new Sharing(db, notebooks);
   const push = new PushReminders(config.dataDir, config.pushContact, notebooks, config.testMode);
@@ -95,5 +99,6 @@ async function main() {
 
 main().catch((error) => {
   console.error("Server failed to start:", error);
+  serverLog.flush();
   process.exit(1);
 });
