@@ -211,3 +211,43 @@ test("the owner's shared tags show people with what they may do, on their notes'
   await expect(sam.locator(".sharing-icons")).toHaveCount(0);
   await sam.context().close();
 });
+
+test("the owner's shared tags show the icon in the tag pickers, but not in the add area's dropdowns", async ({ page, browser }) => {
+  await newUserPage(page.request, browser, "Sam", "sam@example.com").then((sam) => sam.context().close());
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "edit");
+  await openNotes(page);
+  const canEdit = { name: "Shared by you; someone can edit" };
+  const icon = (scope: ReturnType<Page["locator"]>, name: string) =>
+    scope.locator("label, button", { hasText: name }).locator(".sharing-icons");
+
+  // The filter row's dropdown list. The icon doesn't change the tag's checkbox name.
+  await page.getByRole("button", { name: /^Topic:/ }).first().click();
+  const filterList = page.locator(".tag-dropdown-list");
+  await expect(icon(filterList, "Shopping")).toHaveAttribute("title", canEdit.name);
+  await expect(icon(filterList, "Reading")).toHaveCount(0);
+  await expect(filterList.getByRole("checkbox", { name: "Shopping (1)" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // The add area's dropdowns (the tests' default) don't show it.
+  await addArea(page).getByRole("button", { name: /^Topic:/ }).click();
+  await expect(page.locator(".tag-dropdown-list .sharing-icons")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Its pills ("Show all tags") do, and so do multi-select's.
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await expect(icon(addArea(page), "Shopping")).toHaveCount(1);
+  await expect(addArea(page).getByRole("button", { name: "Shopping", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Select notes to change their tags" }).click();
+  await expect(icon(addArea(page), "Shopping")).toHaveCount(1);
+  await page.getByRole("button", { name: "Stop selecting notes" }).click();
+
+  // The tabs' list in Settings, and a tab's dropdowns.
+  await page.goto("/settings");
+  await page.getByRole("link", { name: "Add tab" }).click();
+  await page.getByRole("button", { name: /^Topic:/ }).click();
+  await expect(icon(page.locator(".tag-dropdown-list"), "Shopping")).toHaveCount(1);
+  await page.getByRole("checkbox", { name: "Shopping" }).check();
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Errands");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator(".category-list a", { hasText: "Errands" }).getByRole("img", canEdit)).toBeVisible();
+});

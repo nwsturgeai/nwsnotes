@@ -633,6 +633,7 @@ export function SettingsPage({
                       tagIds={tab.categories.flatMap((filter) => filter.tagIds)}
                       categories={categories}
                       allLifetime
+                      showSharing
                     />
                   </div>
                 </a>

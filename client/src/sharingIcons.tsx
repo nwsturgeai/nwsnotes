@@ -75,13 +75,20 @@ const BADGES: Partial<Record<SharePermission, Badge>> = { edit: pencilBadge(), d
  * "Shared by you": one icon for what the most generous share allows: people for read only, people with a
  * pencil for edit, or people with a trash can for edit and delete.
  */
-export function SharingIcons({ permission }: { permission: SharePermission }) {
+export function SharingIcons({ permission, decorative }: { permission: SharePermission; decorative?: boolean }) {
   // Each copy has its own mask, so hiding one (e.g. in a closed menu) doesn't affect the others.
   const maskId = `sharing-gap-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const badge = BADGES[permission];
   const people = String(faUsers.icon[4]);
   return (
-    <span className="sharing-icons" role="img" aria-label={SHARED_TITLES[permission]} title={SHARED_TITLES[permission]}>
+    // Inside a button or checkbox label it's hidden from screen readers, so the control keeps the tag's name as its own.
+    <span
+      className="sharing-icons"
+      role={decorative ? undefined : "img"}
+      aria-label={decorative ? undefined : SHARED_TITLES[permission]}
+      aria-hidden={decorative || undefined}
+      title={SHARED_TITLES[permission]}
+    >
       <svg className="svg-inline--fa sharing-icon" data-permission={permission} viewBox={`0 0 ${WIDTH} ${HEIGHT}`} aria-hidden focusable="false">
         {badge && (
           <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width={WIDTH} height={HEIGHT}>
