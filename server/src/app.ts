@@ -19,6 +19,7 @@ import type { LiveUpdates } from "./live.js";
 import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
 import { accountConfirmedEmail } from "./accountEmail.js";
+import { PasswordResets } from "./passwordReset.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
 import { actingUser } from "./context.js";
@@ -119,6 +120,11 @@ export function createApp(
     res.json({ ok: true });
   });
 
+  // --- Forgotten passwords (public: an emailed link to choose a new one) ------
+
+  const passwordResets = new PasswordResets(config, users, live, mailer);
+  app.use("/api/password-reset", passwordResets.router(loginLimiter));
+
   // --- Asking for an account (the public sign-up page) ------------------------
 
   const signUpLimiter = rateLimit({
@@ -177,6 +183,7 @@ export function createApp(
     startSession(res, user);
     live.logOut(user.id, req.get(CONNECTION_ID_HEADER));
     res.json({ ok: true });
+    passwordResets.passwordChanged(req, user, "settings");
   });
 
   app.use("/api/me", meRouter);
@@ -590,12 +597,22 @@ export function createApp(
       await push.forgetAllDevices();
       sms?.resetForTests();
       mailer?.resetForTests();
+      passwordResets.resetForTests();
       res.json({ ok: true });
     });
-    // The emails that would have been sent to the logged-in user's login email (Brevo isn't reached from the tests).
-    app.get("/api/test/emails", requireSession(users, config.sessionSecret), (_req, res) => {
+    // The emails that would have been sent to the logged-in user's login email (Brevo isn't reached from the
+    // tests), or with `?to=`, to any address (e.g. one with no account, which should have been sent none).
+    app.get("/api/test/emails", (req, res, next) => {
       res.set("Cache-Control", "no-store");
+      if (typeof req.query.to === "string") res.json(mailer?.emailsForTests(req.query.to) ?? []);
+      else next();
+    });
+    app.get("/api/test/emails", requireSession(users, config.sessionSecret), (_req, res) => {
       res.json(mailer?.emailsForTests(userOf(res).loginName) ?? []);
+    });
+    // A forgotten-password link's token, with any expiry (`expires`, ms since 1970), to test one that has expired.
+    app.post("/api/test/password-reset-token", (req: Request<object, object, { loginName?: unknown; expires?: unknown } | undefined>, res) => {
+      res.json({ token: passwordResets.tokenForTests(req.body?.loginName, req.body?.expires) });
     });
     // The notifications that would have been sent to the logged-in user (push services can't be reached from the tests).
     app.get("/api/test/notifications", requireSession(users, config.sessionSecret), (_req, res) => {
