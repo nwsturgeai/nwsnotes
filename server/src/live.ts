@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer, type WebSocket } from "ws";
 import { LIVE_LOGGED_OUT_CLOSE_CODE, LIVE_UPDATES_PATH, type LiveMessage } from "@nwsnotes/shared";
-import { sessionUser } from "./auth.js";
+import { readCookie, SESSION_COOKIE, sessionUser } from "./auth.js";
 import type { Users } from "./users.js";
 
 const PING_INTERVAL_MS = 30_000;
@@ -14,8 +14,11 @@ const PING_INTERVAL_MS = 30_000;
  */
 export class LiveUpdates {
   private readonly wss = new WebSocketServer({ noServer: true });
-  /** Open connections, with the connection id each page sent and whether it answered the last ping. */
-  private readonly clients = new Map<WebSocket, { id: string | undefined; userId: number; alive: boolean }>();
+  /**
+   * Open connections, with the connection id each page sent, the session cookie that opened it (shared by
+   * a browser's tabs) and whether it answered the last ping.
+   */
+  private readonly clients = new Map<WebSocket, { id: string | undefined; userId: number; session: string | undefined; alive: boolean }>();
 
   constructor(
     private readonly users: Users,
@@ -43,7 +46,8 @@ export class LiveUpdates {
       return;
     }
     const id = url.searchParams.get("id") || undefined;
-    this.wss.handleUpgrade(req, socket, head, (ws) => this.add(ws, id, user.id));
+    const session = readCookie(req, SESSION_COOKIE);
+    this.wss.handleUpgrade(req, socket, head, (ws) => this.add(ws, id, user.id, session));
   };
 
   /** Tells every page of this user, except the one that made the change, to reload the notes. */
@@ -69,14 +73,29 @@ export class LiveUpdates {
     }
   }
 
+  /**
+   * A browser's session cookie stopped being used there (it logged out, or logged in again, maybe as
+   * someone else): closes the connections it opened, i.e. that browser's other tabs, apart from
+   * `exceptId`'s. Those pages then check their session, and show the login page if it's not theirs.
+   * Other devices, with their own cookies, aren't affected.
+   */
+  sessionEnded(session: string | undefined, exceptId?: string): void {
+    if (!session) return;
+    for (const [ws, client] of this.clients) {
+      if (client.session !== session || (exceptId && client.id === exceptId)) continue;
+      ws.close(LIVE_LOGGED_OUT_CLOSE_CODE, "Logged out");
+      this.clients.delete(ws);
+    }
+  }
+
   /** End-to-end tests only: closes every connection (the database was replaced). */
   logOutEveryone(): void {
     for (const ws of this.clients.keys()) ws.close(LIVE_LOGGED_OUT_CLOSE_CODE, "Logged out");
     this.clients.clear();
   }
 
-  private add(ws: WebSocket, id: string | undefined, userId: number): void {
-    this.clients.set(ws, { id, userId, alive: true });
+  private add(ws: WebSocket, id: string | undefined, userId: number, session: string | undefined): void {
+    this.clients.set(ws, { id, userId, session, alive: true });
     ws.on("pong", () => {
       const client = this.clients.get(ws);
       if (client) client.alive = true;

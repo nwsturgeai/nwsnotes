@@ -15,3 +15,7 @@ Some things need the server, so they're greyed out while offline: Settings, putt
 ## On several devices
 
 Your notes are the same on all your devices. A change on one shows up on the others within moments.
+
+If you edit a note that has been changed somewhere else since you started (in another tab, on another device, or by someone you share it with), the app tells you instead of quietly replacing that change. You can then keep your version or keep the other one.
+
+Tabs in the same browser share your login: logging out in one logs out the others. Changes made in a tab that has lost its connection are sent by any other tab that still has one.

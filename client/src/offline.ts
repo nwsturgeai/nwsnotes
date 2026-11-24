@@ -12,8 +12,8 @@ import {
   type Me,
   type NotesData,
 } from "@nwsnotes/shared";
-import { ApiError, api } from "./api";
-import { idbDelete, idbGet, idbSet } from "./offlineStore";
+import { ApiError, api, setPageUser } from "./api";
+import { idbAvailable, idbDelete, idbGet, idbSet } from "./offlineStore";
 
 /*
  * Offline use. The notes page and the long-form editor add, edit, archive (etc.) and delete notes
@@ -30,6 +30,11 @@ import { idbDelete, idbGet, idbSet } from "./offlineStore";
  *
  * The offline copy and the outbox are kept under the logged-in user's id, so two people using the same
  * device never see each other's notes. Logging out clears that user's.
+ *
+ * Tabs in one browser share the outbox. Each tab re-reads it before deciding whether a change can go
+ * straight to the server, so a change never overtakes one another tab queued earlier, and tells the
+ * others (a BroadcastChannel) whenever it changes it, so they show those changes too and, if they can
+ * reach the server, send them. Logging out in one tab logs the others out as well.
  */
 
 type OutboxEntry = { seq: number; sending?: boolean } & (
@@ -111,6 +116,10 @@ interface Handlers {
   onRemapped: (tempId: number, note: Note) => void;
   /** The session expired; the outbox is kept and sent after logging in again. */
   onSessionExpired: () => void;
+  /** Another tab changed the waiting changes: lay them over what's shown (withPending). */
+  onPendingChanged: () => void;
+  /** Another tab logged this user out. */
+  onLoggedOut: () => void;
 }
 
 let handlers: Partial<Handlers> = {};
@@ -129,9 +138,47 @@ function withLock<T>(name: string, task: () => Promise<T>): Promise<T> {
 
 /** Reads the waiting changes back from IndexedDB (another tab may have changed them). */
 async function reloadPending() {
-  if (userId === undefined) return;
-  const stored = await idbGet<Pending>(pendingKey(userId));
+  const id = userId;
+  if (id === undefined) return;
+  const stored = await idbGet<Pending>(pendingKey(id));
+  if (userId !== id) return;
   if (stored) pending = stored;
+  // None stored: everything was sent, or this user logged out in another tab. (Without IndexedDB the
+  // outbox only lives here, in this tab, so it's kept.)
+  else if (await idbAvailable()) pending = emptyPending();
+}
+
+// ---- Other tabs ------------------------------------------------------------
+
+type TabMessage = { type: "pending-changed" | "logged-out"; userId: number };
+
+const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("nwsnotes-offline");
+
+function tellOtherTabs(message: TabMessage) {
+  try {
+    channel?.postMessage(message);
+  } catch {
+    // The other tabs still catch up when they next touch the outbox, or reload.
+  }
+}
+
+if (channel) {
+  channel.onmessage = (event: MessageEvent<Partial<TabMessage>>) => {
+    const message = event.data;
+    if (userId === undefined || message.userId !== userId) return;
+    if (message.type === "logged-out") {
+      forgetUser();
+      handlers.onLoggedOut?.();
+    } else if (message.type === "pending-changed") {
+      void (async () => {
+        await reloadPending();
+        publish();
+        handlers.onPendingChanged?.();
+        // The tab that queued them may be the only one that thinks it's offline.
+        if (pending.outbox.length > 0) void flush();
+      })();
+    }
+  };
 }
 
 /** Changes the waiting changes and stores them, one tab at a time. */
@@ -146,6 +193,7 @@ async function changePending(change: (p: Pending) => void): Promise<void> {
     for (const id of Object.keys(pending.latest).map(Number)) if (!referenced.has(id)) delete pending.latest[id];
     await idbSet(pendingKey(id), pending);
   });
+  tellOtherTabs({ type: "pending-changed", userId: id });
   publish();
 }
 
@@ -157,6 +205,7 @@ export async function setOfflineUser(me: Me): Promise<void> {
     pending = emptyPending();
     data = undefined;
   }
+  setPageUser(me.id);
   try {
     localStorage.setItem(USER_KEY, JSON.stringify(me));
   } catch {
@@ -176,15 +225,22 @@ export function savedUser(): Me | undefined {
   }
 }
 
-/** Logging out: this user's offline copy and waiting changes are removed from this device. */
-export async function clearOfflineUser(): Promise<void> {
-  const id = userId;
+/** This tab stops showing anyone: forgets the user, and what it held of their changes. */
+function forgetUser() {
   window.clearTimeout(saveTimer);
   window.clearInterval(probeTimer);
   probeTimer = undefined;
   userId = undefined;
+  setPageUser(undefined);
   pending = emptyPending();
   data = undefined;
+  publish({ offline: false });
+}
+
+/** Logging out: this user's offline copy and waiting changes are removed from this device, and their other tabs log out too. */
+export async function clearOfflineUser(): Promise<void> {
+  const id = userId;
+  forgetUser();
   try {
     localStorage.removeItem(USER_KEY);
   } catch {
@@ -195,8 +251,8 @@ export async function clearOfflineUser(): Promise<void> {
       await idbDelete(pendingKey(id));
       await idbDelete(dataKey(id));
     });
+    tellOtherTabs({ type: "logged-out", userId: id });
   }
-  publish({ offline: false });
 }
 
 let saveTimer: number | undefined;
@@ -217,12 +273,20 @@ export function savedData(): Promise<NotesData | undefined> {
 
 /**
  * Data from the server (or what's shown) with the changes still waiting laid over it, so they don't
- * vanish on a reload. A note with a temporary id that's no longer waiting was forgotten (a long-form
- * note cancelled offline) or refused by the server, so it goes.
+ * vanish on a reload. A note with a temporary id whose add was sent gets its real id; one that's no longer
+ * waiting otherwise was forgotten (a long-form note cancelled offline) or refused by the server, so it goes.
  */
 export function withPending(server: NotesData): NotesData {
   const latest = pending.latest;
+  const ids = new Set(server.notes.map((note) => note.id));
   const notes = server.notes
+    // A note created offline whose add has been sent (maybe by another tab) takes its real id.
+    .map((note) => {
+      const id = note.id < 0 ? pending.idMap[note.id] : undefined;
+      const parentId = note.parentId !== undefined && note.parentId < 0 ? pending.idMap[note.parentId] : undefined;
+      return id === undefined && parentId === undefined ? note : { ...note, ...(id !== undefined && { id }), ...(parentId !== undefined && { parentId }) };
+    })
+    .filter((note, index) => !(server.notes[index]!.id < 0 && note.id > 0 && ids.has(note.id)))
     .filter((note) => latest[note.id] !== null && (note.id > 0 || latest[note.id] !== undefined))
     .map((note) => latest[note.id] ?? note);
   // Notes created offline aren't on the server yet.
@@ -272,6 +336,8 @@ const QUEUE = Symbol("queue");
 
 /** Sends a change now, unless it must wait behind earlier ones; QUEUE if it should go in the outbox. */
 async function tryOnline<T>(send: () => Promise<T>): Promise<T | typeof QUEUE> {
+  // Another tab may have queued changes this one hasn't heard about yet; this one mustn't overtake them.
+  await reloadPending();
   if (state.offline || pending.outbox.length > 0) return QUEUE;
   try {
     return await send();
@@ -282,6 +348,16 @@ async function tryOnline<T>(send: () => Promise<T>): Promise<T | typeof QUEUE> {
     }
     throw error;
   }
+}
+
+/** A change just went into the outbox: if this tab can reach the server, it goes out behind the others. */
+function queued() {
+  if (!state.offline) void flush();
+}
+
+/** Whether a note has changes waiting in the outbox (so the version this tab shows isn't the server's yet). */
+export function isWaiting(id: number): boolean {
+  return pending.latest[resolve(id)] !== undefined;
 }
 
 /** An entry the sync isn't sending right now, so a newer change can be merged into it. */
@@ -313,11 +389,17 @@ export async function addNote(body: NewNoteRequest): Promise<Note> {
     p.outbox.push({ seq: p.nextSeq++, kind: "add", tempId, body: { ...body, clientId, createdDateTime: now } });
     p.latest[tempId] = note;
   });
+  queued();
   return note!;
 }
 
-export async function updateNote(id: number, body: NewNoteRequest): Promise<Note> {
-  const sent = await tryOnline(() => api.updateNote(resolve(id), body));
+/**
+ * Edits a note. `startedFrom`: its lastModifiedDateTime when the edit started; online, the edit is refused
+ * (ApiError.isNoteChanged) if the note has changed since. A queued edit is sent without it, as before:
+ * an offline change replaces any made elsewhere meanwhile, rather than being lost when it's sent.
+ */
+export async function updateNote(id: number, body: NewNoteRequest, startedFrom?: string): Promise<Note> {
+  const sent = await tryOnline(() => api.updateNote(resolve(id), body, startedFrom));
   if (sent !== QUEUE) return sent;
 
   const base = localNote(id);
@@ -354,6 +436,7 @@ export async function updateNote(id: number, body: NewNoteRequest): Promise<Note
     }
     p.latest[noteId] = note;
   });
+  queued();
   return note;
 }
 
@@ -382,11 +465,13 @@ export async function setLifetime(id: number, lifetime: LifetimeChange): Promise
     }
     p.latest[noteId] = note;
   });
+  queued();
   return note;
 }
 
 /** Deletes a note (cancelling a new long-form note). One created offline and not sent yet is just forgotten. */
 export async function deleteNote(id: number): Promise<{ ok: true }> {
+  await reloadPending();
   const noteId = resolve(id);
   if (pending.outbox.some((e) => e.kind === "add" && e.tempId === noteId && mergeable(e))) {
     await changePending((p) => {
@@ -419,6 +504,7 @@ export async function deleteNote(id: number): Promise<{ ok: true }> {
     p.outbox.push({ seq: p.nextSeq++, kind: "delete", noteId });
     p.latest[noteId] = null;
   });
+  queued();
   return { ok: true };
 }
 

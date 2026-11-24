@@ -95,6 +95,8 @@ test.describe("with the page loaded", () => {
     await expect(editor(page).getByRole("textbox", { name: "Details" })).toBeFocused();
     await page.keyboard.type("Plant tulips");
     await editor(page).getByRole("button", { name: "Finish" }).click();
+    // It closes once the details are saved.
+    await expect(editor(page)).toHaveCount(0);
 
     await expect(pills(noteRow(page, "Garden ideas"))).toHaveText(["Home", "Ideas", "Long Form"]);
     expect((await savedNote(page, "Garden ideas"))?.detailsText).toBe("Plant tulips");

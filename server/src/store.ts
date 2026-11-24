@@ -29,6 +29,8 @@ import {
   type Tab,
   type TabPlacement,
   withoutMarkers,
+  NOTE_CHANGED_ELSEWHERE,
+  NOTE_CHANGED_STATUS,
 } from "@nwsnotes/shared";
 import { actingUser } from "./context.js";
 import { databaseUnreachable, type Db } from "./db.js";
@@ -528,11 +530,24 @@ export class NoteStore {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; stylusNoteLimit?: number; ownerName?: string } = {},
+    options: {
+      dueDateTime?: string;
+      tagsChangedDateTime?: unknown;
+      /** The note's lastModifiedDateTime when the edit started: refused (412) if it has changed since. */
+      baseModifiedDateTime?: unknown;
+      stylusNoteLimit?: number;
+      ownerName?: string;
+    } = {},
   ): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
+      const base = options.baseModifiedDateTime;
+      if (base !== undefined && base !== null) {
+        if (typeof base !== "string") throw new RequestError(400, `"baseModifiedDateTime" must be a date and time.`);
+        // Checked here, in the queue of changes, so two edits from the same starting point can't both be saved.
+        if (base !== existing.lastModifiedDateTime) throw new RequestError(NOTE_CHANGED_STATUS, NOTE_CHANGED_ELSEWHERE);
+      }
       const wasHandwritten = existing.titleImage !== undefined;
       if (wasHandwritten !== (title.titleImage !== undefined)) {
         throw new RequestError(

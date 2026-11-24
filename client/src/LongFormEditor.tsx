@@ -9,6 +9,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faCircleCheck, faEraser, faPen, faShareFromSquare, faTags, faX } from "@fortawesome/free-solid-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
+  NOTE_CHANGED_ELSEWHERE,
   TITLE_MAX_LENGTH,
   validateTitle,
   type Category,
@@ -16,7 +17,7 @@ import {
   type NoteDetails,
 } from "@nwsnotes/shared";
 import { ApiError } from "./api";
-import { offlineApi } from "./offline";
+import { isWaiting, offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FormattedText } from "./FormattedText";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
@@ -119,6 +120,25 @@ export function LongFormEditor({
   const dirty = useRef(false);
   const timer = useRef<number>(undefined);
   const saving = useRef<Promise<void>>(Promise.resolve());
+  /**
+   * The note as the server last had it (its lastModifiedDateTime), when this editor opened or last saved:
+   * a save is refused if it has changed since, e.g. in another tab. Undefined: saves replace whatever is
+   * there (the note has offline changes waiting, or "keep mine" after a refusal).
+   */
+  const base = useRef(note && !isWaiting(note.id) ? note.lastModifiedDateTime : undefined);
+  /** A save was refused because the note changed elsewhere: nothing more is saved until the user chooses. */
+  const [conflict, setConflict] = useState(false);
+  const conflictRef = useRef(false);
+  conflictRef.current = conflict;
+  /** The refusal came on Finish, so choosing "keep mine" finishes too. */
+  const finishAfterConflict = useRef(false);
+
+  /** Saves the note as it is now; the server's reply is the version later saves start from. */
+  async function sendUpdate(id: number, titleText: string): Promise<void> {
+    const saved = await offlineApi.updateNote(id, request(titleText), base.current);
+    base.current = isWaiting(saved.id) ? undefined : saved.lastModifiedDateTime;
+    onSaved(saved, false);
+  }
 
   const detailsEditable = titleLocked && noteId !== undefined;
 
@@ -137,6 +157,15 @@ export function LongFormEditor({
       onSessionExpired();
       return;
     }
+    if (err instanceof ApiError && err.isNoteChanged) {
+      // What's here is kept (unsaved) until the user decides.
+      dirty.current = true;
+      window.clearTimeout(timer.current);
+      timer.current = undefined;
+      conflictRef.current = true;
+      setConflict(true);
+      return;
+    }
     setError(`${what}: ${err instanceof Error ? err.message : String(err)}`);
   }
 
@@ -145,15 +174,15 @@ export function LongFormEditor({
     window.clearTimeout(timer.current);
     timer.current = undefined;
     saving.current = saving.current.then(async () => {
-      if (!dirty.current || noteId === undefined) return;
+      if (!dirty.current || noteId === undefined || conflictRef.current) return;
       dirty.current = false;
       try {
-        onSaved(await offlineApi.updateNote(noteId, request(savedTitle.current)), false);
+        await sendUpdate(noteId, savedTitle.current);
         setError(undefined);
       } catch (err) {
-        // Try again at the next window.
+        // Try again at the next window (unless the note changed elsewhere: then the user decides).
         dirty.current = true;
-        schedule();
+        if (!(err instanceof ApiError && err.isNoteChanged)) schedule();
         failed(err, "The note wasn't saved; trying again shortly");
       }
     });
@@ -163,6 +192,7 @@ export function LongFormEditor({
   /** A details or tag change: save it once the 30-second window ends. */
   function schedule() {
     dirty.current = true;
+    if (conflictRef.current) return;
     if (timer.current === undefined) timer.current = window.setTimeout(() => void flush(), SAVE_DELAY_MS);
   }
 
@@ -192,12 +222,13 @@ export function LongFormEditor({
       // Tag changes made while editing the title are saved with it.
       if (noteId === undefined) {
         const created = await offlineApi.addNote(request(check.title));
+        base.current = isWaiting(created.id) ? undefined : created.lastModifiedDateTime;
         setNoteId(created.id);
         onSaved(created, true);
       } else {
         await saving.current;
         dirty.current = false;
-        onSaved(await offlineApi.updateNote(noteId, request(check.title)), false);
+        await sendUpdate(noteId, check.title);
       }
       savedTitle.current = check.title;
       setTitle(check.title);
@@ -257,17 +288,42 @@ export function LongFormEditor({
   async function finish() {
     setBusy(true);
     await flush();
+    // The note changed elsewhere: the editor stays open until the user chooses which version to keep.
+    if (conflictRef.current) {
+      finishAfterConflict.current = true;
+      setBusy(false);
+      return;
+    }
     // A changed title that hasn't been accepted yet is saved too, rather than lost.
     const check = validateTitle(title);
     if (!titleLocked && noteId !== undefined && check.ok && check.title !== savedTitle.current) {
       try {
-        onSaved(await offlineApi.updateNote(noteId, request(check.title)), false);
+        await sendUpdate(noteId, check.title);
       } catch (err) {
         failed(err, "The title wasn't saved");
+        if (conflictRef.current) finishAfterConflict.current = true;
         setBusy(false);
         return;
       }
     }
+    onFinish();
+  }
+
+  /** After a refused save: this editor's version replaces the one saved elsewhere. */
+  function keepMine() {
+    base.current = undefined;
+    conflictRef.current = false;
+    setConflict(false);
+    if (finishAfterConflict.current) void finish();
+    else void flush();
+  }
+
+  /** After a refused save: this editor's unsaved changes are dropped, and it closes (showing the other version). */
+  function discardMine() {
+    window.clearTimeout(timer.current);
+    timer.current = undefined;
+    dirty.current = false;
+    setConflict(false);
     onFinish();
   }
 
@@ -565,6 +621,15 @@ export function LongFormEditor({
           cancelLabel="No"
           onConfirm={() => void cancel()}
           onCancel={() => setConfirmingCancel(false)}
+        />
+      )}
+      {conflict && (
+        <ConfirmDialog
+          message={`${NOTE_CHANGED_ELSEWHERE} Keep your version (replacing that change), or discard your changes and see that version?`}
+          confirmLabel="Discard mine"
+          cancelLabel="Keep mine"
+          onConfirm={discardMine}
+          onCancel={keepMine}
         />
       )}
     </div>

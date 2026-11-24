@@ -7,6 +7,11 @@ For now, tag reordering is not supported whilst offline.
 Bulk tag updates (multi-select) are not supported whilst offline.
 Note ordering (edit-order mode) is not supported whilst offline.
 If the same note is changed both offline on one device and online elsewhere, the last change to reach the server wins.
+Editing a note online that has changed elsewhere since the edit started (another tab, another device, or someone it's shared with) doesn't silently replace that change: the app says so and lets the user choose.
+
+## Several tabs in one browser
+Tabs share the login: logging out in one tab logs out the others, and logging in as someone else in one tab sends the others to the login page.
+Changes one tab queues while offline show in the other tabs, and any tab that can reach the server sends them.
 Notes created offline keep the date and time they were created offline.
 
 ## App updates
@@ -23,7 +28,7 @@ The settings page should show which version is running, and have a button to che
 - Each page load creates a random connection id and sends it with every change it makes (`X-Connection-Id` header). After a change is saved (a note added, a category added or edited, or a tab added, edited or deleted), the server sends `{ "type": "data-changed" }` to every other open connection; they reload the notes, categories and tabs with `GET /api/notes`. The same message will be used later for note editing and deleting.
 - If the connection drops, the website reconnects automatically, waiting a little longer after each failed attempt. After any reconnect, and whenever the app comes back on screen, it reloads the notes in case it missed a message.
 - These background reloads don't show "Loading...", don't clear a title being typed, and keep the list scrolled to the bottom. If one fails, a small notice is shown instead of the full error page.
-- Logging out closes the connection.
+- Logging out closes the connection, and those of the browser's other tabs.
 - With several users (see [users.md](users.md)), "data changed" messages go only to the same user's other connections, and the offline copy is kept per user.
 - The server pings each connection regularly so idle connections aren't silently dropped.
 
@@ -82,7 +87,17 @@ The settings page should show which version is running, and have a button to che
   - An entry the server rejects (a 4xx error, e.g. the note was emptied from the Bin on another device meanwhile) is dropped, and a notice names the note whose change was lost.
   - A 401 (session expired) keeps the whole outbox and shows the login page. The outbox is sent once the user has logged in again.
   - Only one tab on a device sends the outbox at a time, using a browser lock (`navigator.locks`), so two open tabs don't send the same changes twice.
-- **Conflicts:** last save wins, as between two online devices today. An offline edit replaces any edit made elsewhere in the meantime, when it reaches the server.
+- **Conflicts:** an offline edit replaces any edit made elsewhere in the meantime, when it reaches the server (its queued update is sent without `baseModifiedDateTime`), so offline work is never dropped as a conflict.
+- **Edits that started from an old version (online):** `PUT /api/notes/:id` takes an optional `baseModifiedDateTime`, the note's `lastModifiedDateTime` when the edit started. If the note has changed since, the server refuses with 412 and changes nothing. The check runs in the notebook's queue of changes, so two edits from the same starting point can't both be saved.
+  - The new-note area's edit mode sends it. A refusal keeps what was typed and says "This note was changed somewhere else … Save again to replace that change with yours, or cancel to keep it." Saving again sends no `baseModifiedDateTime`.
+  - The long-form editor sends it with every save, moving it on to each reply's `lastModifiedDateTime`. On a refusal it stops autosaving and asks "Keep mine" (saves without the check, and finishes if Finish was what was refused) or "Discard mine" (closes, leaving the other version).
+  - A note with changes still in the outbox has no server version to compare against, so its edits are sent without the check.
+- **Several tabs:**
+  - The outbox is one IndexedDB value shared by the browser's tabs. Before deciding whether a change can go straight to the server, a tab re-reads it, so a change never overtakes one another tab queued earlier; if it has to queue behind them and the tab can reach the server, it sends the outbox.
+  - Whenever a tab changes the outbox it tells the others on a `BroadcastChannel` (`nwsnotes-offline`). They re-read it, lay it over what they show (notes another tab created offline appear, with their clock icon), and send it if they can reach the server. A note created offline whose add another tab sent takes its real id in every tab.
+  - Logging out tells the other tabs too: they forget the user's copy and outbox and show the login page, so a tab that's offline can't put the outbox back afterwards.
+  - Every request sends `X-User-Id`, the user the page is showing. If the session cookie is someone else's (another tab logged in as them), the server refuses it with 401 "Someone else has logged in in another tab of this browser.", and the page shows the login page. The outbox is kept, for when that user logs in again.
+  - Logging in or out closes the live-update connections the browser's old cookie opened (only that browser's; other devices have their own cookies), so the other tabs find out straight away.
 - **Not available offline:**
   - The settings page, and with it category editing and tag reordering. The cog is greyed out with the hint "Not available offline". If the connection drops while the settings page is open, it's replaced by a short message saying settings need a connection, with a "← Notes" link.
   - Bulk tag updates: the list-check button is greyed out, with the same hint. If multi-select is already on when the connection drops, Accept is greyed out until it's back.

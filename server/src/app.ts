@@ -12,7 +12,7 @@ import {
 } from "@nwsnotes/shared";
 import { RequestError } from "./errors.js";
 import { DEV_ADMIN_LOGIN_NAME, DEV_PASSWORD } from "./config.js";
-import { SESSION_COOKIE, SESSION_LENGTH_MS, createSessionToken, hashPassword, requireSession, userOf } from "./auth.js";
+import { SESSION_COOKIE, SESSION_LENGTH_MS, createSessionToken, hashPassword, readCookie, requireSession, userOf } from "./auth.js";
 import type { Config } from "./config.js";
 import type { Db } from "./db.js";
 import type { LiveUpdates } from "./live.js";
@@ -117,6 +117,8 @@ export function createApp(
       return;
     }
     await users.recordLogin(result.id);
+    // This browser's other tabs were on the old cookie (maybe someone else's): they check who they're logged in as now.
+    live.sessionEnded(readCookie(req, SESSION_COOKIE), req.get(CONNECTION_ID_HEADER));
     startSession(res, result);
     res.json({ ok: true });
   });
@@ -148,7 +150,9 @@ export function createApp(
     res.status(201).json({ ok: true });
   });
 
-  app.post("/api/logout", (_req, res) => {
+  app.post("/api/logout", (req, res) => {
+    // This browser's other tabs are logged out too, so they show the login page straight away.
+    live.sessionEnded(readCookie(req, SESSION_COOKIE), req.get(CONNECTION_ID_HEADER));
     res.clearCookie(SESSION_COOKIE, cookieOptions);
     res.json({ ok: true });
   });
@@ -358,7 +362,7 @@ export function createApp(
     res.json(notes);
   });
 
-  notesRouter.put("/:id", async (req: Request<{ id: string }, object, { tagIds?: unknown; tagsChangedDateTime?: unknown } | undefined>, res) => {
+  notesRouter.put("/:id", async (req: Request<{ id: string }, object, { tagIds?: unknown; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown } | undefined>, res) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
@@ -374,6 +378,7 @@ export function createApp(
     const note = await sharing.updateNote(userOf(res), id, check.title, req.body?.tagIds, details.details, {
       dueDateTime: due.dueDateTime,
       tagsChangedDateTime: req.body?.tagsChangedDateTime,
+      baseModifiedDateTime: req.body?.baseModifiedDateTime,
     });
     notifyChanged(req, res);
     res.json(note);

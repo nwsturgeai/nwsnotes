@@ -57,9 +57,10 @@ import {
   type Note,
   type NoteTitle,
   type Tab,
+  NOTE_CHANGED_ELSEWHERE,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
-import { offlineApi } from "./offline";
+import { isWaiting, offlineApi } from "./offline";
 import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
@@ -541,6 +542,26 @@ export function NotesPage({
   const [dueDate, setDueDate] = useState<string>();
   const [choosingDueDate, setChoosingDueDate] = useState(false);
 
+  /**
+   * The note being edited as the server last had it when the edit started (its lastModifiedDateTime):
+   * saving is refused if it has changed since, e.g. in another tab. Undefined: saving replaces whatever is
+   * there (the note has offline changes waiting, or "save again" after a refusal).
+   */
+  const editBase = useRef<string>(undefined);
+  useEffect(() => {
+    editBase.current = editingNote && !isWaiting(editingNote.id) ? editingNote.lastModifiedDateTime : undefined;
+  }, [editingNote]);
+
+  /** A save of the note being edited failed: says why. Saving again after it changed elsewhere replaces that change. */
+  function editFailed(error: unknown, what: string) {
+    if (error instanceof ApiError && error.isNoteChanged) {
+      editBase.current = undefined;
+      setSaveError(`${NOTE_CHANGED_ELSEWHERE} Save again to replace that change with yours, or cancel to keep it.`);
+    } else {
+      setSaveError(`${what}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   function startEdit(note: Note) {
     setOrdering(false);
     // Any new note that was being typed or written is discarded.
@@ -690,7 +711,7 @@ export function NotesPage({
     try {
       const tagIds = selectedTagIds(userCategories, editSelection);
       const details = stylusMode ? { detailsImage: "" } : { detailsText: "" };
-      const note = await offlineApi.updateNote(editingNote.id, { titleText: check.title, tagIds, ...details });
+      const note = await offlineApi.updateNote(editingNote.id, { titleText: check.title, tagIds, ...details }, editBase.current);
       onNoteUpdated(note);
       finishEdit();
       openLongForm(note, true);
@@ -699,7 +720,7 @@ export function NotesPage({
         onSessionExpired();
         return;
       }
-      setSaveError(`The note wasn't converted: ${error instanceof Error ? error.message : String(error)}`);
+      editFailed(error, "The note wasn't converted");
     } finally {
       setSaving(false);
     }
@@ -732,7 +753,9 @@ export function NotesPage({
     try {
       if (editingNote) {
         const tagIds = selectedTagIds(userCategories, editSelection);
-        onNoteUpdated(await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }));
+        onNoteUpdated(
+          await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }, editBase.current),
+        );
         finishEdit();
       } else {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
@@ -774,7 +797,8 @@ export function NotesPage({
         return;
       }
       // The typed title or the writing is kept, so it can be saved again.
-      setSaveError(`The note wasn't saved: ${error instanceof Error ? error.message : String(error)}`);
+      if (editingNote) editFailed(error, "The note wasn't saved");
+      else setSaveError(`The note wasn't saved: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSaving(false);
       // Focus after the input is re-enabled.
