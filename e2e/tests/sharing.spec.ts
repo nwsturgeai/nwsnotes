@@ -160,7 +160,7 @@ test("a shared tag shows its owner's name where two shared tags share a name", a
   await sam.context().close();
 });
 
-test("the owner's shared tags show people / what they may do, on their notes' pills and on tabs that filter on them", async ({ page, browser }) => {
+test("the owner's shared tags show people with what they may do, on their notes' pills and on tabs that filter on them", async ({ page, browser }) => {
   const HOME = 2;
   const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
   await newUserPage(page.request, browser, "Pat", "pat@example.com").then((pat) => pat.context().close());
@@ -170,25 +170,25 @@ test("the owner's shared tags show people / what they may do, on their notes' pi
   // Not shared yet: no icons.
   await expect(page.locator(".sharing-icons")).toHaveCount(0);
 
-  // Read only: people / a crossed-out pencil. The pill's and the tab's text stay the same.
+  // Read only: just people. The pill's and the tab's text stay the same.
   await shareThroughApi(page.request, SHOPPING, "sam@example.com", "read");
   await shareThroughApi(page.request, HOME, "sam@example.com", "read");
   const readOnly = shoppingPill.getByRole("img", { name: "Shared by you, to read only" });
   await expect(readOnly).toBeVisible();
-  await expect(readOnly.locator("svg")).toHaveCount(2);
-  await expect(readOnly.locator("svg.pen-slash")).toHaveCount(1);
+  await expect(readOnly.locator("svg")).toHaveCount(1);
+  await expect(readOnly.locator("svg[data-permission=read]")).toHaveCount(1);
   await expect(shoppingPill).toHaveText("Shopping");
   await expect(homeTab.getByRole("img", { name: "Shared by you, to read only" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /^Work/ }).locator(".sharing-icons")).toHaveCount(0);
 
-  // The most generous share decides: edit gives a pencil, edit and delete a trash can.
+  // The most generous share decides: edit adds a pencil, edit and delete a trash can.
   const both = (sam: string, pat: string) => ({ shares: [{ loginName: "sam@example.com", permission: sam }, { loginName: "pat@example.com", permission: pat }] });
   expect((await page.request.put(`/api/tags/${SHOPPING}/shares`, { data: both("read", "edit") })).ok()).toBe(true);
   await expect(shoppingPill.getByRole("img", { name: "Shared by you; someone can edit" })).toBeVisible();
-  await expect(shoppingPill.locator(".sharing-icons [data-icon=pencil]")).toHaveCount(1);
+  await expect(shoppingPill.locator(".sharing-icons svg[data-permission=edit]")).toHaveCount(1);
   expect((await page.request.put(`/api/tags/${HOME}/shares`, { data: both("delete", "read") })).ok()).toBe(true);
   await expect(homeTab.getByRole("img", { name: "Shared by you; someone can edit and delete" })).toBeVisible();
-  await expect(homeTab.locator(".sharing-icons [data-icon=trash-can]")).toHaveCount(1);
+  await expect(homeTab.locator(".sharing-icons svg[data-permission=delete]")).toHaveCount(1);
 
   // They stay after the categories are reordered, and go when the sharing stops.
   await page.goto("/settings");

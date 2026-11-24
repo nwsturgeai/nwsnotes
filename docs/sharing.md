@@ -17,9 +17,9 @@ Open the same dialog to change what someone may do, or tap the **×** beside the
 
 ## Seeing what you've shared
 
-On your notes, a Tag you've shared has two small icons after its name: people, then a "/", then what the people you've shared it with can do. If anyone can edit and delete, it's a **trash can**; otherwise, if anyone can edit, a **pencil**; if everyone can only read, a **crossed-out pencil**.
+On your notes, a Tag you've shared has a small **people** icon after its name, showing what the people you've shared it with can do. If anyone can edit and delete, it has a **trash can** on its corner; otherwise, if anyone can edit, a **pencil**; if everyone can only read, it's just the people.
 
-A [Tab](tabs.md) that shows one of your shared Tags has the same icons after its name, so you can tell which Tabs show notes other people can see.
+A [Tab](tabs.md) that shows one of your shared Tags has the same icon after its name, so you can tell which Tabs show notes other people can see.
 
 ## What they see, and what they can't do
 
