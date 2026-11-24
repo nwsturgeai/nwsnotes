@@ -691,6 +691,12 @@ export function SettingsPage({
           Logged in as {me.displayName} ({me.loginName})
         </p>
         <div className="lifetime-buttons">
+          <button type="button" className="button" onClick={() => onNavigate({ name: "name" })}>
+            Change name
+          </button>
+          <button type="button" className="button" onClick={() => onNavigate({ name: "email" })}>
+            Change email
+          </button>
           <button type="button" className="button" onClick={() => onNavigate({ name: "password" })}>
             Change password
           </button>

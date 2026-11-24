@@ -16,6 +16,9 @@ import {
   type Me,
   type NewUserRequest,
   type PasswordChangeRequest,
+  type EmailChangeLink,
+  type EmailChangeRequest,
+  type NameChangeRequest,
   type PasswordResetConfirmRequest,
   type PasswordResetRequest,
   type ServerLogEntry,
@@ -202,6 +205,11 @@ export const api = {
   smsUnlink: () => request<SmsStatus>("DELETE", "/api/me/sms"),
   /** Changing your own password: this page stays logged in, your other devices are logged out. */
   changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
+  changeName: (body: NameChangeRequest) => request<Me>("PUT", "/api/me/name", body, changeHeaders()),
+  /** Emails a link to the new email; the change is made once it's opened. Returns the new email as the server took it. */
+  askToChangeEmail: (body: EmailChangeRequest) => request<{ loginName: string }>("POST", "/api/me/email", body),
+  checkEmailLink: (token: string) => request<EmailChangeLink>("POST", "/api/email-change/check", { token }),
+  confirmEmailChange: (token: string) => request<{ loginName: string }>("POST", "/api/email-change/confirm", { token }),
   /** The users page (admin only). */
   users: (changesSince: Date) => request<UserSummary[]>("GET", `/api/users?changesSince=${encodeURIComponent(changesSince.toISOString())}`),
   /** The whole database's size (bytes), from pg_database_size. */

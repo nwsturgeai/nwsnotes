@@ -1,6 +1,7 @@
 import {
   ACCOUNT_REQUESTS_MAX,
   DISPLAY_NAME_MAX_LENGTH,
+  EMAIL_LINK_NOT_WORKING,
   LOGIN_NAME_RULE,
   isValidLoginName,
   PASSWORD_MAX_LENGTH,
@@ -472,6 +473,60 @@ export class Users {
       await this.save(next);
       return next;
     });
+  }
+
+  /** A person changing their own display name. Returns the user as it now is. */
+  changeOwnName(id: number, raw: unknown): Promise<User> {
+    return this.enqueue(async () => {
+      const existing = this.required(id);
+      const next = { ...existing, displayName: validDisplayName((raw as { displayName?: unknown } | undefined)?.displayName) };
+      await this.save(next);
+      return next;
+    });
+  }
+
+  /**
+   * A person asking to change their own login email: checks their current password and the new email
+   * (an email address, not their current one, and not anyone else's or a waiting request's), and returns
+   * it. Nothing changes until the link emailed to it is opened (changeLoginNameByLink).
+   */
+  checkOwnEmailChange(id: number, raw: unknown): string {
+    const existing = this.required(id);
+    const { loginName, currentPassword } = (raw ?? {}) as { loginName?: unknown; currentPassword?: unknown };
+    if (typeof currentPassword !== "string" || !verifyPassword(currentPassword, existing.passwordHash)) {
+      throw new RequestError(400, "The current password isn't right.");
+    }
+    const name = validLoginName(loginName);
+    if (name === existing.loginName) throw new RequestError(400, "That's already your email.");
+    this.checkEmailFree(name, id);
+    return name;
+  }
+
+  /**
+   * Changing the login email with an emailed link (already checked with readEmailChangeToken, whose user
+   * this is). The login name and password hash are checked again here, in the queue, so the same link can't
+   * be used twice even by two at once, and the new email is checked again in case someone has taken it
+   * since. Logins keep working: sessions don't depend on the login name. Returns the user before and after.
+   */
+  changeLoginNameByLink(checked: User, newLoginName: string): Promise<{ before: User; after: User }> {
+    return this.enqueue(async () => {
+      const existing = this.users.get(checked.id);
+      if (!existing || existing.disabled || existing.loginName !== checked.loginName || existing.passwordHash !== checked.passwordHash) {
+        throw new RequestError(400, EMAIL_LINK_NOT_WORKING);
+      }
+      this.checkEmailFree(newLoginName, existing.id);
+      const after = { ...existing, loginName: newLoginName };
+      await this.save(after);
+      return { before: existing, after };
+    });
+  }
+
+  /** Refuses an email that's another user's, or a waiting account request's, ignoring case. */
+  private checkEmailFree(name: string, ownId: number): void {
+    const other = this.byLoginName(name);
+    if ((other && other.id !== ownId) || this.requestByLoginName(name)) {
+      throw new RequestError(400, "There's already an account, or a request for one, with that email.");
+    }
   }
 
   /**

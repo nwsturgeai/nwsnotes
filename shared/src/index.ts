@@ -403,6 +403,31 @@ export interface PasswordChangeRequest {
   newPassword: string;
 }
 
+/** Body of PUT /api/me/name: changing your own display name. */
+export interface NameChangeRequest {
+  displayName: string;
+}
+
+/** Body of POST /api/me/email: asking to change your own login email, which is done once a link emailed to the new address is opened. */
+export interface EmailChangeRequest {
+  loginName: string;
+  currentPassword: string;
+}
+
+/** The public page an email-change link opens, to confirm the new login email. */
+export const CONFIRM_EMAIL_PATH = "/confirm-email";
+
+/** What a working email-change link is for (POST /api/email-change/check). */
+export interface EmailChangeLink {
+  /** The login email now. */
+  loginName: string;
+  /** The one it changes to. */
+  newLoginName: string;
+}
+
+/** An email-change link that has expired, been used, or been overtaken by another change to the account. */
+export const EMAIL_LINK_NOT_WORKING = "This link has expired or has already been used. Ask for a new one in Settings.";
+
 /** Forgotten passwords: the public page that emails a link, and the one the link opens. */
 export const FORGOT_PASSWORD_PATH = "/forgot-password";
 export const RESET_PASSWORD_PATH = "/reset-password";

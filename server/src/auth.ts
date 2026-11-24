@@ -135,23 +135,24 @@ export function userOf(res: Response): User {
 
 /*
  * Emailed links to choose a new password (a forgotten one): "<user id>.<expiry ms>.<signature>", signed
- * with the session secret over "password-reset.<user id>.<expiry ms>.<the user's current password hash>".
- * Nothing is stored: changing the password in any way changes the hash, so a link works only once, and
- * older links stop working. The "password-reset." start keeps a session's signature from ever passing as a
- * link's, or a link's as a session's.
+ * with the session secret over "password-reset.<user id>.<expiry ms>.<the user's current login name>.<the
+ * user's current password hash>". Nothing is stored: changing the password in any way changes the hash, so a
+ * link works only once, and older links stop working; so does changing the login email, so a link sent to
+ * the old address can't be used afterwards. The "password-reset." start keeps a session's signature from
+ * ever passing as a link's, or a link's as a session's.
  */
 export const PASSWORD_RESET_LENGTH_MS = 60 * 60 * 1000;
 
-function signPasswordReset(userId: number | string, expires: number | string, passwordHash: string, secret: string): string {
-  return sign(`password-reset.${userId}.${expires}.${passwordHash}`, secret);
+function signPasswordReset(userId: number | string, expires: number | string, user: Pick<User, "loginName" | "passwordHash">, secret: string): string {
+  return sign(`password-reset.${userId}.${expires}.${user.loginName}.${user.passwordHash}`, secret);
 }
 
 export function createPasswordResetToken(
   secret: string,
-  user: Pick<User, "id" | "passwordHash">,
+  user: Pick<User, "id" | "loginName" | "passwordHash">,
   expires = Date.now() + PASSWORD_RESET_LENGTH_MS,
 ): string {
-  return `${user.id}.${expires}.${signPasswordReset(user.id, expires, user.passwordHash, secret)}`;
+  return `${user.id}.${expires}.${signPasswordReset(user.id, expires, user, secret)}`;
 }
 
 /**
@@ -166,8 +167,51 @@ export function readPasswordResetToken(token: unknown, secret: string, users: Us
   if (!/^\d+$/.test(userId) || !/^\d+$/.test(expires) || !(Number(expires) > now)) return undefined;
   const user = users.byId(Number(userId));
   if (!user || user.disabled) return undefined;
-  const expected = Buffer.from(signPasswordReset(userId, expires, user.passwordHash, secret));
+  const expected = Buffer.from(signPasswordReset(userId, expires, user, secret));
   const actual = Buffer.from(signature);
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return undefined;
   return user;
+}
+
+/*
+ * Emailed links to confirm a new login email: "<user id>.<expiry ms>.<new email, base64url>.<signature>",
+ * signed with the session secret over "email-change.<user id>.<expiry ms>.<new email>.<the user's current
+ * login name>.<the user's current password hash>". Nothing is stored: once the email changes the login name
+ * is different, so a link works only once, and any other change of email or password stops older links
+ * working. The "email-change." start keeps it from passing as a session or a password-reset link, or them
+ * as it.
+ */
+export const EMAIL_CHANGE_LENGTH_MS = 24 * 60 * 60 * 1000;
+
+function signEmailChange(userId: number | string, expires: number | string, newLoginName: string, user: Pick<User, "loginName" | "passwordHash">, secret: string): string {
+  return sign(`email-change.${userId}.${expires}.${newLoginName}.${user.loginName}.${user.passwordHash}`, secret);
+}
+
+export function createEmailChangeToken(
+  secret: string,
+  user: Pick<User, "id" | "loginName" | "passwordHash">,
+  newLoginName: string,
+  expires = Date.now() + EMAIL_CHANGE_LENGTH_MS,
+): string {
+  const encoded = Buffer.from(newLoginName, "utf8").toString("base64url");
+  return `${user.id}.${expires}.${encoded}.${signEmailChange(user.id, expires, newLoginName, user, secret)}`;
+}
+
+/**
+ * The user an email-change link is for and the email it changes to, if it's signed right, hasn't expired,
+ * their login name and password haven't changed since, and their account is still there and turned on.
+ */
+export function readEmailChangeToken(token: unknown, secret: string, users: Users, now = Date.now()): { user: User; newLoginName: string } | undefined {
+  if (typeof token !== "string") return undefined;
+  const parts = token.split(".");
+  if (parts.length !== 4) return undefined;
+  const [userId, expires, encoded, signature] = parts as [string, string, string, string];
+  if (!/^\d+$/.test(userId) || !/^\d+$/.test(expires) || !(Number(expires) > now) || !/^[A-Za-z0-9_-]+$/.test(encoded)) return undefined;
+  const user = users.byId(Number(userId));
+  if (!user || user.disabled) return undefined;
+  const newLoginName = Buffer.from(encoded, "base64url").toString("utf8");
+  const expected = Buffer.from(signEmailChange(userId, expires, newLoginName, user, secret));
+  const actual = Buffer.from(signature);
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return undefined;
+  return { user, newLoginName };
 }

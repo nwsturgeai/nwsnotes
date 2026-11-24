@@ -8,6 +8,10 @@ export type Page =
   | { name: "history" }
   /** Changing your own password. */
   | { name: "password" }
+  /** Changing your own display name. */
+  | { name: "name" }
+  /** Changing your own login email (by a link emailed to the new one). */
+  | { name: "email" }
   /** The admin's users page. */
   | { name: "users" }
   /** The server's recent errors (admins only). */
@@ -27,6 +31,10 @@ export function pathFor(page: Page): string {
       return "/history";
     case "password":
       return "/settings/password";
+    case "name":
+      return "/settings/name";
+    case "email":
+      return "/settings/email";
     case "users":
       return "/settings/users";
     case "serverLog":
@@ -42,6 +50,8 @@ function pageFromPath(pathname: string): Page {
   if (pathname === "/settings") return { name: "settings" };
   if (pathname === "/history") return { name: "history" };
   if (pathname === "/settings/password") return { name: "password" };
+  if (pathname === "/settings/name") return { name: "name" };
+  if (pathname === "/settings/email") return { name: "email" };
   if (pathname === "/settings/users") return { name: "users" };
   if (pathname === "/settings/server-errors") return { name: "serverLog" };
   if (pathname === "/settings/tabs/all") return { name: "tab", id: "all" };
