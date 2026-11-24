@@ -21,7 +21,7 @@ On your notes, a Tag you've shared has a small **people** icon after its name, s
 
 A [Tab](tabs.md) that shows one of your shared Tags has the same icon after its name, so you can tell which Tabs show notes other people can see.
 
-The same icon shows after the Tag's name in most other places it's listed: the Category lists in the filter row, a Tab's page and a long-form note; the tag pills under the new-note box (with **Show all tags** on) and when selecting several notes; the lists of Categories and Tabs in Settings; and beside the Tag on its Category's page. The tag dropdowns under the new-note box (with **Show all tags** off) don't show it.
+The same icon shows after the Tag's name in most other places it's listed: the Category lists in the filter row, a Tab's page and a long-form note; the tag pills or dropdowns under the new-note box, and the pills when selecting several notes; the lists of Categories and Tabs in Settings; and beside the Tag on its Category's page.
 
 ## What they see, and what they can't do
 

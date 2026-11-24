@@ -212,7 +212,7 @@ test("the owner's shared tags show people with what they may do, on their notes'
   await sam.context().close();
 });
 
-test("the owner's shared tags show the icon in the tag pickers, but not in the add area's dropdowns", async ({ page, browser }) => {
+test("the owner's shared tags show the icon in the tag pickers", async ({ page, browser }) => {
   await newUserPage(page.request, browser, "Sam", "sam@example.com").then((sam) => sam.context().close());
   await shareThroughApi(page.request, SHOPPING, "sam@example.com", "edit");
   await openNotes(page);
@@ -228,9 +228,9 @@ test("the owner's shared tags show the icon in the tag pickers, but not in the a
   await expect(filterList.getByRole("checkbox", { name: "Shopping (1)" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  // The add area's dropdowns (the tests' default) don't show it.
+  // The add area's dropdowns (the tests' default).
   await addArea(page).getByRole("button", { name: /^Topic:/ }).click();
-  await expect(page.locator(".tag-dropdown-list .sharing-icons")).toHaveCount(0);
+  await expect(icon(page.locator(".tag-dropdown-list"), "Shopping")).toHaveCount(1);
   await page.keyboard.press("Escape");
 
   // Its pills ("Show all tags") do, and so do multi-select's.

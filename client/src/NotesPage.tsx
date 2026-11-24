@@ -306,8 +306,6 @@ export function NotesPage({
   const fullTagList = fullTagListSetting && !handwrittenLongForm;
   /** The tag choosers in the add/edit area: dropdowns, or pills in full-tag-list mode. */
   const TagChooser = fullTagList ? TagPillPicker : TagPickers;
-  /** The pills show the sharing icons; the dropdowns don't. */
-  const showChooserSharing = fullTagList;
 
   /**
    * The canvas is shown in stylus mode, and when editing a handwritten note whatever the mode. Neither
@@ -907,7 +905,7 @@ export function NotesPage({
           selection={editSelection}
           onChange={setEditSelection}
           disabled={saving || editingNote.shared !== undefined}
-          showSharing={showChooserSharing}
+          showSharing
         />
       ) : (
         <TagChooser
@@ -917,7 +915,7 @@ export function NotesPage({
           disabled={saving}
           constraints={newNoteConstraints}
           tabName={selectedTab?.name}
-          showSharing={showChooserSharing}
+          showSharing
         />
       )}
     </>
