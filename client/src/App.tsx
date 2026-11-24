@@ -27,6 +27,7 @@ import { usePage } from "./route";
 import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
 import { UsersPage } from "./UsersPage";
+import { ServerLogPage } from "./ServerLogPage";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
 import { tabSharedOut } from "./sharingIcons";
 import { useColumns, useStylusMode, useTabCounts } from "./stylusMode";
@@ -377,6 +378,8 @@ export function App() {
               me={state.me}
               onMeChanged={(me) => setState((prev) => (prev.screen === "notes" ? { ...prev, me: { ...prev.me, ...me } } : prev))}
               onClose={() => navigate({ name: "settings" })} onSessionExpired={sessionExpired} />
+          ) : page.name === "serverLog" && state.me.admin ? (
+            <ServerLogPage onClose={() => navigate({ name: "settings" })} onSessionExpired={sessionExpired} />
           ) : page.name === "history" ? (
             <HistoryPage onReverted={() => void refreshNotes()} onSessionExpired={sessionExpired} />
           ) : page.name === "category" ? (

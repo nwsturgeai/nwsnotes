@@ -358,6 +358,29 @@ export interface Me {
   accountsWaiting?: number;
 }
 
+/** How serious a server log entry is: from console.error or console.warn. */
+export type ServerLogLevel = "error" | "warning";
+
+/**
+ * Something that went wrong on the server, as GET /api/server-log lists them (admins only). The same error
+ * seen again within an hour adds to `count` instead of making a new entry.
+ */
+export interface ServerLogEntry {
+  id: number;
+  level: ServerLogLevel;
+  /** Its first line. */
+  message: string;
+  /** All of it (e.g. with the stack trace), when there's more than the message. */
+  details?: string;
+  /** The request it happened in, e.g. "PUT /api/notes/12", and who made it (the most recent time). */
+  request?: string;
+  userId?: number;
+  /** ISO 8601, UTC: when it was first and last seen. */
+  firstDateTime: string;
+  lastDateTime: string;
+  count: number;
+}
+
 /** Body of POST /api/account-requests: someone asking for an account, on the public sign-up page. */
 export interface AccountRequestBody {
   /** Their email address, which they'll log in with. */

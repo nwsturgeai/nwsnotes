@@ -26,6 +26,7 @@ import { actingUser } from "./context.js";
 import type { NoteStore } from "./store.js";
 import type { Sharing } from "./sharing.js";
 import { ADMIN_ID, noteStatsOf, type User } from "./users.js";
+import { serverLog } from "./serverLog.js";
 
 /** The logged-in user's notebook (after requireSession and withNotebook). */
 function notebookOf(res: Response): NoteStore {
@@ -187,6 +188,24 @@ export function createApp(
   });
 
   app.use("/api/me", meRouter);
+
+  // --- The server's recent errors (admins only) ------------------------------
+
+  const serverLogRouter = express.Router();
+  serverLogRouter.use(requireSession(users, config.sessionSecret), (_req, res, next) => {
+    if (!userOf(res).admin) throw new RequestError(403, "Only an admin can see the server's errors.");
+    next();
+  });
+  serverLogRouter.get("/", (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json(serverLog.list());
+  });
+  serverLogRouter.delete("/", (_req, res) => {
+    serverLog.clear();
+    console.log(`Server log cleared by user ${userOf(res).id}.`);
+    res.json({ ok: true });
+  });
+  app.use("/api/server-log", serverLogRouter);
 
   // --- Users (the admin only) ---------------------------------------------
 
@@ -598,6 +617,16 @@ export function createApp(
       sms?.resetForTests();
       mailer?.resetForTests();
       passwordResets.resetForTests();
+      serverLog.clear();
+      res.json({ ok: true });
+    });
+    // Writes an error or warning to the server's log, as if something had gone wrong; with `fail`, the
+    // request itself fails (a 500), as a bug in a route would.
+    app.post("/api/test/server-log", (req: Request<object, object, { level?: unknown; message?: unknown; fail?: unknown }>, res) => {
+      const message = typeof req.body?.message === "string" ? req.body.message : "Test error";
+      if (req.body?.fail === true) throw new Error(message);
+      if (req.body?.level === "warning") console.warn(message);
+      else console.error(message);
       res.json({ ok: true });
     });
     // The emails that would have been sent to the logged-in user's login email (Brevo isn't reached from the
@@ -653,12 +682,18 @@ export function createApp(
 
   // --- Errors ---------------------------------------------------------------
 
-  app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    console.error(error);
+  app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     const status =
       typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
         ? error.status
         : 500;
+    // The server's own failures are kept for the admin's "Server errors" page; refused requests (4xx) aren't.
+    if (status >= 500) {
+      const user = res.locals.user as User | undefined;
+      serverLog.error({ request: `${req.method} ${req.originalUrl.split("?")[0]}`, userId: user?.id }, error);
+    } else {
+      serverLog.printOnly(error);
+    }
     const message = error instanceof Error ? error.message : String(error);
     res.status(status).json({ error: status === 500 ? `Server error: ${message}` : message });
   });

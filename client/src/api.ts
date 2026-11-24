@@ -16,6 +16,7 @@ import {
   type PasswordChangeRequest,
   type PasswordResetConfirmRequest,
   type PasswordResetRequest,
+  type ServerLogEntry,
   type UserSummary,
   type UserUpdateRequest,
   type NewNoteRequest,
@@ -197,4 +198,7 @@ export const api = {
   /** Makes the user; `emailed` says whether they were emailed that it's ready. */
   confirmAccountRequest: (id: number) => request<{ user: UserSummary; emailed: boolean }>("POST", `/api/users/requests/${id}/confirm`),
   declineAccountRequest: (id: number) => request<{ ok: true }>("DELETE", `/api/users/requests/${id}`),
+  /** The server's recent errors and warnings, the most recently seen first (admins only). */
+  serverLog: () => request<ServerLogEntry[]>("GET", "/api/server-log"),
+  clearServerLog: () => request<{ ok: true }>("DELETE", "/api/server-log"),
 };

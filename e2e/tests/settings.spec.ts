@@ -184,7 +184,7 @@ test.describe("tabs", () => {
 
 test("the settings sections are in order: Help first, Backup after History, App version before Reminders; Pen only in stylus mode", async ({ page }) => {
   const headings = page.locator(".settings-page h2");
-  const rest = ["History", "Backup", "Lifetime", "Categories", "Tabs", "App version", "Reminders", "Text messages", "Users", "Account"];
+  const rest = ["History", "Backup", "Lifetime", "Categories", "Tabs", "App version", "Reminders", "Text messages", "Users", "Server errors", "Account"];
   await expect(page.getByRole("heading", { name: "Pen" })).toHaveCount(0);
   await expect(headings).toHaveText(["Help", ...rest]);
 

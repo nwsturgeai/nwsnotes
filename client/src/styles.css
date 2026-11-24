@@ -2652,3 +2652,31 @@ body:has(.dragging) {
   flex: 1 1 10rem;
   min-width: 0;
 }
+
+/* ---- Server errors page (admins) ----------------------------------------- */
+
+.server-log-time {
+  font-weight: 600;
+}
+
+.settings-page .server-log-message {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+
+.server-log-has-errors {
+  color: var(--error);
+}
+
+.server-log-details {
+  max-height: 20rem;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
