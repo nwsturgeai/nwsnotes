@@ -159,9 +159,6 @@ export function Header({
   );
 }
 
-/** No tab is narrower than this (wider with tab counts); tabs that would be go into the "…" menu instead. */
-const TAB_MIN_PX = 75;
-const TAB_MIN_WITH_COUNTS_PX = 95;
 /** The gap between tabs (0.15rem), and the "…" button's width (2.25rem). */
 const TAB_GAP_PX = 2.4;
 const MORE_BUTTON_PX = 36;
@@ -230,29 +227,51 @@ export function LeftTabStrip({
   );
 }
 
+/** A key for a tab, for its measured width. */
+function tabKey(tab: TabEntry): string {
+  return String(tab.id ?? "all");
+}
+
 /**
- * Which tabs fit in `width`, each at least TAB_MIN_PX wide. If they don't all fit, the first ones that
- * fit (leaving room for the "…" button) are shown and the rest are listed in its menu, in their usual
- * order. The selected tab is always shown: if it would be hidden, it takes the last shown place.
+ * Which tabs fit in `width`, each at its own width (`widths`, as measured). If they don't all fit, the
+ * first ones that fit (leaving room for the "…" button) are shown and the rest are listed in its menu,
+ * in their usual order. The selected tab is always shown: if it would be hidden, it takes the place of
+ * as many of the last shown tabs as it needs.
  */
 function splitTabs(
   all: TabEntry[],
   selectedId: number | undefined,
   width: number,
-  minWidth: number,
+  widths: Map<string, number>,
 ): { shown: TabEntry[]; hidden: TabEntry[] } {
-  if (all.length * minWidth + (all.length - 1) * TAB_GAP_PX <= width) return { shown: all, hidden: [] };
-  const count = Math.max(1, Math.floor((width - MORE_BUTTON_PX) / (minWidth + TAB_GAP_PX)));
-  let shown = all.slice(0, count);
+  const widthOf = (tab: TabEntry) => widths.get(tabKey(tab)) ?? 0;
+  const span = (tabs: TabEntry[]) => tabs.reduce((sum, tab) => sum + widthOf(tab), 0) + Math.max(0, tabs.length - 1) * TAB_GAP_PX;
+  if (span(all) <= width) return { shown: all, hidden: [] };
+  const room = width - MORE_BUTTON_PX - TAB_GAP_PX;
+  const shown: TabEntry[] = [];
+  for (const tab of all) {
+    if (span([...shown, tab]) > room) break;
+    shown.push(tab);
+  }
   const selected = all.find((tab) => tab.id === selectedId);
-  if (selected && !shown.includes(selected)) shown = [...shown.slice(0, count - 1), selected];
+  if (selected && !shown.includes(selected)) {
+    while (shown.length > 0 && span([...shown, selected]) > room) shown.pop();
+    shown.push(selected);
+  }
+  // At least one tab, even if it has to be cut short.
+  const first = all[0];
+  if (shown.length === 0 && first) shown.push(first);
   return { shown, hidden: all.filter((tab) => !shown.includes(tab)) };
 }
 
 /**
  * The tabs, styled like a browser's: the selected one looks to be in front, joined to the note list.
- * If they don't all fit, every tab shrinks equally and long names are cut short (hover for the full name),
- * down to TAB_MIN_PX; beyond that, the rightmost tabs move into a "…" menu at the end of the strip.
+ * Each tab is as wide as its name (up to a limit, beyond which the name is cut short: hover for the
+ * full name). Tabs that don't fit move into a "…" menu at the end of the strip.
+ *
+ * To know how wide each tab is, the strip first shows every tab at its own width and measures them
+ * (before anything is drawn), then shows only the ones that fit. It measures again when the tabs, their
+ * counts or the selected tab (shown in bold) change, and once the fonts have loaded.
  */
 function TabStrip({
   tabs,
@@ -279,15 +298,41 @@ function TabStrip({
     observer.observe(strip);
     return () => observer.disconnect();
   }, []);
-  const { shown, hidden } = splitTabs(all, selectedTabId, width, tabCounts ? TAB_MIN_WITH_COUNTS_PX : TAB_MIN_PX);
+
+  /** What the tabs' widths depend on: when it changes, they're measured again. */
+  const measureKey = JSON.stringify([selectedTabId ?? null, all.map((tab) => [tab.id ?? null, tab.name, tab.count ?? null, tab.sharedOut ?? null])]);
+  const [measured, setMeasured] = useState<{ key: string; widths: Map<string, number> }>();
+  const measuring = measured?.key !== measureKey;
+  useLayoutEffect(() => {
+    if (!measuring || !stripRef.current) return;
+    const widths = new Map<string, number>();
+    for (const element of stripRef.current.querySelectorAll<HTMLElement>("[data-tab-key]")) {
+      widths.set(element.dataset.tabKey!, element.getBoundingClientRect().width);
+    }
+    setMeasured({ key: measureKey, widths });
+  }, [measuring, measureKey]);
+  // Names are measured in the fallback font if the web font hasn't loaded yet: measure again once it has.
+  useEffect(() => {
+    let cancelled = false;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) setMeasured(undefined);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { shown, hidden } = measuring ? { shown: all, hidden: [] } : splitTabs(all, selectedTabId, width, measured.widths);
+  const stripClass = ["tab-strip", measuring && "measuring"].filter(Boolean).join(" ");
 
   return (
-    <div className={tabCounts ? "tab-strip with-counts" : "tab-strip"} role="tablist" aria-label="Tabs" ref={stripRef}>
+    <div className={stripClass} role="tablist" aria-label="Tabs" ref={stripRef}>
       {shown.map((tab) => {
         const selected = tab.id === selectedTabId;
         return (
           <button
-            key={tab.id ?? "all"}
+            key={tabKey(tab)}
+            data-tab-key={tabKey(tab)}
             type="button"
             role="tab"
             className={selected ? "tab selected" : "tab"}
