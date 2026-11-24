@@ -11,7 +11,6 @@ A user (the **owner**) can share any of their own tags with other users (**recip
 - The owner can change a recipient's level, or stop sharing with them, at any time. It takes effect straight away, including on the recipient's open pages.
 - If the owner renames the tag, the recipient sees the new name. If the owner deletes the tag, the shares of it end. If the owner removes the tag from a note, that note disappears for the recipient.
 - A recipient can't share the owner's tags onwards.
-- Showing the owner which of their tags are shared (and with whom) on the settings and category pages is for later, not now.
 
 ### Showing the owner what they've shared
 - On the owner's notes, the pill of a tag they've shared shows one icon after the tag's name, for what the most generous of its shares allows: people (`fa-users`) if the shares are all read only; people with a pencil on their bottom right corner if anyone has edit; people with a trash can on their bottom right corner if anyone has edit-and-delete. The app draws the pencil and trash can itself (a longer pencil than `fa-pencil`; a trash can with its lid joined on and two slots), with a gap cut out of the people round them. Hovering says what it means, e.g. "Shared by you; someone can edit".
