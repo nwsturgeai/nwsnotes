@@ -204,6 +204,16 @@ export function emailedReply(tabName: string, noteCount: number, email: string):
   return `Emailed (${notes}).`;
 }
 
+/** The confirmation texted back for a due date set by "App due": `Due <when>: "<title>"`, fitted into one SMS. */
+export function dueSetReply(when: string, title: string): string {
+  return fitQuoted((quoted) => `Due ${when}: "${quoted}"`, title, `Due ${when}.`);
+}
+
+/** The reply when "App due" was followed by something that isn't a date and time, quoting it cut short to fit one SMS. */
+export function dueNotUnderstoodReply(heard: string): string {
+  return fitQuoted((quoted) => `Not set: couldn't understand "${quoted}" as a date and time.`, heard, "Not set: couldn't understand the date and time.");
+}
+
 /** The confirmation texted back when a phone is linked, for users with confirmations on. */
 export const LINKED_REPLY = "Phone linked: notes you text from it will be added to nwsnotes.";
 

@@ -25,6 +25,12 @@ People want to add notes by voice while driving. Their Android phone connects to
 - The tab is named as for notes: by its name or spoken name, with small slips allowed. "App email tab All" sends the All tab.
 - Nothing is saved as a note. As for notes, a notification says it worked, and a text comes back only when it didn't.
 
+### Setting a due date
+- After adding a note, a second text "App due <when>" sets that note's due date, e.g. "Hey Google, send a text to nwsnotes: App due tomorrow at 3pm". "App note due" and "App last note due" work the same way.
+- It sets the due date of the most recent note the person added themselves, by text or in the app, as long as that was in the last 5 minutes. Notes added to their notebook by people they share tags with don't count.
+- The date can be "today", "tomorrow", a day of the week or a date; the time can use am/pm or the 24-hour clock. A date with no time is due at 20:00. A time with no date is today, or tomorrow if that time has already passed today. An hour up to 12 with no am or pm is taken to be between 7am and 6pm.
+- A date and time that has already passed isn't set. As for notes, a notification says it worked, and a text comes back only when it didn't (or with confirmations on).
+
 ### Spoken names for tabs
 - Each tab can have an optional extra name, its "spoken name", which is easier to say or which dictation gets right more often than the tab's own name: e.g. a tab "DIY" with the spoken name "do it yourself", or "Kids' stuff" with "kids".
 - A text can start with either the tab's name or its spoken name.
@@ -130,6 +136,34 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **Sending:** `server/src/email.ts` posts to Brevo's API (`https://api.brevo.com/v3/smtp/email`, with the key in the `api-key` header). This goes over HTTPS on port 443, as DigitalOcean blocks outgoing mail ports (25, 465, 587).
 - **Settings on the VM,** in `/etc/nwsnotes/config.json`: `brevoApiKey` (turns email on) and `emailFrom` (optional; must be an email address on a domain authenticated in Brevo), and optionally `emailFromName`. `deploy/set-email.sh` asks for them and restarts the app; the steps are in `README.md` ("Sending email"). Development and the tests never send: emails are kept in memory.
 
+### Setting a due date
+- **The command:** a text whose first words are "app due", "app note due" or "app last note due" (any case, any punctuation), optionally followed by "date" ("App due date Friday"). What follows is the date and time. Read by `dueCommand` in `shared/src/spokenDue.ts`. Any other text, e.g. "Due tomorrow, the gas bill", is a note as before.
+- **Checked as other texts are:** the same signature check, repeats, linking, opt-out words, rate limit (it counts as one of the 20 texts in 10 minutes) and turned-off accounts, in the same order. Only after those is it read as a command.
+- **Who added each note:** every note now records `createdByUserId`, the id of the user who added it (see "Due dates" in [due-dates.md](due-dates.md)). Notes from before this have none, so they never count.
+- **Which note:** of the notes the person can see (their own notebook and the notes shared with them), the one with `createdByUserId` their own id and the latest `createdDateTime` (the higher id if two tie). It must have been created at most 5 minutes before the text arrives. A note written offline counts from when it was written, not when it reached the server.
+  - Someone a tag is shared with who adds a note in the person's notebook is its creator, so that note is never the person's "last note".
+  - If the person's last note is one they added in someone else's notebook (with a tag shared with them), it isn't changed, as only its owner can set due dates on it.
+- **Reading the date and time,** in UK time (Europe/London: GMT or BST, whichever is in force on that date), by `readSpokenDue` in `shared/src/spokenDue.ts`, unit tested in `sms-matching.spec.ts`:
+  - **Tidying first:** lower case; "a.m."/"p.m." (any spacing and full stops) become "am"/"pm"; "o'clock" is allowed; ordinal endings are dropped ("25th" → 25); numbers in words become digits ("twenty five" → 25, "twenty fifth" → 25, "nine thirty" → 9 30, "nine oh five" → 9 05, "fifteen hundred" → 1500); punctuation is ignored, except ":" or "." in a time and "/" in a date.
+  - **Words that join without changing anything** are skipped: at, on, the, of, by, for, a, and, in, this, next, hours, hrs, around, about.
+  - **Dates:** "today"; "tomorrow"; "day after tomorrow"; a day of the week (the next one; today's weekday means a week today; "this" and "next" change nothing); a day and month either way round ("25th December", "December the 25th", "Dec 25"), with an optional 4-digit year; or a UK numeric date, day first ("25/12", "25/12/26", "25/12/2026"). A date with no year is the next one, so "3rd January" in November is next year. A day of the week given with a date must match it ("Friday 27th November"). A date that doesn't exist ("31st April") isn't understood.
+  - **Times:** "3", "3pm", "3:30", "3.30 pm", "15:00", "1500", "9 30", "930", "noon", "midday", "midnight", "half past 3", "quarter past 3", "quarter to 4", "20 past 3", "10 to 4".
+  - **Am or pm:** given, it's used ("12 am" is 00:00, "12 pm" is noon; "15 am" isn't understood). Without it, 0 and 13–23 are the 24-hour clock, as are times written with a leading 0 ("09:30") or as four digits ("0930", "1500"). Otherwise an hour up to 12 is between 7am and 6pm: 7–11 are am, 12 is noon, 1–6 are pm.
+  - **Parts of the day:** "morning" (am), "afternoon", "evening", "night" (pm), and "tonight" (today, pm), so "tonight at 7" is 19:00. With no time, they mean 09:00, 15:00 and 20:00 ("tomorrow morning" is 09:00).
+  - **Missing parts:** a date with no time is due at 20:00, as in the due-date dialog. A time with no date is today, or tomorrow if that time has already passed today. "Midnight" is the end of the day it names ("tomorrow midnight" is 00:00 the day after tomorrow); with no day, the coming midnight.
+  - **Refused:** a date and time at or before now ("today 9am" sent at 10am) is never moved on; it's an error. So is anything with a word it doesn't know ("tomorrow at 3pm please", "yesterday"), two dates or two times, or no date or time at all.
+- **Setting it:** `store.setDueDate` changes only the due date (and `lastModifiedDateTime`), as a change in the History ("Set the due date of "<title>" by text message"), with live updates to the person's open devices and those it's shared with. A new due date replaces any earlier one and allows a new reminder at the new time, as when it's changed in the app.
+- **Afterwards:** a notification, "Due <when>" (e.g. "Due Tue 25/11 15:00", with the year when it isn't this year: "Due Tue 05/01/27 09:00"), with the note's title (without formatting markers; "[Handwritten note]" for a handwritten one). No text is sent back, unless the person has confirmations on: then `Due <when>: "<title>"`, the title cut short with "..." to fit one text (`dueSetReply`).
+- **When it can't be set,** nothing changes, the reply is a text (one SMS, plain characters only), and the same reason goes in a notification headed "Due date not set":
+  - **Nothing after the command:** `Not set: say when it's due, e.g. "App due tomorrow 3pm".`
+  - **No note of theirs in the last 5 minutes:** "Not set: you haven't added a note in the last 5 minutes."
+  - **Their last note is in someone else's notebook:** "Not set: your last note is in <owner>'s notebook, so only they can set its due date." (with "someone else's" when the name makes it too long for one text).
+  - **Their last note is long-form:** "Not set: your last note is a long-form note, which can't have a due date."
+  - **Not understood:** `Not set: couldn't understand "<what was heard>" as a date and time.`, the quoted part cut short with "..." to fit (`dueNotUnderstoodReply`).
+  - **Already past:** "Not set: <when> has already passed."
+  - **An error on the server:** "Not set: nwsnotes can't save right now. Please send it again later."
+- **Logging:** one line, as for other texts: due date set (naming the note's id), or not set with the reason. Never the text itself.
+
 ### Confirmations
 - **Stored with the user,** in the `users` table's `data`: `smsConfirmations` (true when on; missing means off). Like the rest of a user, not in the History, backups or save-files. `UserSummary` gains `smsConfirmations`; `PUT /api/users/:id` takes `{ smsConfirmations: true | false }` (admin only, like the rest of `/api/users`; anything else is 400, '"smsConfirmations" must be true or false.').
 - **The users page:** the Edit form has a checkbox, "Text back to confirm each text", under the note limit, with the hint "Each note or command they text in that works gets a text back saying so, as well as the notification. Texts that fail always get one. Each text back costs about $0.05." It's shown whether or not text messages are set up, as it's harmless. Rows of users who have it on show a "Texts back" label. The admin can turn it on for themselves too.
@@ -157,6 +191,7 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **Confirmations** (`text-messages.spec.ts`): turning them on in the users page's Edit form (and the "Texts back" label); the text back for a note in a tab, in All, cut short, a tab email and a linked phone; failures and opt-out words unchanged; turning them off; a wrong value refused; set for each user separately, and only by the admin. In `sms-matching.spec.ts`: `savedReply` and `emailedReply` fit in one text.
 - **New `text-messages.spec.ts`:** linking from Settings (and a wrong, expired or reused code); unlinking; a text from an unlinked number adds nothing and gets no reply; a note goes into the right user's notebook only; a tab's name and its spoken name put the note in that tab, with its tags; slips and punctuation still match; the longest name wins; no match goes to All; a several-tag filter takes the first tag; the notification for each note; each failure reply (only a tab name, the note limit, a turned-off account, too many texts); a repeated `MessageSid` adds one note; opt-out words are ignored; a wrong signature is refused; the note appears on an open page straight away.
 - **Emailing a tab** (`text-messages.spec.ts`): the email's address, subject and note lines for a tab, its order, Bin left out, handwritten, long-form and child notes, due dates; a spoken name, All, and an empty tab; no tab matched (with a long name cut to fit), no name; only the texting user's tabs and email; the daily limit, with notes still saved after it.
+- **Setting a due date** (`text-messages.spec.ts`): "App due" after a texted note and after one added in the app, the History entry and the date on the notes page; "App last note due" and "App note due"; a second one replacing the date; the notification, and the confirmation with confirmations on; each failure reply (nothing after the command, not understood, already past, long-form); a note created more than 5 minutes ago; a note someone a tag is shared with added in the person's notebook not counting; and that person's own "App due" for it refused. In `sms-matching.spec.ts`: `dueCommand`, `readSpokenDue` (today and tomorrow, am/pm and the 24-hour clock, the 7am–6pm rule, numbers in words, weekdays and dates, GMT and BST, and what's refused), and the replies fitting one text.
 - **Tab tests** gain: saving a spoken name, its rules and errors, and it showing in the Settings tab list.
 - **Unit tests** in `sms-matching.spec.ts` (run once, in the desktop project, with no browser): the tab matching, spoken names' rules, fitting replies into one text, and showing phone numbers. The signature check is tested end to end: correctly signed texts are accepted, and wrongly signed or unsigned ones refused.
 
@@ -165,4 +200,5 @@ People want to add notes by voice while driving. Their Android phone connects to
 - Editing or archiving notes by text.
 - A choice, per tab, of which tag to use when its filter has several in one category.
 - Other messaging apps (WhatsApp).
+- Setting a due date on a note other than the last one, or more than 5 minutes after adding it.
 - Other "App" commands, and handwritten titles shown as pictures in the tab email.

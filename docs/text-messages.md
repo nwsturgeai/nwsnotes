@@ -41,6 +41,20 @@ Some tab names are hard to say, or Google keeps mishearing them. Give such a tab
 - **If a note couldn't be saved, you get a text back** saying why, which Android Auto reads out to you. For example, the text was only a tab's name, you've reached your limit of notes, or nwsnotes couldn't be reached. The note's text is still in your sent messages, to send again later.
 - **A text back every time, if you'd like one:** the admin can turn this on for you. Then every text that works gets a text back too, e.g. `Saved to Shopping: "Oat milk and bin bags"`, which Android Auto reads out, so you know in the car that it worked. Ask the admin if you'd like it.
 
+## Setting a due date
+
+Straight after adding a note (by text or in the app), you can give it a due date with a second text:
+
+> "Hey Google, send a text to nwsnotes: **App due tomorrow at 3pm**"
+
+"App note due" and "App last note due" work too. It sets the due date of the last note you added, as long as that was in the last 5 minutes. Notes other people have added to your notebook don't count.
+
+- **The day:** "today", "tomorrow", a day of the week ("Friday"), or a date ("25th December", "25/12").
+- **The time:** "3pm", "3:30 pm", "15:00", "half past three", "noon". With no am or pm, 7 to 11 mean the morning and 1 to 6 the afternoon, so "tomorrow at 2" is 2pm.
+- **Leave out the time** and it's due at 8pm. **Leave out the day** and it's today, or tomorrow if that time has already gone.
+
+A notification shows the date it was set to. If it couldn't be set, for example the time has already passed or it wasn't understood, you get a text back saying why.
+
 ## Emailing yourself a tab
 
 To get a list of the notes in a tab, for example before going to the shop, text:
