@@ -160,7 +160,7 @@ test("a shared tag shows its owner's name where two shared tags share a name", a
   await sam.context().close();
 });
 
-test("the owner's shared tags show people with what they may do, on their notes' pills and on tabs that filter on them", async ({ page, browser }) => {
+test("the owner's shared tags show people with what they may do, on their notes' pills, on tabs that filter on them and in Settings", async ({ page, browser }) => {
   const HOME = 2;
   const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
   await newUserPage(page.request, browser, "Pat", "pat@example.com").then((pat) => pat.context().close());
@@ -193,6 +193,14 @@ test("the owner's shared tags show people with what they may do, on their notes'
   // They stay after the categories are reordered, and go when the sharing stops.
   await page.goto("/settings");
   await page.getByRole("button", { name: "Move down Area" }).click();
+  // The categories' summary in Settings, and the tag's category page, show them too.
+  const canEdit = { name: "Shared by you; someone can edit" };
+  await expect(page.locator(".category-tags > span", { hasText: "Shopping" }).getByRole("img", canEdit)).toBeVisible();
+  await expect(page.locator(".category-tags > span", { hasText: "Work" }).locator(".sharing-icons")).toHaveCount(0);
+  await page.locator(".category-list a", { hasText: "Shopping" }).first().click();
+  await expect(page.locator(".tag-row", { has: page.getByRole("button", { name: "Share Shopping" }) }).getByRole("img", canEdit)).toBeVisible();
+  await expect(page.locator(".tag-row", { has: page.getByRole("button", { name: "Share Reading" }) }).locator(".sharing-icons")).toHaveCount(0);
+  await page.getByRole("link", { name: "← Settings" }).click();
   await page.getByRole("link", { name: "← Notes" }).click();
   await expect(shoppingPill.locator(".sharing-icons")).toHaveCount(1);
   expect((await page.request.put(`/api/tags/${SHOPPING}/shares`, { data: { shares: [] } })).ok()).toBe(true);

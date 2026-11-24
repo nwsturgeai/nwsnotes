@@ -19,6 +19,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { HuePicker } from "./HuePicker";
 import { DragGrip, draggedStyle, rowsWithGap, useListDrag } from "./listDrag";
 import { ShareDialog } from "./ShareDialog";
+import { SharingIcons } from "./sharingIcons";
 
 interface Props {
   /** "new" to add a category. */
@@ -387,6 +388,7 @@ function CategoryForm({
             const dragging = tagDrag?.id === row.key;
             const tabResult = tabResults.get(row.key);
             const tabLink = offersTab(row);
+            const sharedOut = row.id === undefined ? undefined : existing?.tags.find((tag) => tag.id === row.id)?.sharedOut;
             const nameBox = row.shared ? (
                 <span className="shared-tag-name">{tagLabel(row.shared)}</span>
               ) : (
@@ -451,6 +453,9 @@ function CategoryForm({
               ) : (
                 nameBox
               )}
+              {/* "Shared by you", as on the tag's pills: what the most generous of its shares allows. Every row
+                  keeps the room for it, so the name boxes line up. */}
+              <span className="tag-row-sharing">{sharedOut && <SharingIcons permission={sharedOut} />}</span>
               {/* Up and down change the tag order; like renames and deletes, it's saved with the category. */}
               <button
                 type="button"

@@ -2170,6 +2170,21 @@ body:has(.dragging) {
   flex: 1;
 }
 
+/* Room for the "Shared by you" icon after a tag's name, kept on every row so the name boxes line up. */
+.tag-row-sharing {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  /* As tall as the buttons beside it, so it lines up with them. */
+  height: 24px;
+}
+
+.tag-row-sharing .sharing-icons {
+  margin-left: 0;
+}
+
 /* A row with small text under its name: its buttons stay level with the name box, not the text. */
 .tag-row.with-note {
   align-items: flex-start;

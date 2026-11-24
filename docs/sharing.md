@@ -21,6 +21,8 @@ On your notes, a Tag you've shared has a small **people** icon after its name, s
 
 A [Tab](tabs.md) that shows one of your shared Tags has the same icon after its name, so you can tell which Tabs show notes other people can see.
 
+The same icon shows after the Tag's name in the list of Categories in Settings, and beside it on its Category's page.
+
 ## What they see, and what they can't do
 
 - They see the whole of each note with that Tag, so only share a Tag whose notes you're happy for them to read.
