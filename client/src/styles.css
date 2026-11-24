@@ -1975,11 +1975,9 @@ body:has(.note-list li.dragging) {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 1.5rem;
-}
-
-.settings-page > * {
-  max-width: 40rem;
+  /* The content is at most 800px wide and centred: the side padding takes up the rest (at least 1.5rem).
+     Padding rather than auto margins, so the scrollbar stays at the window's edge and the children's own margins still apply. */
+  padding: 1.5rem max(1.5rem, (100% - 50rem) / 2);
 }
 
 .settings-page h1 {
