@@ -572,6 +572,7 @@ export function LongFormEditor({
                 onClick={(event) => onPenWidthClick(event, width)}
               >
                 <span className="lf-pen-sample" style={{ height: width }} />
+                <span className="lf-pen-size">{width}px</span>
               </button>
             ))}
           </div>
