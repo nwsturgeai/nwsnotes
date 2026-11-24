@@ -48,6 +48,7 @@ import {
   LIFETIME_WAITING,
   noteMatchesFilters,
   orderNotes,
+  tagLabel,
   validateTitle,
   validateTitleImage,
   withoutMarkers,
@@ -334,17 +335,14 @@ export function NotesPage({
   // categories the tab doesn't filter on).
   const tabFilters = useMemo(() => selectedTab?.categories ?? [], [selectedTab]);
   /**
-   * Single-select categories the tab itself filters on with just one tag: their pills are left off the
-   * notes, since they only repeat what the tab already shows. When the filter allows several tags, the
-   * pill says which one a note has, so it shows. (Multi-select ones, and the additional filters, always show.)
+   * Tags the tab itself filters on alone in their category: their pills are left off the notes, since
+   * every note on the tab has them. When the filter allows several tags, the pill says which one a note
+   * has, so it shows. Other tags of the category (in a multi-select one) still show, as do the additional
+   * filters' tags.
    */
-  const filteredSingleSelect = useMemo(
-    () =>
-      tabFilters
-        .filter((filter) => filter.tagIds.length === 1)
-        .map((filter) => filter.categoryId)
-        .filter((id) => categories.some((category) => category.id === id && !category.multiSelect)),
-    [tabFilters, categories],
+  const filteredAloneTagIds = useMemo(
+    () => tabFilters.filter((filter) => filter.tagIds.length === 1).map((filter) => filter.tagIds[0]!),
+    [tabFilters],
   );
   const extraCategories = useMemo(
     () => categories.filter((category) => !tabFilters.some((filter) => filter.categoryId === category.id)),
@@ -896,10 +894,17 @@ export function NotesPage({
           changes={bulk.changes}
           onChange={(changes) => setBulk({ ...bulk, changes })}
           disabled={saving}
+          showSharing
         />
       ) : editingNote ? (
         // A note shared with you keeps its tags: only its owner changes them.
-        <TagChooser categories={userCategories} selection={editSelection} onChange={setEditSelection} disabled={saving || editingNote.shared !== undefined} />
+        <TagChooser
+          categories={userCategories}
+          selection={editSelection}
+          onChange={setEditSelection}
+          disabled={saving || editingNote.shared !== undefined}
+          showSharing
+        />
       ) : (
         <TagChooser
           categories={userCategories}
@@ -908,6 +913,7 @@ export function NotesPage({
           disabled={saving}
           constraints={newNoteConstraints}
           tabName={selectedTab?.name}
+          showSharing
         />
       )}
     </>
@@ -1008,6 +1014,7 @@ export function NotesPage({
                     checkLists
                     counts={filterCounts}
                     selectAll
+                    showSharing
                   />
                 )}
                 {/* Rules about the notes themselves (long-form, due dates), after the category dropdowns. */}
@@ -1152,7 +1159,7 @@ export function NotesPage({
                           tagIds={note.tagIds}
                           categories={categories}
                           extra={specialPills(note)}
-                          hideCategoryIds={filteredSingleSelect}
+                          hideTagIds={filteredAloneTagIds}
                           showSharing
                           // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
                           // Offline it's plain too: resetting the New tags needs the server.
@@ -1626,7 +1633,7 @@ function sharedNoteProblem(tagIds: number[], categories: Category[], dueDate: st
   }
   if (new Set(shared.map((tag) => tag.ownerId)).size > 1) return "A note can only have tags shared with you by one person.";
   const readOnly = shared.find((tag) => tag.permission === undefined || !allows(tag.permission, "edit"));
-  if (readOnly) return `"${readOnly.name}" is shared with you to read only, so you can't add notes to it.`;
+  if (readOnly) return `"${tagLabel(readOnly)}" is shared with you to read only, so you can't add notes to it.`;
   if (dueDate) return `Only ${shared[0]!.ownerName ?? "its owner"} can set due dates on their notes.`;
   return undefined;
 }

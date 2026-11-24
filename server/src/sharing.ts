@@ -13,6 +13,7 @@ import {
   SHARED_CATEGORY_ID,
   SHARED_CATEGORY_NAME,
   stylusNoteLimitOf,
+  tagLabel,
   type Category,
   type Note,
   type NoteDetails,
@@ -318,7 +319,7 @@ export class Sharing {
     const owner = shared.owner;
     const readOnly = chosen.find((tag) => !allows(tag.permission!, "edit"));
     if (readOnly) {
-      throw new RequestError(403, `"${readOnly.name}" is shared with you to read only, so you can't add notes to it.`);
+      throw new RequestError(403, `"${tagLabel(readOnly)}" is shared with you to read only, so you can't add notes to it.`);
     }
     if (options.dueDateTime !== undefined) throw new RequestError(400, `Only ${owner.displayName} can set due dates on their notes.`);
     let parentId: number | undefined;

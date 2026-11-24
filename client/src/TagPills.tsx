@@ -4,8 +4,7 @@ import {
   LIFETIME_BIN,
   LIFETIME_NEW,
   LIFETIME_WAITING,
-  pillLabel,
-  shortOwnerName,
+  tagLabel,
   type Category,
 } from "@nwsnotes/shared";
 import { SharingIcons } from "./sharingIcons";
@@ -20,8 +19,8 @@ interface Props {
   allLifetime?: boolean;
   /** Extra pills after the tags, in their own colour ("Long Form", or a child note's parent title). */
   extra?: string[];
-  /** Categories whose tags aren't shown (e.g. single-select categories the selected tab filters on). */
-  hideCategoryIds?: number[];
+  /** Tags that aren't shown (e.g. a tag the selected tab filters on alone in its category). */
+  hideTagIds?: number[];
   /** Makes the "New" pill a button (the notes list's "reset the New tags"). */
   onNewClick?: () => void;
   newClickDisabled?: boolean;
@@ -35,16 +34,14 @@ export function TagPills({
   categories,
   allLifetime,
   extra = [],
-  hideCategoryIds = [],
+  hideTagIds = [],
   onNewClick,
   newClickDisabled,
   showSharing,
 }: Props) {
-  const pills = categories
-    .filter((category) => !hideCategoryIds.includes(category.id))
-    .flatMap((category) =>
+  const pills = categories.flatMap((category) =>
     category.tags
-      .filter((tag) => tagIds.includes(tag.id) && (allLifetime || !HIDDEN_ON_NOTES.includes(tag.id)))
+      .filter((tag) => tagIds.includes(tag.id) && !hideTagIds.includes(tag.id) && (allLifetime || !HIDDEN_ON_NOTES.includes(tag.id)))
       .map((tag) => ({ tag, category })),
   );
   if (pills.length === 0 && extra.length === 0) return null;
@@ -58,8 +55,8 @@ export function TagPills({
             </button>
           </li>
         ) : (
-          <li key={tag.id} title={tag.ownerName !== undefined ? `Shared by ${shortOwnerName(tag.ownerName)}` : category.name}>
-            {pillLabel(tag, categories)}
+          <li key={tag.id} title={category.name}>
+            {tagLabel(tag)}
             {showSharing && tag.sharedOut && <SharingIcons permission={tag.sharedOut} />}
           </li>
         ),

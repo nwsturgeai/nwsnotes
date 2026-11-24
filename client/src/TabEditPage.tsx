@@ -164,6 +164,7 @@ function TabForm({
                 onChange={setSelection}
                 disabled={busy}
                 checkLists
+                showSharing
               />
             </>
           )}

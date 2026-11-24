@@ -11,11 +11,12 @@ A user (the **owner**) can share any of their own tags with other users (**recip
 - The owner can change a recipient's level, or stop sharing with them, at any time. It takes effect straight away, including on the recipient's open pages.
 - If the owner renames the tag, the recipient sees the new name. If the owner deletes the tag, the shares of it end. If the owner removes the tag from a note, that note disappears for the recipient.
 - A recipient can't share the owner's tags onwards.
-- Showing the owner which of their tags are shared (and with whom) on the settings and category pages is for later, not now.
 
 ### Showing the owner what they've shared
-- On the owner's notes, the pill of a tag they've shared shows two icons after the tag's name, separated by "/": people (`fa-users`), then what the most generous of its shares allows: a trash can (`fa-trash-can`, regular) if anyone has edit-and-delete; otherwise a pencil (`fa-pencil`) if anyone has edit; otherwise (read-only shares only) a crossed-out pencil. Font Awesome's `fa-pen-slash` is Pro only, so the app draws its own: the free pencil with a diagonal line through it, in the style of the free "-slash" icons. Hovering says what it means, e.g. "Shared by you; someone can edit".
-- **Tabs:** a tab whose filters hide a tag's pills (a single-select category it filters on) would hide these icons too. So a tab that filters on any of the owner's shared tags shows the same icons after its name (and count), for the most generous share among those tags. Top tabs and left tabs both show them. To make room, tabs are 20px wider than before at their narrowest: 75px, or 95px with tab counts on.
+- On the owner's notes, the pill of a tag they've shared shows one icon after the tag's name, for what the most generous of its shares allows: people (`fa-users`) if the shares are all read only; people with a pencil on their bottom right corner if anyone has edit; people with a trash can on their bottom right corner if anyone has edit-and-delete. The app draws the pencil and trash can itself (a longer pencil than `fa-pencil`; a trash can with its lid joined on and two slots), with a gap cut out of the people round them. Hovering says what it means, e.g. "Shared by you; someone can edit".
+- **Tabs:** a tab that filters on a tag alone in its category hides that tag's pills, and so would hide these icons too. So a tab that filters on any of the owner's shared tags shows the same icons after its name (and count), for the most generous share among those tags. Top tabs and left tabs both show them. To make room, tabs are 20px wider than before at their narrowest: 75px, or 95px with tab counts on.
+- **Settings:** the same icon shows after a shared tag's name in the categories' summary on the Settings page, and after its name box on its category's page (every tag row there keeps room for it, so the name boxes line up). Not in the tabs' "…" menu.
+- **Tag pickers:** the icon also follows a shared tag's name in the dropdown lists of the filter row, the add area, a tab's page and the long-form editor; in the add area's pills (full tag list) and multi-select's pills; and in the tabs' list in Settings (the tags a tab filters on). Not on a closed dropdown's button. Inside a checkbox label or button it's hidden from screen readers (it still has its hover text), so the control's name stays the tag's name.
 - Recipients don't see these icons. They change straight away when the owner changes a tag's sharing, on all the owner's devices.
 
 ### What each level allows
@@ -29,9 +30,7 @@ A note's Lifetime is shared: if a recipient archives one of the owner's notes, i
 
 ### "Shared with me"
 - A user who has had any tags shared with them gains a new category, **"Shared with me"**, holding every tag shared with them, from every owner. It's multi-select, as one note can have several tags shared with the same person.
-- Each tag in it shows its owner's display name, cut to its first 10 characters followed by "…" when it's longer, e.g. "Shopping (Pat)" or "Shopping (Christophe…)":
-  - always on the category page and in the dropdowns and full-tag-list pills;
-  - on the pills under a note, only when two tags shared with this user have the same name.
+- Each tag in it always shows its owner's display name, cut to its first 10 characters followed by "…" when it's longer, e.g. "Shopping (Pat)" or "Shopping (Christophe…)": on the pills under a note, in the dropdowns and full-tag-list pills, in Settings (the categories' and tabs' lists, and the category page), and in messages that name it (e.g. ""Shopping (Pat)" is shared with you to read only, so you can't add notes to it."). Hovering a pill under a note shows its category, "Shared with me", as for the user's own tags.
 - The recipient sets their own order of the tags in "Shared with me" and their own colour (hue) for each. These change only how the notes look to them, never to the owner. As now, a note takes its colour from its first tag with a hue, in the recipient's order.
 - The recipient can't add tags to "Shared with me", rename or delete them, or add their own tags to the category.
 - Tabs and additional tab filters can use "Shared with me" tags, alongside the recipient's own categories and Lifetime.
@@ -110,7 +109,7 @@ Before sharing is built, note ids and tag ids become unique across all users. It
 ### The app
 - **Settings:** "Shared with me" is listed with the built-in categories (it can't be moved). Its page (`/settings/categories/-2`) shows its tags as "Shopping (Pat)" with their colour boxes, grips and arrows, but no name boxes, delete buttons or Add tag; Save sends `PUT /api/shared-tags`.
 - **A category's page:** each saved tag has a share button (`fa-share-nodes`, "Share <tag>"), greyed out until the tag is saved. It opens the share dialog: the people it's shared with, each with a Read-only / Edit / Edit and delete choice and a remove button (`fa-xmark`); then a list of linked people not yet in it, with "Someone else…" for typing an email address, and **Add**. **Save** sends the whole list.
-- **Labels:** dropdowns, full-tag-list pills and Settings show a shared tag as "Shopping (Pat)", the owner's display name cut to 10 characters and "…". On notes the pill shows just "Shopping" unless another tag shared with the user has the same name (ignoring case).
+- **Labels:** everywhere a shared tag is shown, it's "Shopping (Pat)", the owner's display name cut to 10 characters and "…" (`tagLabel`).
 - **Notes shared with you:** read-only notes have no buttons: an eye (`fa-eye`, "Shared by Pat, to read only") in their place. Edit adds Edit, Waiting/Reinstate and Archive. Edit and delete also adds Move to bin. Edit-order mode's Move to top / Move to bottom work on every note.
 - **Editing one:** the tag dropdowns (or pills) are greyed out, in the long-form editor too (and its Match the tab button), and there's no due-date button.
 - **New notes:** the app checks a note with shared tags before sending it, with the server's messages.

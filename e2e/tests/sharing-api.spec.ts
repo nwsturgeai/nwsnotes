@@ -132,7 +132,7 @@ test("adding notes with a shared tag puts them in the owner's notebook, under th
     return [response.status(), ((await response.json()) as { error: string }).error];
   };
   expect(await refused({ tagIds: [SHOPPING, errands] })).toEqual([400, "A note with a tag shared with you can't also have your own tags."]);
-  expect(await refused({ tagIds: [SHOPPING, HOME] })).toEqual([403, '"Home" is shared with you to read only, so you can\'t add notes to it.']);
+  expect(await refused({ tagIds: [SHOPPING, HOME] })).toEqual([403, '"Home (Admin)" is shared with you to read only, so you can\'t add notes to it.']);
   expect(await refused({ tagIds: [SHOPPING], dueDateTime: "2030-01-01T09:00:00.000Z" })).toEqual([400, "Only Admin can set due dates on their notes."]);
   // Sam's own notes can't have the admin's tags added later either.
   const own = (await (await sam.post("/api/notes", { data: { titleText: "Sam's", tagIds: [errands] } })).json()) as ApiNote;

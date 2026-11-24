@@ -218,34 +218,29 @@ body:has(.app) {
   min-width: 95px;
 }
 
-/* "Shared by you" after a shared tag's name on its pills, and on tabs that filter on one: people / what they may do. */
+/* "Shared by you" after a shared tag's name on its pills, and on tabs that filter on one: people, with what they may do in the corner. */
 .sharing-icons {
   display: inline-flex;
   flex: none;
-  gap: 0.15em;
   align-items: center;
   margin-left: 0.35em;
   font-size: 0.85em;
   opacity: 0.85;
 }
 
-.sharing-slash::before {
-  content: "/";
-}
-
-/* The crossed-out pencil is drawn wider than tall, like Font Awesome's "-slash" icons. */
-.sharing-icons .pen-slash {
-  width: 1.25em;
+/* Drawn a little wider than tall, with room for the corner badge. */
+.sharing-icons .sharing-icon {
+  width: 1.24em;
   height: 1em;
 }
 
-/* In a left tab the icons run down the page with the name. */
+/* In a left tab the icon runs down the page with the name. */
 .left-tab-name .sharing-icons {
   margin-top: 0.35em;
   margin-left: 0;
 }
 
-/* Icons stand upright in vertical text, so with the name turned round they'd be upside down: turn them to lie like the letters. */
+/* Icons stand upright in vertical text, so with the name turned round it'd be upside down: turn it to lie like the letters. */
 .left-tab-name .sharing-icons svg {
   transform: rotate(90deg);
 }
@@ -2173,6 +2168,21 @@ body:has(.dragging) {
 
 .tag-row input[type="text"] {
   flex: 1;
+}
+
+/* Room for the "Shared by you" icon after a tag's name, kept on every row so the name boxes line up. */
+.tag-row-sharing {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  /* As tall as the buttons beside it, so it lines up with them. */
+  height: 24px;
+}
+
+.tag-row-sharing .sharing-icons {
+  margin-left: 0;
 }
 
 /* A row with small text under its name: its buttons stay level with the name box, not the text. */

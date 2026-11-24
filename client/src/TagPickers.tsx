@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
-import { LIFETIME_CATEGORY_ID, tagLabel, type Category, type Note, type TabFilter } from "@nwsnotes/shared";
+import { LIFETIME_CATEGORY_ID, tagLabel, type Category, type Note, type TabFilter, type Tag } from "@nwsnotes/shared";
+import { SharingIcons } from "./sharingIcons";
 
 /** The tags chosen in each category's dropdown: category id -> tag ids. */
 export type TagSelection = Record<number, number[]>;
@@ -97,10 +98,17 @@ interface Props {
   counts?: { byTag: ReadonlyMap<number, number>; total: number };
   /** The filter row: each check-list starts with a small "select all" link that ticks every tag. */
   selectAll?: boolean;
+  /** Your own shared tags show the sharing icon after their names. */
+  showSharing?: boolean;
+}
+
+/** The sharing icon after a tag's name in a picker, if it's one of yours that you've shared. */
+function TagSharing({ tag, show }: { tag: Tag; show: boolean | undefined }) {
+  return show && tag.sharedOut ? <SharingIcons permission={tag.sharedOut} decorative /> : null;
 }
 
 /** One dropdown per category. They have no titles: an unset one shows its category name. */
-export function TagPickers({ categories, selection, onChange, disabled, constraints, tabName, checkLists, counts, selectAll }: Props) {
+export function TagPickers({ categories, selection, onChange, disabled, constraints, tabName, checkLists, counts, selectAll, showSharing }: Props) {
   if (categories.length === 0) return null;
 
   return (
@@ -117,6 +125,7 @@ export function TagPickers({ categories, selection, onChange, disabled, constrai
           onChange={(tagIds) => onChange({ ...selection, [category.id]: tagIds })}
           counts={counts}
           selectAll={selectAll}
+          showSharing={showSharing}
         />
       ))}
     </div>
@@ -132,6 +141,7 @@ function TagCount({ count }: { count: number | undefined }) {
 interface DropdownProps {
   counts?: Props["counts"];
   selectAll?: boolean;
+  showSharing?: boolean;
   category: Category;
   chosen: number[];
   /** The selected tab's tags for this category, if the tab filters on it. */
@@ -155,7 +165,7 @@ const LIST_MARGIN_PX = 8;
  * Built by the app rather than using the browser's own dropdown, so both kinds look and behave alike
  * and the app decides which inputs they respond to (see NotesPage's stylus-mode touch handling).
  */
-function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled, onChange, counts, selectAll }: DropdownProps) {
+function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled, onChange, counts, selectAll, showSharing }: DropdownProps) {
   /** Where the open list sits. It is positioned on the window, so a scrolling area can't clip it. */
   const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; room: number }>();
   const open = position !== undefined;
@@ -287,6 +297,7 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
                     onChange={(event) => toggle(tag.id, event.target.checked)}
                   />
                   {tagLabel(tag)}
+                  <TagSharing tag={tag} show={showSharing} />
                   <TagCount count={counts?.byTag.get(tag.id)} />
                   {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
                 </label>
@@ -299,7 +310,13 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
                 <Option label={category.name} unset chosen={chosen.length === 0} onChoose={() => choose(undefined)} />
               )}
               {options.map((tag) => (
-                <Option key={tag.id} label={tagLabel(tag)} chosen={chosen.includes(tag.id)} onChoose={() => choose(tag.id)} />
+                <Option
+                  key={tag.id}
+                  label={tagLabel(tag)}
+                  after={<TagSharing tag={tag} show={showSharing} />}
+                  chosen={chosen.includes(tag.id)}
+                  onChoose={() => choose(tag.id)}
+                />
               ))}
             </>
           )}
@@ -312,11 +329,25 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
 }
 
 /** One option in a single-select list, with a tick when it's the current choice. */
-function Option({ label, unset, chosen, onChoose }: { label: string; unset?: boolean; chosen: boolean; onChoose: () => void }) {
+function Option({
+  label,
+  after,
+  unset,
+  chosen,
+  onChoose,
+}: {
+  label: string;
+  /** Shown after the label (a shared tag's sharing icon). */
+  after?: ReactNode;
+  unset?: boolean;
+  chosen: boolean;
+  onChoose: () => void;
+}) {
   return (
     <button type="button" className={unset ? "tag-option unset" : "tag-option"} aria-pressed={chosen} onClick={onChoose}>
       <span className="tag-option-tick">{chosen && <FontAwesomeIcon icon={faCheck} />}</span>
       {label}
+      {after}
     </button>
   );
 }
@@ -327,7 +358,7 @@ function Option({ label, unset, chosen, onChoose }: { label: string; unset?: boo
  * rules apply as for the dropdowns: a locked tag can't be turned off, and in a single-select category
  * where one of several tags is required, the others can't be chosen.
  */
-export function TagPillPicker({ categories, selection, onChange, disabled, constraints, tabName }: Props) {
+export function TagPillPicker({ categories, selection, onChange, disabled, constraints, tabName, showSharing }: Props) {
   if (categories.length === 0) return null;
   const lockHint = tabName ? `set by the "${tabName}" tab's filters` : "set by this tab's filters";
 
@@ -372,6 +403,7 @@ export function TagPillPicker({ categories, selection, onChange, disabled, const
                 >
                   {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
                   {tagLabel(tag)}
+                  <TagSharing tag={tag} show={showSharing} />
                 </button>
               );
             })}
@@ -392,6 +424,8 @@ interface BulkProps {
   changes: BulkTagChanges;
   onChange: (changes: BulkTagChanges) => void;
   disabled: boolean;
+  /** Your own shared tags show the sharing icon after their names. */
+  showSharing?: boolean;
 }
 
 /**
@@ -400,7 +434,7 @@ interface BulkProps {
  * pill chooses it, and a chosen one unchooses it. In a single-select category, choosing a tag also
  * unchooses the category's other tags (all counting as clicked). Tab rules don't apply.
  */
-export function BulkTagPicker({ categories, notes, changes, onChange, disabled }: BulkProps) {
+export function BulkTagPicker({ categories, notes, changes, onChange, disabled, showSharing }: BulkProps) {
   if (categories.length === 0) return null;
 
   function stateOf(tagId: number): "chosen" | "mixed" | "none" {
@@ -439,6 +473,7 @@ export function BulkTagPicker({ categories, notes, changes, onChange, disabled }
                   onClick={() => toggle(tag.id)}
                 >
                   {tag.name}
+                  <TagSharing tag={tag} show={showSharing} />
                 </button>
               );
             })}
