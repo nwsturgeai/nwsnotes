@@ -335,17 +335,14 @@ export function NotesPage({
   // categories the tab doesn't filter on).
   const tabFilters = useMemo(() => selectedTab?.categories ?? [], [selectedTab]);
   /**
-   * Single-select categories the tab itself filters on with just one tag: their pills are left off the
-   * notes, since they only repeat what the tab already shows. When the filter allows several tags, the
-   * pill says which one a note has, so it shows. (Multi-select ones, and the additional filters, always show.)
+   * Tags the tab itself filters on alone in their category: their pills are left off the notes, since
+   * every note on the tab has them. When the filter allows several tags, the pill says which one a note
+   * has, so it shows. Other tags of the category (in a multi-select one) still show, as do the additional
+   * filters' tags.
    */
-  const filteredSingleSelect = useMemo(
-    () =>
-      tabFilters
-        .filter((filter) => filter.tagIds.length === 1)
-        .map((filter) => filter.categoryId)
-        .filter((id) => categories.some((category) => category.id === id && !category.multiSelect)),
-    [tabFilters, categories],
+  const filteredAloneTagIds = useMemo(
+    () => tabFilters.filter((filter) => filter.tagIds.length === 1).map((filter) => filter.tagIds[0]!),
+    [tabFilters],
   );
   const extraCategories = useMemo(
     () => categories.filter((category) => !tabFilters.some((filter) => filter.categoryId === category.id)),
@@ -1162,7 +1159,7 @@ export function NotesPage({
                           tagIds={note.tagIds}
                           categories={categories}
                           extra={specialPills(note)}
-                          hideCategoryIds={filteredSingleSelect}
+                          hideTagIds={filteredAloneTagIds}
                           showSharing
                           // In multi-select the New pill is plain, so tapping it selects the note like the rest of the row.
                           // Offline it's plain too: resetting the New tags needs the server.

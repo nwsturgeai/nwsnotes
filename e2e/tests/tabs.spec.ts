@@ -23,6 +23,19 @@ test("each tab lists its own notes", async ({ page }) => {
   await expectTitles(page, ALL);
 });
 
+test("a tab filtering a multi-select category on one tag leaves just that tag's pill off", async ({ page }) => {
+  const data = (await (await page.request.get("/api/notes")).json()) as { categories: { id: number; name: string; tags: { id: number; name: string }[] }[] };
+  const topic = data.categories.find((category) => category.name === "Topic")!;
+  const tagId = (name: string) => topic.tags.find((tag) => tag.name === name)!.id;
+  expect((await page.request.post("/api/notes", { data: { titleText: "Shopping ideas", tagIds: [tagId("Ideas"), tagId("Shopping")] } })).ok()).toBe(true);
+  expect((await page.request.post("/api/tabs", { data: { name: "Ideas", categories: [{ categoryId: topic.id, tagIds: [tagId("Ideas")] }] } })).ok()).toBe(true);
+  await page.reload();
+  await selectTab(page, "Ideas");
+  // Every note here has Ideas, so its pill is left off; the note's other Topic tag still shows.
+  await expect(pills(noteRow(page, "Garden ideas"))).toHaveText(["Home"]);
+  await expect(pills(noteRow(page, "Shopping ideas"))).toHaveText(["Shopping", "New"]);
+});
+
 test("the filter row's dropdowns count the notes each tag would list, and the TOTAL", async ({ page }) => {
   const area = await openFilter(page, "Area");
   await expect(area.getByRole("checkbox", { name: /^Work/ }).locator("..")).toContainText("(3)");
