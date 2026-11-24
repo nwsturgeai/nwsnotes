@@ -89,16 +89,6 @@ export function tagLabel(tag: Tag): string {
   return tag.ownerName === undefined ? tag.name : `${tag.name} (${shortOwnerName(tag.ownerName)})`;
 }
 
-/**
- * A tag's name on a note's pills: shared tags only show their owner when another tag shared with the
- * user has the same name (ignoring upper/lower case).
- */
-export function pillLabel(tag: Tag, categories: Category[]): string {
-  if (tag.ownerName === undefined) return tag.name;
-  const shared = categories.find((category) => category.id === SHARED_CATEGORY_ID)?.tags ?? [];
-  return shared.some((other) => other.id !== tag.id && sameName(other.name, tag.name)) ? tagLabel(tag) : tag.name;
-}
-
 /** A tag shared with the user, as the share dialog lists who it's shared with. */
 export interface TagShare {
   userId: number;

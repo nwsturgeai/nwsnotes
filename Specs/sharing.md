@@ -30,9 +30,7 @@ A note's Lifetime is shared: if a recipient archives one of the owner's notes, i
 
 ### "Shared with me"
 - A user who has had any tags shared with them gains a new category, **"Shared with me"**, holding every tag shared with them, from every owner. It's multi-select, as one note can have several tags shared with the same person.
-- Each tag in it shows its owner's display name, cut to its first 10 characters followed by "…" when it's longer, e.g. "Shopping (Pat)" or "Shopping (Christophe…)":
-  - always on the category page and in the dropdowns and full-tag-list pills;
-  - on the pills under a note, only when two tags shared with this user have the same name.
+- Each tag in it always shows its owner's display name, cut to its first 10 characters followed by "…" when it's longer, e.g. "Shopping (Pat)" or "Shopping (Christophe…)": on the pills under a note, in the dropdowns and full-tag-list pills, in Settings (the categories' and tabs' lists, and the category page), and in messages that name it (e.g. ""Shopping (Pat)" is shared with you to read only, so you can't add notes to it."). Hovering a pill under a note shows its category, "Shared with me", as for the user's own tags.
 - The recipient sets their own order of the tags in "Shared with me" and their own colour (hue) for each. These change only how the notes look to them, never to the owner. As now, a note takes its colour from its first tag with a hue, in the recipient's order.
 - The recipient can't add tags to "Shared with me", rename or delete them, or add their own tags to the category.
 - Tabs and additional tab filters can use "Shared with me" tags, alongside the recipient's own categories and Lifetime.
@@ -111,7 +109,7 @@ Before sharing is built, note ids and tag ids become unique across all users. It
 ### The app
 - **Settings:** "Shared with me" is listed with the built-in categories (it can't be moved). Its page (`/settings/categories/-2`) shows its tags as "Shopping (Pat)" with their colour boxes, grips and arrows, but no name boxes, delete buttons or Add tag; Save sends `PUT /api/shared-tags`.
 - **A category's page:** each saved tag has a share button (`fa-share-nodes`, "Share <tag>"), greyed out until the tag is saved. It opens the share dialog: the people it's shared with, each with a Read-only / Edit / Edit and delete choice and a remove button (`fa-xmark`); then a list of linked people not yet in it, with "Someone else…" for typing an email address, and **Add**. **Save** sends the whole list.
-- **Labels:** dropdowns, full-tag-list pills and Settings show a shared tag as "Shopping (Pat)", the owner's display name cut to 10 characters and "…". On notes the pill shows just "Shopping" unless another tag shared with the user has the same name (ignoring case).
+- **Labels:** everywhere a shared tag is shown, it's "Shopping (Pat)", the owner's display name cut to 10 characters and "…" (`tagLabel`).
 - **Notes shared with you:** read-only notes have no buttons: an eye (`fa-eye`, "Shared by Pat, to read only") in their place. Edit adds Edit, Waiting/Reinstate and Archive. Edit and delete also adds Move to bin. Edit-order mode's Move to top / Move to bottom work on every note.
 - **Editing one:** the tag dropdowns (or pills) are greyed out, in the long-form editor too (and its Match the tab button), and there's no due-date button.
 - **New notes:** the app checks a note with shared tags before sending it, with the server's messages.

@@ -48,6 +48,7 @@ import {
   LIFETIME_WAITING,
   noteMatchesFilters,
   orderNotes,
+  tagLabel,
   validateTitle,
   validateTitleImage,
   withoutMarkers,
@@ -1635,7 +1636,7 @@ function sharedNoteProblem(tagIds: number[], categories: Category[], dueDate: st
   }
   if (new Set(shared.map((tag) => tag.ownerId)).size > 1) return "A note can only have tags shared with you by one person.";
   const readOnly = shared.find((tag) => tag.permission === undefined || !allows(tag.permission, "edit"));
-  if (readOnly) return `"${readOnly.name}" is shared with you to read only, so you can't add notes to it.`;
+  if (readOnly) return `"${tagLabel(readOnly)}" is shared with you to read only, so you can't add notes to it.`;
   if (dueDate) return `Only ${shared[0]!.ownerName ?? "its owner"} can set due dates on their notes.`;
   return undefined;
 }

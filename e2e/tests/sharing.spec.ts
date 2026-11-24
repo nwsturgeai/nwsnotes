@@ -67,7 +67,7 @@ test("the owner shares a tag from its category page", async ({ page, browser }) 
 
   // Sam's page shows the note straight away (a live update), with only the shared tag.
   await expect(noteRow(sam, "Buy milk")).toBeVisible();
-  await expect(pills(noteRow(sam, "Buy milk"))).toHaveText(["Shopping", "New"]);
+  await expect(pills(noteRow(sam, "Buy milk"))).toHaveText(["Shopping (Admin)", "New"]);
   await expect(noteRow(sam, "Garden ideas")).toHaveCount(0);
   await sam.context().close();
 });
@@ -143,7 +143,7 @@ test("a recipient adds notes to a shared tag, and sets its colour and order for 
   await sam.context().close();
 });
 
-test("a shared tag shows its owner's name where two shared tags share a name", async ({ page, browser }) => {
+test("a shared tag's pills always show its owner's name", async ({ page, browser }) => {
   const robin = await newUserPage(page.request, browser, "Christopher Robin", "robin@example.com");
   const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
   const category = await robin.request.post("/api/categories", { data: { name: "Lists", multiSelect: false, tags: [{ name: "Shopping" }] } });
@@ -153,9 +153,10 @@ test("a shared tag shows its owner's name where two shared tags share a name", a
   await shareThroughApi(page.request, SHOPPING, "sam@example.com", "read");
 
   await openNotes(sam);
-  // Both are "Shopping", so each pill says whose; a long name is cut to 10 letters.
+  // Each pill says whose it is; a long name is cut to 10 letters. Hovering shows the category, as for your own tags.
   await expect(pills(noteRow(sam, "Bread"))).toHaveText(["Shopping (Christophe…)", "New"]);
   await expect(pills(noteRow(sam, "Buy milk"))).toHaveText(["Shopping (Admin)", "New"]);
+  await expect(pills(noteRow(sam, "Buy milk")).first()).toHaveAttribute("title", "Shared with me");
   await robin.context().close();
   await sam.context().close();
 });

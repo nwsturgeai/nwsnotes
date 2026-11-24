@@ -4,8 +4,7 @@ import {
   LIFETIME_BIN,
   LIFETIME_NEW,
   LIFETIME_WAITING,
-  pillLabel,
-  shortOwnerName,
+  tagLabel,
   type Category,
 } from "@nwsnotes/shared";
 import { SharingIcons } from "./sharingIcons";
@@ -58,8 +57,8 @@ export function TagPills({
             </button>
           </li>
         ) : (
-          <li key={tag.id} title={tag.ownerName !== undefined ? `Shared by ${shortOwnerName(tag.ownerName)}` : category.name}>
-            {pillLabel(tag, categories)}
+          <li key={tag.id} title={category.name}>
+            {tagLabel(tag)}
             {showSharing && tag.sharedOut && <SharingIcons permission={tag.sharedOut} />}
           </li>
         ),
