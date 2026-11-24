@@ -177,15 +177,16 @@ body:has(.app) {
 }
 
 /*
- * Every tab has the same width and shrinks equally when space runs out, down to 75px; tabs that
- * would be narrower go into the "…" menu (Header.tsx works out which).
+ * Each tab is as wide as its name, up to a limit (a longer name is cut short); tabs that don't fit go
+ * into the "…" menu (Header.tsx measures the tabs and works out which).
  */
 .tab {
-  flex: 0 1 9rem;
-  min-width: 75px;
+  flex: 0 1 auto;
+  min-width: 2.5rem;
+  max-width: 15rem;
   /* 4px below the top of the 40px header. */
   height: 36px;
-  padding: 0 0.3rem;
+  padding: 0 0.6rem;
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 8px 8px 0 0;
@@ -213,9 +214,9 @@ body:has(.app) {
   flex: none;
 }
 
-/* With tab counts on, tabs are a little wider. */
-.tab-strip.with-counts .tab:not(.tab-more-button) {
-  min-width: 95px;
+/* While Header.tsx measures the tabs (before they're drawn): each at its own width, none squeezed. */
+.tab-strip.measuring .tab {
+  flex: none;
 }
 
 /* "Shared by you" after a shared tag's name on its pills, and on tabs that filter on one: people, with what they may do in the corner. */
@@ -456,6 +457,8 @@ a:focus-visible {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* When the tabs don't fit, a thin scrollbar, so it doesn't take up much of the narrow strip. */
+  scrollbar-width: thin;
   /* The line between the strip and the list, drawn inside it, so the selected tab can cover it. */
   box-shadow: inset -1px 0 0 var(--line);
   background: var(--bg);
@@ -2661,6 +2664,28 @@ body:has(.dragging) {
 .share-add input {
   flex: 1 1 10rem;
   min-width: 0;
+}
+
+/* The dialog's dropdowns (what each person may do, and the person to add): roomy, like its email box. */
+.share-dialog select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.share-dialog select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.share-dialog select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 /* ---- Server errors page (admins) ----------------------------------------- */
