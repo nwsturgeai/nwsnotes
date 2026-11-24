@@ -376,7 +376,7 @@ export function SettingsPage({
           </label>
           <p>Write new notes with a stylus instead of typing them.</p>
         </div>
-        <div>
+        <div className="columns-cell">
           <div className="columns-setting" role="radiogroup" aria-labelledby="columns-label">
             <span id="columns-label" className="switch-label">
               Columns
@@ -691,6 +691,12 @@ export function SettingsPage({
           Logged in as {me.displayName} ({me.loginName})
         </p>
         <div className="lifetime-buttons">
+          <button type="button" className="button" onClick={() => onNavigate({ name: "name" })}>
+            Change name
+          </button>
+          <button type="button" className="button" onClick={() => onNavigate({ name: "email" })}>
+            Change email
+          </button>
           <button type="button" className="button" onClick={() => onNavigate({ name: "password" })}>
             Change password
           </button>

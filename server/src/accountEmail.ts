@@ -68,3 +68,37 @@ export function passwordChangedEmail(to: { email: string; name: string }, how: P
   ]);
   return { to: to.email, toName: to.name, subject: "Your nwsnotes password was changed", ...body };
 }
+
+/** The email to a new login email, with the link that makes the change. */
+export function emailChangeLinkEmail(to: { email: string; name: string }, currentEmail: string, link: string): Email {
+  const body = emailBody([
+    { text: `Hello ${to.name},`, html: `Hello ${escapeHtml(to.name)},` },
+    {
+      text: `You asked to change the email you log in to nwsnotes with, from ${currentEmail} to this address, ${to.email}.`,
+      html: `You asked to change the email you log in to nwsnotes with, from ${escapeHtml(currentEmail)} to this address, ${escapeHtml(to.email)}.`,
+    },
+    { text: `Confirm the new email: ${link}`, html: `<a href="${escapeHtml(link)}">Confirm the new email</a>` },
+    {
+      text: `The link works once, for 24 hours. Until it's used, keep logging in with ${currentEmail}. If you didn't ask for this, ignore this email: nothing has changed.`,
+      html: `The link works once, for 24 hours. Until it's used, keep logging in with ${escapeHtml(currentEmail)}. If you didn't ask for this, ignore this email: nothing has changed.`,
+    },
+  ]);
+  return { to: to.email, toName: to.name, subject: "Confirm your new nwsnotes email", ...body };
+}
+
+/** The email to the old login email once it has been changed, so they'd notice if it wasn't them. */
+export function emailChangedEmail(to: { email: string; name: string }, newEmail: string): Email {
+  const body = emailBody([
+    { text: `Hello ${to.name},`, html: `Hello ${escapeHtml(to.name)},` },
+    {
+      text: `The email you log in to nwsnotes with has just been changed from this address, ${to.email}, to ${newEmail}.`,
+      html: `The email you log in to nwsnotes with has just been changed from this address, ${escapeHtml(to.email)}, to ${escapeHtml(newEmail)}.`,
+    },
+    { text: `From now on, log in with ${newEmail}.`, html: `From now on, log in with ${escapeHtml(newEmail)}.` },
+    {
+      text: "If this wasn't you, tell the admin straight away.",
+      html: "If this wasn't you, tell the admin straight away.",
+    },
+  ]);
+  return { to: to.email, toName: to.name, subject: "Your nwsnotes email was changed", ...body };
+}

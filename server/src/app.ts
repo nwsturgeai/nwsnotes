@@ -20,6 +20,7 @@ import type { PushReminders } from "./push.js";
 import type { Notebooks } from "./notebooks.js";
 import { accountConfirmedEmail } from "./accountEmail.js";
 import { PasswordResets } from "./passwordReset.js";
+import { EmailChanges } from "./emailChange.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
 import { actingUser } from "./context.js";
@@ -127,6 +128,8 @@ export function createApp(
 
   const passwordResets = new PasswordResets(config, users, live, mailer);
   app.use("/api/password-reset", passwordResets.router(loginLimiter));
+  const emailChanges = new EmailChanges(config, users, live, mailer, (req) => passwordResets.siteAddress(req));
+  app.use("/api/email-change", emailChanges.router(loginLimiter));
 
   // --- Asking for an account (the public sign-up page) ------------------------
 
@@ -189,6 +192,20 @@ export function createApp(
     live.logOut(user.id, req.get(CONNECTION_ID_HEADER));
     res.json({ ok: true });
     passwordResets.passwordChanged(req, user, "settings");
+  });
+
+  // Changing your own display name: your other pages, and the pages of everyone you share with, show it without a reload.
+  meRouter.put("/name", async (req, res) => {
+    const user = await users.changeOwnName(userOf(res).id, req.body);
+    live.notifyChanged(user.id, req.get(CONNECTION_ID_HEADER));
+    notifyUsers(sharing.recipientsOf(user.id));
+    res.json(users.me(user));
+  });
+
+  // Asking to change your own login email: a link is emailed to the new one, and nothing changes until it's opened.
+  meRouter.post("/email", emailChanges.askLimiter(), async (req, res) => {
+    const loginName = await emailChanges.ask(req, userOf(res));
+    res.json({ loginName });
   });
 
   app.use("/api/me", meRouter);

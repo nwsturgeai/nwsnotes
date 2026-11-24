@@ -22,6 +22,8 @@ These are kept separately on each of your devices, so your phone and tablet can 
 
 ## Your account
 
+- **Change name:** the name shown in Settings, and to anyone you share tags with.
+- **Change email:** the email you log in with. Enter the new one and your current password, and we'll email a link to the new address. Your email changes only once you open the link and press **Confirm** (it works for 24 hours), so a mistyped address changes nothing. Your old address is then emailed to say so. You stay logged in on your devices.
 - **Change password:** choose your own password. Your other devices are logged out, and you log in there again with the new one. You're emailed to say it was changed, so you'd know if someone else did it.
 - **Log out.**
 

@@ -26,6 +26,8 @@ import { registerReminders, turnOffReminders } from "./reminders";
 import { usePage } from "./route";
 import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
+import { NamePage } from "./NamePage";
+import { EmailPage } from "./EmailPage";
 import { UsersPage } from "./UsersPage";
 import { ServerLogPage } from "./ServerLogPage";
 import { SettingsPage, type SettingsSection } from "./SettingsPage";
@@ -299,7 +301,7 @@ export function App() {
   /** The settings section to open at, after saving or cancelling a category or a tab. */
   const [settingsSection, setSettingsSection] = useState<SettingsSection>();
   useEffect(() => {
-    if (page.name !== "settings" && page.name !== "password") setSettingsNotice(undefined);
+    if (page.name !== "settings" && page.name !== "password" && page.name !== "name" && page.name !== "email") setSettingsNotice(undefined);
   }, [page.name]);
 
   switch (state.screen) {
@@ -375,6 +377,29 @@ export function App() {
             <PasswordPage
               onChanged={() => {
                 setSettingsNotice("Password changed. Your other devices have been logged out.");
+                navigate({ name: "settings" });
+              }}
+              onClose={() => navigate({ name: "settings" })}
+              onSessionExpired={sessionExpired}
+            />
+          ) : page.name === "name" ? (
+            <NamePage
+              me={state.me}
+              onChanged={(me) => {
+                setState((prev) => (prev.screen === "notes" ? { ...prev, me: { ...prev.me, ...me } } : prev));
+                setSettingsNotice("Name changed.");
+                navigate({ name: "settings" });
+              }}
+              onClose={() => navigate({ name: "settings" })}
+              onSessionExpired={sessionExpired}
+            />
+          ) : page.name === "email" ? (
+            <EmailPage
+              me={state.me}
+              onSent={(loginName) => {
+                setSettingsNotice(
+                  `We've sent a link to ${loginName}. Your email will change once you open it (it works for 24 hours). Until then, keep logging in with ${state.me.loginName}.`,
+                );
                 navigate({ name: "settings" });
               }}
               onClose={() => navigate({ name: "settings" })}
