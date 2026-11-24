@@ -305,6 +305,7 @@ export class Sharing {
       const store = await this.notebooks.for(user.id);
       return store.add(title, rawTagIds, details, rawParentId, {
         ...options,
+        createdByUserId: user.id,
         noteLimit: noteLimitOf(user),
         stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(user)),
       });
@@ -339,6 +340,7 @@ export class Sharing {
       noteLimit: noteLimitOf(owner),
       stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(owner)),
       ownerName: owner.displayName,
+      createdByUserId: user.id,
     });
     return { note: this.present(note, shared) ?? note, created, ownerId: owner.id };
   }

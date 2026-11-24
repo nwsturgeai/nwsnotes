@@ -6,15 +6,23 @@ import {
   LIFETIME_NEW,
   TITLE_MAX_LENGTH,
   LINKED_REPLY,
+  dueCommand,
+  dueNotUnderstoodReply,
+  dueSetReply,
   emailTabCommand,
   emailTabTarget,
   emailedReply,
   fitsOneSms,
   formatPhoneNumber,
+  formatSpokenDue,
+  isLongForm,
   isValidLoginName,
   matchSpokenTab,
   notSavedReply,
+  readSpokenDue,
   savedReply,
+  withoutMarkers,
+  type Note,
   type SmsLinkCode,
   type SmsStatus,
   type Tab,
@@ -43,6 +51,8 @@ const RATE_WINDOW_MS = 10 * 60 * 1000;
 /** At most this many tab emails a day for each user, as Brevo's free plan sends 300 a day for everyone. */
 const EMAILS_PER_DAY = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** "App due" sets the due date of a note added at most this long ago. */
+const DUE_WINDOW_MS = 5 * 60 * 1000;
 
 /** Texts that are only one of these words aren't notes: Twilio may act on them itself (opting out of texts). */
 const OPT_OUT_WORDS = new Set(["stop", "start", "unstop", "help", "info", "cancel", "end", "quit", "unsubscribe", "stopall"]);
@@ -268,6 +278,8 @@ export class SmsNotes {
       log(`not saved: user ${user.id}'s account is turned off.`);
       return this.failed(user.id, text, "your nwsnotes account is turned off.");
     }
+    const when = dueCommand(text);
+    if (when !== undefined) return this.setDue(user, when, log);
     const named = emailTabCommand(text);
     if (named !== undefined) return this.emailTab(user, named, log);
     return this.addNote(user, text, log);
@@ -381,6 +393,78 @@ export class SmsNotes {
       console.error(`Couldn't email user ${user.id}'s tab:`, error);
       return this.notEmailed(user.id, "nwsnotes couldn't send the email. Please try again later.");
     }
+  }
+
+  /**
+   * "App due <when>": sets the due date of the note the user added last, if that was in the last 5 minutes
+   * (by text or in the app). Notes others added in the user's notebook don't count. Texts back only if it
+   * couldn't (or with confirmations on).
+   */
+  private async setDue(user: User, when: string, log: (outcome: string) => void): Promise<string | undefined> {
+    if (when === "") {
+      log(`due date not set: no date or time given, for user ${user.id}.`);
+      return this.dueNotSet(user.id, 'Not set: say when it\'s due, e.g. "App due tomorrow 3pm".');
+    }
+    try {
+      const now = new Date();
+      // Their own notebook and those shared with them: a note they added with a shared tag is in its owner's.
+      const { notes } = await this.sharing.dataFor(user.id);
+      const last = notes
+        .filter((note) => note.createdByUserId === user.id)
+        .reduce<Note | undefined>(
+          (latest, note) =>
+            !latest || note.createdDateTime > latest.createdDateTime || (note.createdDateTime === latest.createdDateTime && note.id > latest.id)
+              ? note
+              : latest,
+          undefined,
+        );
+      if (!last || now.getTime() - Date.parse(last.createdDateTime) > DUE_WINDOW_MS) {
+        log(`due date not set: user ${user.id} hasn't added a note in the last 5 minutes.`);
+        return this.dueNotSet(user.id, "Not set: you haven't added a note in the last 5 minutes.");
+      }
+      if (last.shared) {
+        log(`due date not set: user ${user.id}'s last note ${last.id} is in user ${last.shared.ownerId}'s notebook.`);
+        const reply = `Not set: your last note is in ${last.shared.ownerName}'s notebook, so only they can set its due date.`;
+        return this.dueNotSet(user.id, fitsOneSms(reply) ? reply : "Not set: your last note is in someone else's notebook, so only they can set its due date.");
+      }
+      if (isLongForm(last)) {
+        log(`due date not set: user ${user.id}'s last note ${last.id} is a long-form note.`);
+        return this.dueNotSet(user.id, "Not set: your last note is a long-form note, which can't have a due date.");
+      }
+      const read = readSpokenDue(when, now);
+      if (!read.ok) {
+        log(`due date not set: ${read.reason === "past" ? "the date and time has passed" : "the date and time wasn't understood"}, for user ${user.id}.`);
+        return this.dueNotSet(
+          user.id,
+          read.reason === "past" ? `Not set: ${formatSpokenDue(read.dueDateTime, now)} has already passed.` : dueNotUnderstoodReply(when),
+        );
+      }
+      const store = await this.notebooks.for(user.id);
+      const note = await actingUser.run({ userId: user.id, displayName: user.displayName }, () =>
+        store.setDueDate(last.id, read.dueDateTime, { source: "sms" }),
+      );
+      this.live.notifyChanged(user.id, undefined);
+      const confirm = user.smsConfirmations === true;
+      log(`due date set on user ${user.id}'s note ${note.id}${confirm ? "; confirmed by text" : ""}.`);
+      const due = formatSpokenDue(read.dueDateTime, now);
+      const title = note.titleText !== undefined ? withoutMarkers(note.titleText) : "[Handwritten note]";
+      await this.push.notify(user.id, { title: `Due ${due}`, body: title, tag: `sms-due-${note.id}` });
+      return confirm ? dueSetReply(due, title) : undefined;
+    } catch (error) {
+      log(`due date not set: an error (below) setting user ${user.id}'s due date.`);
+      console.error(`Couldn't set user ${user.id}'s due date by text:`, error);
+      return this.dueNotSet(user.id, "Not set: nwsnotes can't save right now. Please send it again later.");
+    }
+  }
+
+  /** A due date that wasn't set: a notification saying why, and the reply to text back (one SMS). */
+  private async dueNotSet(userId: number, reply: string): Promise<string> {
+    try {
+      await this.push.notify(userId, { title: "Due date not set", body: reply.replace(/^Not set: (.)/, (_all, first: string) => first.toUpperCase()), tag: `sms-due-not-set-${Date.now()}` });
+    } catch (error) {
+      console.error("Couldn't send a notification:", error);
+    }
+    return reply;
   }
 
   /**

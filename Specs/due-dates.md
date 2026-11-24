@@ -30,6 +30,8 @@ A note is due
 ## Agreed technical decisions
 
 ### Due dates
+- **Who added it:** every note records `createdByUserId`, the id of the user who added it: the notebook's owner, or someone a tag is shared with who added it in the owner's notebook. Set by the server when the note is added (`POST /api/notes`, or by text message) and kept by every later change. Notes added before it existed have none. It's used by "App due" texts (see "Setting a due date" in [text-messages.md](text-messages.md)).
+- **Set by text message:** "App due tomorrow 3pm" sets the due date of the note the person added in the last 5 minutes (see [text-messages.md](text-messages.md)).
 - **Stored on the note:** optional `dueDateTime` (ISO 8601, UTC). It's sent in the body of `POST /api/notes` and `PUT /api/notes/:id`. Since a PUT replaces the note, leaving it out clears it.
   - The server checks it's a valid date-time and refuses it on a long-form note.
   - Converting a note to long-form removes its due date. The convert button's tooltip says so when the note has one.

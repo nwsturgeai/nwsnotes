@@ -1,6 +1,7 @@
 import { nameClashesWithSpokenName, spokenNameError } from "./sms";
 
 export * from "./sms";
+export * from "./spokenDue";
 
 /** A single note, as stored on the server and sent to the website. */
 export interface Note {
@@ -29,6 +30,11 @@ export interface Note {
   detailsImage?: string;
   /** For a note added while a long-form note was open: that long-form note's id. */
   parentId?: number;
+  /**
+   * The id of the user who added the note: its owner, or someone a tag is shared with who added it in
+   * the owner's notebook. Set by the server; missing on notes added before it was recorded.
+   */
+  createdByUserId?: number;
   /** ISO 8601, UTC: when the note is due. Regular notes only. */
   dueDateTime?: string;
   /** The due date a reminder has been sent for (or that was already past when set), so it's sent once. Set by the server. */

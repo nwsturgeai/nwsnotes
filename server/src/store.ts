@@ -442,6 +442,8 @@ export class NoteStore {
       source?: "sms";
       /** Set when someone a tag is shared with adds the note: this notebook's owner, for the limits' messages. */
       ownerName?: string;
+      /** Who is adding it (the owner, or someone a tag is shared with). */
+      createdByUserId?: number;
     } = {},
   ): Promise<{ note: Note; created: boolean }> {
     return this.enqueue(async () => {
@@ -489,6 +491,7 @@ export class NoteStore {
         ...details,
         ...(parentId !== undefined && { parentId }),
         ...dueDateFields(options.dueDateTime, undefined, now),
+        ...(options.createdByUserId !== undefined && { createdByUserId: options.createdByUserId }),
         createdDateTime,
         lastModifiedDateTime: timestamp,
         tagsChangedDateTime: offlineTime(options.tagsChangedDateTime, now) ?? createdDateTime,
@@ -593,6 +596,7 @@ export class NoteStore {
         // A child keeps its parent.
         ...(existing.parentId !== undefined && { parentId: existing.parentId }),
         ...dueDateFields(options.dueDateTime, existing, now),
+        ...(existing.createdByUserId !== undefined && { createdByUserId: existing.createdByUserId }),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
         tagsChangedDateTime: this.tagsChangedTime(existing, newTagIds, now, options.tagsChangedDateTime),
@@ -607,6 +611,25 @@ export class NoteStore {
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
         record: { summary },
         longFormUpdateId: longForm ? id : undefined,
+      });
+      return note;
+    });
+  }
+
+  /**
+   * Sets a regular note's due date (already validated), keeping everything else about it, and saves.
+   * Used by "App due" texts; the page sets due dates with the rest of the note (updateNote).
+   */
+  setDueDate(id: number, dueDateTime: string, options: { source?: "sms" } = {}): Promise<Note> {
+    return this.enqueue(async () => {
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
+      if (isLongForm(existing)) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
+      const now = this.nextSaveTime();
+      const { reminderSentFor: _sent, ...rest } = existing;
+      const note: Note = { ...rest, ...dueDateFields(dueDateTime, existing, now), lastModifiedDateTime: now.toISOString() };
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
+        record: { summary: `Set the due date of ${label(note)}${options.source === "sms" ? " by text message" : ""}` },
       });
       return note;
     });

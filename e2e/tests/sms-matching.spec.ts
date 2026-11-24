@@ -10,7 +10,10 @@ import {
   notSavedReply,
   savedReply,
   spokenNameError,
+  dueSetReply,
+  dueNotUnderstoodReply,
 } from "../../shared/src/sms";
+import { dueCommand, formatSpokenDue, readSpokenDue } from "../../shared/src/spokenDue";
 
 // Unit tests of the shared text-message code: no browser or server needed, so they run once (desktop).
 test.beforeEach(() => {
@@ -155,4 +158,135 @@ test("the email command names a tab by its name or spoken name, or All", () => {
   expect(target("tab")).toBeUndefined();
   expect(target("")).toBeUndefined();
   expect(target("tab shopping and work")).toBeUndefined();
+});
+
+// ---- "App due": reading a dictated date and time --------------------------------------
+
+/** Tuesday 24 November 2026, 10:00 in the UK (GMT). */
+const NOW = new Date("2026-11-24T10:00:00Z");
+
+/** What a dictated date and time comes to, as replies show it, or why it was refused. */
+const due = (text: string, now = NOW) => {
+  const read = readSpokenDue(text, now);
+  return read.ok ? formatSpokenDue(read.dueDateTime, now) : read.reason;
+};
+
+test('"App due", "App note due" and "App last note due" are the due-date command', () => {
+  expect(dueCommand("App due tomorrow 3pm")).toBe("tomorrow 3pm");
+  expect(dueCommand("app note due: Friday")).toBe("Friday");
+  expect(dueCommand("App Last Note Due, 9:30.")).toBe("9:30.");
+  expect(dueCommand("App due date tomorrow")).toBe("tomorrow");
+  expect(dueCommand("App due")).toBe("");
+  expect(dueCommand("App email tab Work")).toBeUndefined();
+  expect(dueCommand("Apple due tomorrow")).toBeUndefined();
+  expect(dueCommand("Due tomorrow, the gas bill")).toBeUndefined();
+  expect(dueCommand("App note about dues")).toBeUndefined();
+});
+
+test("today and tomorrow, with am/pm or the 24-hour clock", () => {
+  expect(due("tomorrow at 3pm")).toBe("Wed 25/11 15:00");
+  expect(due("tomorrow at 3 p.m.")).toBe("Wed 25/11 15:00");
+  expect(due("Tomorrow, 3 PM.")).toBe("Wed 25/11 15:00");
+  expect(due("tomorrow 15:00")).toBe("Wed 25/11 15:00");
+  expect(due("tomorrow 15.30")).toBe("Wed 25/11 15:30");
+  expect(due("today 1500 hours")).toBe("Tue 24/11 15:00");
+  expect(due("today 11:45 am")).toBe("Tue 24/11 11:45");
+  expect(due("today 12 pm")).toBe("Tue 24/11 12:00");
+  expect(due("tomorrow 12 am")).toBe("Wed 25/11 00:00");
+  expect(due("tomorrow 00:30")).toBe("Wed 25/11 00:30");
+  expect(due("today 9 o'clock pm")).toBe("Tue 24/11 21:00");
+});
+
+test("a date with no time is 20:00; a time with no date is today, or tomorrow once it has passed", () => {
+  expect(due("today")).toBe("Tue 24/11 20:00");
+  expect(due("tomorrow")).toBe("Wed 25/11 20:00");
+  expect(due("3pm")).toBe("Tue 24/11 15:00");
+  expect(due("9am")).toBe("Wed 25/11 09:00");
+  expect(due("10:00")).toBe("Wed 25/11 10:00");
+  expect(due("10:01")).toBe("Tue 24/11 10:01");
+});
+
+test("an hour up to 12 with no am or pm is between 7am and 6pm", () => {
+  expect(due("tomorrow 7")).toBe("Wed 25/11 07:00");
+  expect(due("tomorrow 11")).toBe("Wed 25/11 11:00");
+  expect(due("tomorrow 12")).toBe("Wed 25/11 12:00");
+  expect(due("tomorrow 1")).toBe("Wed 25/11 13:00");
+  expect(due("tomorrow 6:30")).toBe("Wed 25/11 18:30");
+  expect(due("tomorrow 0")).toBe("Wed 25/11 00:00");
+  expect(due("tomorrow 13")).toBe("Wed 25/11 13:00");
+  expect(due("tomorrow 23:15")).toBe("Wed 25/11 23:15");
+  // A leading 0 or four digits is the 24-hour clock.
+  expect(due("tomorrow 06:30")).toBe("Wed 25/11 06:30");
+  expect(due("tomorrow 0600")).toBe("Wed 25/11 06:00");
+  // A part of the day settles it.
+  expect(due("tonight at 7")).toBe("Tue 24/11 19:00");
+  expect(due("tomorrow 6 in the morning")).toBe("Wed 25/11 06:00");
+});
+
+test("numbers in words, as dictation may write them", () => {
+  expect(due("tomorrow at three pm")).toBe("Wed 25/11 15:00");
+  expect(due("tomorrow at nine thirty")).toBe("Wed 25/11 09:30");
+  expect(due("tomorrow nine oh five pm")).toBe("Wed 25/11 21:05");
+  expect(due("tomorrow fifteen hundred hours")).toBe("Wed 25/11 15:00");
+  expect(due("tomorrow at half past three")).toBe("Wed 25/11 15:30");
+  expect(due("tomorrow at quarter to seven pm")).toBe("Wed 25/11 18:45");
+  expect(due("tomorrow twenty past eleven")).toBe("Wed 25/11 11:20");
+  expect(due("the twenty fifth of December")).toBe("Fri 25/12 20:00");
+  expect(due("December the first at noon")).toBe("Tue 01/12 12:00");
+});
+
+test("other days and dates: weekdays, day and month, UK numeric dates", () => {
+  expect(due("Friday")).toBe("Fri 27/11 20:00");
+  expect(due("on Friday at 10am")).toBe("Fri 27/11 10:00");
+  expect(due("next Friday")).toBe("Fri 27/11 20:00");
+  // Today's weekday is a week today.
+  expect(due("Tuesday")).toBe("Tue 01/12 20:00");
+  expect(due("Friday 27th November")).toBe("Fri 27/11 20:00");
+  expect(due("Thursday 27th November")).toBe("unclear");
+  expect(due("day after tomorrow 9")).toBe("Thu 26/11 09:00");
+  expect(due("25th December 9am")).toBe("Fri 25/12 09:00");
+  expect(due("Dec 25 at 9")).toBe("Fri 25/12 09:00");
+  expect(due("25/12")).toBe("Fri 25/12 20:00");
+  expect(due("5/1 14:00")).toBe("Tue 05/01/27 14:00");
+  expect(due("1 March 2027 10:00")).toBe("Mon 01/03/27 10:00");
+  // A date that has passed this year is next year's.
+  expect(due("3rd of January")).toBe("Sun 03/01/27 20:00");
+  expect(due("midnight")).toBe("Wed 25/11 00:00");
+  expect(due("tomorrow midnight")).toBe("Thu 26/11 00:00");
+  expect(due("tomorrow morning")).toBe("Wed 25/11 09:00");
+  expect(due("tomorrow afternoon")).toBe("Wed 25/11 15:00");
+  expect(due("tonight")).toBe("Tue 24/11 20:00");
+});
+
+test("UK time: GMT in winter, BST in summer", () => {
+  const summer = readSpokenDue("25th May 3pm", NOW);
+  expect(summer).toEqual({ ok: true, dueDateTime: "2027-05-25T14:00:00.000Z" });
+  const winter = readSpokenDue("tomorrow 3pm", NOW);
+  expect(winter).toEqual({ ok: true, dueDateTime: "2026-11-25T15:00:00.000Z" });
+  // Sent at 23:30 BST on Saturday 24 October 2026, the night the clocks go back: 9am on Sunday is GMT.
+  expect(readSpokenDue("tomorrow 9am", new Date("2026-10-24T22:30:00Z"))).toEqual({ ok: true, dueDateTime: "2026-10-25T09:00:00.000Z" });
+});
+
+test("past dates and times, and anything not understood, are refused", () => {
+  expect(due("today 9am")).toBe("past");
+  expect(due("today 10:00")).toBe("past");
+  expect(due("1/1/2026")).toBe("past");
+  expect(due("yesterday")).toBe("unclear");
+  expect(due("")).toBe("unclear");
+  expect(due("soon")).toBe("unclear");
+  expect(due("tomorrow at 3pm please")).toBe("unclear");
+  expect(due("31st April")).toBe("unclear");
+  expect(due("tomorrow 25:00")).toBe("unclear");
+  expect(due("tomorrow 15 am")).toBe("unclear");
+  expect(due("today tomorrow")).toBe("unclear");
+  expect(due("3pm 4pm")).toBe("unclear");
+});
+
+test("due-date replies fit in one text", () => {
+  expect(dueSetReply("Wed 25/11 15:00", "Ring the bank")).toBe('Due Wed 25/11 15:00: "Ring the bank"');
+  const long = dueSetReply("Wed 25/11 15:00", "word ".repeat(60));
+  expect(long).toMatch(/^Due Wed 25\/11 15:00: "word word .*\.\.\."$/);
+  expect(fitsOneSms(long)).toBe(true);
+  expect(dueNotUnderstoodReply("soon")).toBe(`Not set: couldn't understand "soon" as a date and time.`);
+  expect(fitsOneSms(dueNotUnderstoodReply("whenever ".repeat(30)))).toBe(true);
 });

@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { APIRequestContext, Page } from "@playwright/test";
+import { formatSpokenDue, readSpokenDue } from "../../shared/src/spokenDue";
 import { expect, noteRow, noteTitles, openNotes, selectTab, test } from "./fixtures";
 
 // The test server's fake Twilio (server/src/config.ts): its auth token and number, and the address it signs.
@@ -480,4 +481,109 @@ test("at most 10 tab emails a day for each user", async ({ page }) => {
   // Notes can still be texted in.
   expect(reply((await text(page.request, "Work, still saved")).body)).toBeUndefined();
   expect((await lastNote(page.request)).titleText).toBe("Still saved");
+});
+
+// ---- "App due": setting the due date of the note just added ------------------------------
+
+interface DueNote {
+  id: number;
+  titleText?: string;
+  dueDateTime?: string;
+  createdByUserId?: number;
+  shared?: { ownerName: string };
+}
+const noteById = async (request: APIRequestContext, id: number) =>
+  ((await (await request.get("/api/notes")).json()) as { notes: DueNote[] }).notes.find((note) => note.id === id)!;
+
+/** Where a dictated date and time should land, and how replies show it. */
+function expectedDue(when: string) {
+  const read = readSpokenDue(when);
+  if (!read.ok) throw new Error(`"${when}" should be a date and time in the future.`);
+  return { dueDateTime: read.dueDateTime, shown: formatSpokenDue(read.dueDateTime) };
+}
+
+test('"App due" sets the due date of the note just texted in, or just added in the app', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  const me = (await (await page.request.get("/api/me")).json()) as { id: number };
+
+  await text(page.request, "Work, ring the bank");
+  const texted = await lastNote(page.request);
+  const tomorrow = expectedDue("tomorrow 3pm");
+  expect(reply((await text(page.request, "App due tomorrow at 3 p.m.")).body)).toBeUndefined();
+  const withDue = await noteById(page.request, (texted as unknown as DueNote).id);
+  expect(withDue).toMatchObject({ titleText: "Ring the bank", dueDateTime: tomorrow.dueDateTime, createdByUserId: me.id });
+  expect((await notifications(page.request)).at(-1)).toEqual(expect.objectContaining({ title: `Due ${tomorrow.shown}`, body: "Ring the bank" }));
+
+  // A note added in the app counts too, and a second "App due" replaces the date.
+  const added = (await (await page.request.post("/api/notes", { data: { titleText: "Book the car in", tagIds: [] } })).json()) as DueNote;
+  expect(added.createdByUserId).toBe(me.id);
+  await text(page.request, "App last note due Friday");
+  expect((await noteById(page.request, added.id)).dueDateTime).toBe(expectedDue("Friday").dueDateTime);
+  await text(page.request, "App note due: the 25th of December at nine");
+  expect((await noteById(page.request, added.id)).dueDateTime).toBe(expectedDue("25 December 9am").dueDateTime);
+  // The earlier note keeps its own.
+  expect((await noteById(page.request, withDue.id)).dueDateTime).toBe(tomorrow.dueDateTime);
+
+  // It's in the History, and shows on the notes page.
+  const history = (await (await page.request.get("/api/history")).json()) as { changes: { summary: string }[] };
+  expect(history.changes[0]!.summary).toBe('Set the due date of "Book the car in" by text message');
+  await openNotes(page);
+  await expect(noteRow(page, "Book the car in")).toContainText("Due 25/12 09:00");
+
+  // With confirmations on, it's confirmed by text.
+  await page.request.put(`/api/users/${me.id}`, { data: { smsConfirmations: true } });
+  const at = expectedDue("tomorrow 18:00");
+  expect(reply((await text(page.request, "App due tomorrow 18:00")).body)).toBe(`Due ${at.shown}: "Book the car in"`);
+});
+
+test('"App due" gets a text back when it can\'t be set, and sets nothing', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  const note = (await (await page.request.post("/api/notes", { data: { titleText: "Pay the gas bill", tagIds: [] } })).json()) as DueNote;
+
+  expect(reply((await text(page.request, "App due")).body)).toBe('Not set: say when it\'s due, e.g. "App due tomorrow 3pm".');
+  expect(reply((await text(page.request, "App due whenever")).body)).toBe(`Not set: couldn't understand "whenever" as a date and time.`);
+  expect(reply((await text(page.request, "App due 1/1/2026 9am")).body)).toBe(`Not set: ${formatSpokenDue("2026-01-01T09:00:00.000Z")} has already passed.`);
+  expect(reply((await text(page.request, "App due yesterday")).body)).toMatch(/^Not set: couldn't understand/);
+  expect((await noteById(page.request, note.id)).dueDateTime).toBeUndefined();
+  expect((await notifications(page.request)).at(-1)).toEqual(
+    expect.objectContaining({ title: "Due date not set", body: "Couldn't understand \"yesterday\" as a date and time." }),
+  );
+
+  // A long-form note can't have one.
+  await page.request.post("/api/notes", { data: { titleText: "Trip plans", tagIds: [], detailsText: "" } });
+  expect(reply((await text(page.request, "App due tomorrow")).body)).toBe("Not set: your last note is a long-form note, which can't have a due date.");
+});
+
+test('"App due" only counts the user\'s own note from the last 5 minutes, not one others added to their notebook', async ({ page, browser }) => {
+  await linkPhone(page.request);
+  // Added offline 6 minutes ago, so it was created then.
+  const old = new Date(Date.now() - 6 * 60 * 1000).toISOString();
+  const oldNote = (await (await page.request.post("/api/notes", { data: { titleText: "Old one", tagIds: [], createdDateTime: old } })).json()) as DueNote;
+  expect(reply((await text(page.request, "App due tomorrow")).body)).toBe("Not set: you haven't added a note in the last 5 minutes.");
+  expect((await noteById(page.request, oldNote.id)).dueDateTime).toBeUndefined();
+
+  // Sam, who the admin shares Shopping with, adds a note in the admin's notebook: it isn't the admin's to date.
+  const added = await page.request.post("/api/users", { data: { displayName: "Sam", loginName: "sam@example.com" } });
+  const { user, password } = (await added.json()) as { user: { id: number }; password: string };
+  expect((await page.request.put("/api/tags/4/shares", { data: { shares: [{ loginName: "sam@example.com", permission: "edit" }] } })).ok()).toBe(true);
+  const sam = await browser.newContext({ baseURL: test.info().project.use.baseURL, storageState: { cookies: [], origins: [] } });
+  try {
+    expect((await sam.request.post("/api/login", { data: { loginName: "sam@example.com", password } })).ok()).toBe(true);
+    const samsNote = (await (await sam.request.post("/api/notes", { data: { titleText: "Sam's eggs", tagIds: [4] } })).json()) as DueNote;
+    expect(samsNote.shared?.ownerName).toBe("Admin");
+    const inAdmins = await noteById(page.request, samsNote.id);
+    expect(inAdmins.createdByUserId).toBe(user.id);
+    expect(reply((await text(page.request, "App due tomorrow")).body)).toBe("Not set: you haven't added a note in the last 5 minutes.");
+    expect((await noteById(page.request, samsNote.id)).dueDateTime).toBeUndefined();
+
+    // Sam's own "App due" finds it, but only the admin sets due dates on the admin's notes.
+    await linkPhone(sam.request, "+447700900456");
+    expect(reply((await text(sam.request, "App due tomorrow", { from: "+447700900456" })).body)).toBe(
+      "Not set: your last note is in Admin's notebook, so only they can set its due date.",
+    );
+  } finally {
+    await sam.close();
+  }
 });
