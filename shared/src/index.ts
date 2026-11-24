@@ -407,6 +407,24 @@ export interface PasswordChangeRequest {
   newPassword: string;
 }
 
+/** Forgotten passwords: the public page that emails a link, and the one the link opens. */
+export const FORGOT_PASSWORD_PATH = "/forgot-password";
+export const RESET_PASSWORD_PATH = "/reset-password";
+
+/** Asking for the emailed link (POST /api/password-reset). */
+export interface PasswordResetRequest {
+  loginName: string;
+}
+
+/** Choosing the new password with the link's token (POST /api/password-reset/confirm). */
+export interface PasswordResetConfirmRequest {
+  token: string;
+  newPassword: string;
+}
+
+/** What an emailed link that doesn't work (expired, used, changed, or its account gone or turned off) says. */
+export const PASSWORD_LINK_NOT_WORKING = "This link has expired or has already been used.";
+
 /** A user, as the users page (admin only) lists them. */
 export interface UserSummary extends Me {
   disabled: boolean;

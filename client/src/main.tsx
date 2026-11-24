@@ -7,6 +7,9 @@ import "@fontsource-variable/atkinson-hyperlegible-next/wght.css";
 import { App } from "./App";
 import { initAppUpdates } from "./appUpdate";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
+import { FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH } from "@nwsnotes/shared";
+import { ForgotPasswordPage } from "./ForgotPasswordPage";
+import { ResetPasswordPage } from "./ResetPasswordPage";
 import { SIGN_UP_PATH, SignUpPage } from "./SignUpPage";
 import "./styles.css";
 
@@ -15,11 +18,24 @@ fontAwesomeConfig.autoAddCss = false;
 
 initAppUpdates();
 
+/** The public pages that stand alone: they need no login, notes or offline copy. */
+function PublicOrApp() {
+  switch (window.location.pathname) {
+    case SIGN_UP_PATH:
+      return <SignUpPage />;
+    case FORGOT_PASSWORD_PATH:
+      return <ForgotPasswordPage />;
+    case RESET_PASSWORD_PATH:
+      return <ResetPasswordPage />;
+    default:
+      return <App />;
+  }
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RenderErrorBoundary>
-      {/* The sign-up page is public and stands alone: it needs no login, notes or offline copy. */}
-      {window.location.pathname === SIGN_UP_PATH ? <SignUpPage /> : <App />}
+      <PublicOrApp />
     </RenderErrorBoundary>
   </StrictMode>,
 );

@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
 import { remindAfterLogin } from "./reminders";
+import { forgotPasswordAddress } from "./ForgotPasswordPage";
+import { takePasswordChangedEmail } from "./ResetPasswordPage";
 import { SIGN_UP_PATH } from "./SignUpPage";
 
 interface Props {
@@ -8,7 +10,9 @@ interface Props {
 }
 
 export function LoginPage({ onLoggedIn }: Props) {
-  const [loginName, setLoginName] = useState("");
+  // Just after choosing a new password with an emailed link: their email, filled in, and a message saying so.
+  const [passwordChangedFor] = useState(takePasswordChangedEmail);
+  const [loginName, setLoginName] = useState(passwordChangedFor ?? "");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -35,6 +39,11 @@ export function LoginPage({ onLoggedIn }: Props) {
     <main className="login-page">
       <form onSubmit={submit} className="login-card">
         <h1>nwsnotes</h1>
+        {passwordChangedFor !== undefined && !error && (
+          <p className="lifetime-result" role="status">
+            Password changed. Log in with your new password.
+          </p>
+        )}
         <label htmlFor="login-name">Email</label>
         {/* Not type="email": accounts made before login names had to be emails still log in with their old names. */}
         <input
@@ -47,7 +56,7 @@ export function LoginPage({ onLoggedIn }: Props) {
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          autoFocus
+          autoFocus={passwordChangedFor === undefined}
           disabled={busy}
           onChange={(event) => setLoginName(event.target.value)}
         />
@@ -58,6 +67,7 @@ export function LoginPage({ onLoggedIn }: Props) {
           type="password"
           value={password}
           autoComplete="current-password"
+          autoFocus={passwordChangedFor !== undefined}
           disabled={busy}
           onChange={(event) => setPassword(event.target.value)}
         />
@@ -69,6 +79,9 @@ export function LoginPage({ onLoggedIn }: Props) {
             {error}
           </p>
         )}
+        <a href={forgotPasswordAddress(loginName.trim())} className="forgot-password">
+          Forgot your password?
+        </a>
       </form>
       {/* The help pages are public, so they can be read before logging in. */}
       <p className="login-help">

@@ -2394,7 +2394,13 @@ body:has(.dragging) {
   text-align: center;
 }
 
-.login-help a {
+/* "Forgot your password?", below "Log in" on the login card. */
+.login-card .forgot-password {
+  align-self: center;
+}
+
+.login-help a,
+.login-card .forgot-password {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
