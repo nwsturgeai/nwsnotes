@@ -1710,6 +1710,11 @@ body:has(.note-list li.dragging) {
   min-width: 14rem;
 }
 
+/* Columns is never narrower than its row of buttons (wider than 14rem), so the row wraps rather than squeezing them. */
+.device-settings > .columns-cell {
+  min-width: min-content;
+}
+
 .device-settings .device-note {
   flex-basis: 100%;
   margin: 0;

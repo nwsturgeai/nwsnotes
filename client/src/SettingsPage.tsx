@@ -376,7 +376,7 @@ export function SettingsPage({
           </label>
           <p>Write new notes with a stylus instead of typing them.</p>
         </div>
-        <div>
+        <div className="columns-cell">
           <div className="columns-setting" role="radiogroup" aria-labelledby="columns-label">
             <span id="columns-label" className="switch-label">
               Columns
