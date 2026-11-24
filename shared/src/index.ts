@@ -311,6 +311,12 @@ export type NewNoteRequest = NoteTitle & {
   clientId?: string;
   createdDateTime?: string;
   tagsChangedDateTime?: string;
+  /**
+   * PUT only: the note's lastModifiedDateTime when the edit started. If the note has changed since, the
+   * edit is refused (412) rather than replacing that change. Left out (offline changes, or "keep mine"
+   * after a refusal), the edit replaces whatever is there.
+   */
+  baseModifiedDateTime?: string;
 } & (NoteDetails | { detailsText?: never; detailsImage?: never });
 
 /** Body of PUT /api/notes/:id/lifetime. tagsChangedDateTime: when it was changed offline (used if valid and not in the future). */
@@ -538,6 +544,23 @@ export const LIVE_LOGGED_OUT_CLOSE_CODE = 4001;
 
 /** Header the website sends with every change, so the server doesn't notify the page that made it. */
 export const CONNECTION_ID_HEADER = "X-Connection-Id";
+
+/**
+ * Header the website sends with every request once it knows who is logged in: that user's id. Tabs in one
+ * browser share the session cookie, so logging in as someone else in one tab changes who the others are
+ * logged in as. A request whose header doesn't match the cookie's user is refused (401), so such a tab
+ * can't show or change the other person's notes as if they were its own.
+ */
+export const USER_ID_HEADER = "X-User-Id";
+export const OTHER_USER_LOGGED_IN = "Someone else has logged in in another tab of this browser.";
+
+/**
+ * The status of a note edit refused because the note changed since the edit started (in another tab, on
+ * another device, or by someone it's shared with): PUT /api/notes/:id with a baseModifiedDateTime that
+ * isn't the note's lastModifiedDateTime any more.
+ */
+export const NOTE_CHANGED_STATUS = 412;
+export const NOTE_CHANGED_ELSEWHERE = "This note was changed somewhere else (in another tab, or on another device) since you started editing it.";
 
 /** Messages the server sends over the live-updates WebSocket. */
 export interface LiveMessage {

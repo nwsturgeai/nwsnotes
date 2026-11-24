@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { NextFunction, Request, Response } from "express";
+import { OTHER_USER_LOGGED_IN, USER_ID_HEADER } from "@nwsnotes/shared";
 import { databaseUnreachable } from "./db.js";
 import type { User, Users } from "./users.js";
 
@@ -107,13 +108,18 @@ export function sessionUser(req: IncomingMessage, users: Users, secret: string):
 
 /**
  * Express middleware: rejects the request with 401 unless the session cookie is valid (503 while the
- * users can't be loaded from the database). The user is then in `res.locals.user`.
+ * users can't be loaded from the database). The user is then in `res.locals.user`. A page that says
+ * which user it's showing (the X-User-Id header) is also refused if the cookie is now someone else's,
+ * because another tab in the same browser logged in as them.
  */
 export function requireSession(users: Users, secret: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!users.isReady()) throw databaseUnreachable();
     const user = sessionUser(req, users, secret);
-    if (user) {
+    const expected = req.get(USER_ID_HEADER);
+    if (user && expected !== undefined && expected !== String(user.id)) {
+      res.status(401).json({ error: OTHER_USER_LOGGED_IN });
+    } else if (user) {
       res.locals.user = user;
       next();
     } else {

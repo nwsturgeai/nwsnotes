@@ -25,6 +25,11 @@ function open(): Promise<IDBDatabase | undefined> {
   return opening;
 }
 
+/** Whether IndexedDB can be used here (so "nothing stored" really means nothing). */
+export async function idbAvailable(): Promise<boolean> {
+  return (await open()) !== undefined;
+}
+
 /** The value stored under `key`, or undefined if there's none (or no IndexedDB). */
 export async function idbGet<T>(key: string): Promise<T | undefined> {
   const db = await open();

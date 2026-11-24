@@ -183,8 +183,15 @@ export function App() {
             : prev,
         ),
       onSessionExpired: () => setState({ screen: "login" }),
+      // Another tab queued (or sent) changes: show them here too.
+      onPendingChanged: () => setState((prev) => (prev.screen === "notes" ? { ...prev, data: withPending(prev.data) } : prev)),
+      // Logged out in another tab: this one goes to the login page too.
+      onLoggedOut: () => {
+        navigate({ name: "notes" }, { replace: true });
+        setState({ screen: "login" });
+      },
     });
-  }, [refreshNotes]);
+  }, [refreshNotes, navigate]);
 
   useEffect(() => {
     void loadNotes();

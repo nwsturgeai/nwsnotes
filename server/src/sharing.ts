@@ -353,7 +353,7 @@ export class Sharing {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown },
+    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown },
   ): Promise<Note> {
     const resolved = await this.resolve(user.id, id);
     if (resolved.kind === "own") {
@@ -373,6 +373,7 @@ export class Sharing {
       // Converting to a long-form note (details) needs no due date; otherwise it keeps the owner's.
       dueDateTime: details === undefined ? resolved.note.dueDateTime : undefined,
       tagsChangedDateTime: options.tagsChangedDateTime,
+      baseModifiedDateTime: options.baseModifiedDateTime,
       stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(owner)),
       ownerName: owner.displayName,
     });

@@ -1,5 +1,7 @@
 import {
   CONNECTION_ID_HEADER,
+  NOTE_CHANGED_STATUS,
+  USER_ID_HEADER,
   type AccountRequest,
   type AccountRequestBody,
   type AllTabRequest,
@@ -51,7 +53,12 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 
-  /** 401: not logged in (the session expired, or this user's logins were stopped). */
+  /** A note edit refused because the note changed elsewhere since the edit started (see baseModifiedDateTime). */
+  get isNoteChanged(): boolean {
+    return this.status === NOTE_CHANGED_STATUS;
+  }
+
+  /** 401: not logged in (the session expired, this user's logins were stopped, or another tab logged in as someone else). */
   get isUnauthorized(): boolean {
     return this.status === 401;
   }
@@ -68,8 +75,17 @@ export class ApiError extends Error {
 /** A change, or a ping, with no reply in this long counts as the server being unreachable. */
 const CHANGE_TIMEOUT_MS = 10_000;
 
+/** Who this page is showing, once it knows: sent with every request (see USER_ID_HEADER). */
+let pageUserId: number | undefined;
+
+/** Who this page now shows (undefined: nobody, e.g. after logging out). Set by `offline.ts`, which keeps each user's copy apart. */
+export function setPageUser(id: number | undefined) {
+  pageUserId = id;
+}
+
 async function request<T>(method: string, url: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   const headers: Record<string, string> = { ...extraHeaders };
+  if (pageUserId !== undefined) headers[USER_ID_HEADER] = String(pageUserId);
   if (body !== undefined) headers["Content-Type"] = "application/json";
   // Loading every note can take a while on a slow connection, so only changes and pings time out.
   const timesOut = method !== "GET" || url === PING_URL;
@@ -126,7 +142,9 @@ export const api = {
   /** Whether the server can be reached (and the session is still valid), without loading every note. */
   ping: () => request<{ ok: true }>("GET", PING_URL),
   addNote: (body: NewNoteRequest) => request<Note>("POST", "/api/notes", body, changeHeaders()),
-  updateNote: (id: number, body: NewNoteRequest) => request<Note>("PUT", `/api/notes/${id}`, body, changeHeaders()),
+  /** `base`: the note's lastModifiedDateTime when the edit started; refused (isNoteChanged) if it has changed since. */
+  updateNote: (id: number, body: NewNoteRequest, base?: string) =>
+    request<Note>("PUT", `/api/notes/${id}`, { ...body, ...(base !== undefined && { baseModifiedDateTime: base }) }, changeHeaders()),
   deleteNote: (id: number) => request<{ ok: true }>("DELETE", `/api/notes/${id}`, undefined, changeHeaders()),
   /** Multi-select: add and remove tags on several notes in one save; returns the updated notes. */
   bulkTags: (body: BulkTagsRequest) => request<Note[]>("PUT", "/api/notes/bulk-tags", body, changeHeaders()),
@@ -169,8 +187,12 @@ export const api = {
   pushUnsubscribe: (endpoint: string) => request<{ ok: true }>("POST", "/api/push/unsubscribe", { endpoint }),
   /** Sends "Test reminder" to every device; returns how many it reached. */
   pushTest: () => request<{ count: number }>("POST", "/api/push/test"),
-  login: (body: LoginRequest) => request<{ ok: true }>("POST", "/api/login", body),
-  logout: () => request<{ ok: true }>("POST", "/api/logout"),
+  login: (body: LoginRequest) => {
+    // Whoever logs in, this page then finds out who it's showing (api.me) before saying so again.
+    setPageUser(undefined);
+    return request<{ ok: true }>("POST", "/api/login", body, changeHeaders());
+  },
+  logout: () => request<{ ok: true }>("POST", "/api/logout", undefined, changeHeaders()),
   /** Who is logged in. */
   me: () => request<Me>("GET", "/api/me"),
   myStats: () => request<NoteStats>("GET", "/api/me/stats"),
