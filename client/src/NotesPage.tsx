@@ -71,7 +71,7 @@ import { LongFormEditor } from "./LongFormEditor";
 import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
-import { columnCount, useFilterRowCollapsed, useFullTagList, type ColumnsChoice } from "./stylusMode";
+import { columnCount, useFilterRowCollapsed, useFullTagList, useLeftTabsHidden, type ColumnsChoice } from "./stylusMode";
 
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
@@ -300,6 +300,8 @@ export function NotesPage({
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
   const [extraSelection, setExtraSelection] = useExtraFilters(selectedTab?.id);
+  /** The left strip is hidden by the eye button above it (in the header). */
+  const [leftTabsHidden] = useLeftTabsHidden();
   const [fullTagListSetting, setFullTagList] = useFullTagList();
   /**
    * While a long-form note with handwritten details is open, the area is collapsed (more room for the
@@ -1019,7 +1021,7 @@ export function NotesPage({
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
       {/* The left tab strip (if any tabs are set to "Left") beside the filter row and the list. */}
       <div className="notes-body">
-        {leftTabs.length > 0 && (
+        {leftTabs.length > 0 && !leftTabsHidden && (
           <LeftTabStrip tabs={leftTabs} selectedTabId={selectedTab?.id} onSelectTab={onSelectTab} editing={tabsBlocked} />
         )}
         <div className="notes-main">

@@ -35,6 +35,48 @@ test("with no tabs set to Left there's no left strip", async ({ page }) => {
   expect((await topTabs(page).first().boundingBox())!.x).toBe(12);
 });
 
+test("an eye button above the left strip hides and shows it, remembered for every tab", async ({ page }) => {
+  const hide = page.getByRole("button", { name: "Hide left tabs" });
+  const show = page.getByRole("button", { name: "Show left tabs" });
+  // No left tabs, no button.
+  await expect(hide).toHaveCount(0);
+  await expect(show).toHaveCount(0);
+
+  await openSettings(page);
+  await moveTab(page, "On hold");
+  await page.getByRole("link", { name: "← Notes" }).click();
+  await expect(leftStrip(page)).toBeVisible();
+
+  // An eye with a slash while the strip shows: the strip's width (2px gap each side), half the header's
+  // height, at the bottom of the header, just left of the first top tab.
+  await expect(hide.locator("svg")).toHaveAttribute("data-icon", "eye-slash");
+  const button = (await hide.boundingBox())!;
+  const header = (await page.locator(".app-header").boundingBox())!;
+  const firstTab = (await topTabs(page).first().boundingBox())!;
+  expect(button.x).toBe(2);
+  expect(firstTab.x - (button.x + button.width)).toBe(2);
+  expect(button.height).toBe(header.height / 2);
+  // It stands on the header's 1px bottom line.
+  expect(button.y + button.height).toBe(header.y + header.height - 1);
+
+  // Hidden: the strip goes, the list uses the full width, and the button shows an eye.
+  await hide.click();
+  await expect(leftStrip(page)).toHaveCount(0);
+  await expect(show.locator("svg")).toHaveAttribute("data-icon", "eye");
+  expect((await page.locator(".filter-row").boundingBox())!.x).toBeLessThan(2);
+
+  // It stays hidden on other tabs and after a reload.
+  await topTabs(page).filter({ hasText: "Work" }).click();
+  await expect(leftStrip(page)).toHaveCount(0);
+  await page.reload();
+  await expect(show).toBeVisible();
+  await expect(leftStrip(page)).toHaveCount(0);
+
+  await show.click();
+  await expect(leftTabs(page)).toHaveText(["On hold"]);
+  await expect(hide).toBeVisible();
+});
+
 test("tabs set to Left show in the left strip, in order, and can be chosen there", async ({ page }) => {
   await openSettings(page);
   await moveTab(page, "On hold");

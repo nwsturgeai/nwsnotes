@@ -58,6 +58,11 @@ export function useFullTagList(): [boolean, (on: boolean) => void] {
   return useDeviceSetting("nwsnotes.fullTagList", (stored) => stored !== "off", onOff);
 }
 
+/** Whether the left tab strip is hidden (by the eye button above it). One setting for every tab. */
+export function useLeftTabsHidden(): [boolean, (on: boolean) => void] {
+  return useDeviceSetting("nwsnotes.leftTabsHidden", (stored) => stored === "on", onOff);
+}
+
 /** Whether the filter row is collapsed to its first line (when it wraps onto more). One setting for every tab. */
 export function useFilterRowCollapsed(): [boolean, (on: boolean) => void] {
   return useDeviceSetting("nwsnotes.filterRowCollapsed", (stored) => stored === "on", onOff);

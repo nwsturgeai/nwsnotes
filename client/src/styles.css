@@ -138,6 +138,7 @@ body:has(.app) {
 }
 
 .app-header {
+  position: relative;
   display: flex;
   flex: none;
   align-items: center;
@@ -153,6 +154,38 @@ body:has(.app) {
 .header-icons {
   flex: none;
   margin-left: auto;
+}
+
+/*
+ * Hides or shows the left tab strip: the strip's width (40px), half the header's height, at the bottom
+ * of the header straight above the strip (where the header is otherwise empty).
+ */
+.left-tabs-toggle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Outlined like a tab half the usual height: 2px from the window's edge and 2px from the first top tab. */
+  margin-left: 2px;
+  width: 35px;
+  height: 20px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.left-tabs-toggle:hover {
+  border-color: var(--muted);
+  color: var(--text);
 }
 
 /* ---- Tabs in the header, styled like a browser's ----------------------- */
