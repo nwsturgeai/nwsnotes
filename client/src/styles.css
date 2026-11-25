@@ -2010,7 +2010,12 @@ body:has(.note-list li.dragging) {
   color: var(--muted);
 }
 
-/* The filter row's "select all": small text, like a link, at the top of each list. */
+/* The filter row's "select all" and "clear selection": small text, like links, side by side at the top of each list. */
+.tag-dropdown-links {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 .tag-dropdown-select-all {
   display: block;
   margin: 0;

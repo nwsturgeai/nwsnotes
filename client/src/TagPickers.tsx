@@ -115,7 +115,7 @@ interface Props {
    * (category id -> count), and how many are shown now.
    */
   counts?: { byTag: ReadonlyMap<number, number>; byNone?: ReadonlyMap<number, number>; total: number };
-  /** The filter row: each check-list starts with a small "select all" link that ticks every tag. */
+  /** The filter row: each check-list starts with small "select all" and "clear selection" links. */
   selectAll?: boolean;
   /** Your own shared tags show the sharing icon after their names. */
   showSharing?: boolean;
@@ -329,16 +329,27 @@ function TagDropdown({
           aria-label={category.name}
           style={{ left: position.left, top: position.top, bottom: position.bottom, "--list-room": `${position.room}px` } as CSSProperties}
         >
-          {/* Ticks every tag in the list (greyed out once they all are). */}
+          {/* "select all" ticks every tag (greyed out once they all are); "clear selection" unticks every tag
+              and "(None)", but not a tag the tab fixes (greyed out once nothing else is ticked). */}
           {checkList && selectAll && (
-            <button
-              type="button"
-              className="tag-dropdown-select-all"
-              disabled={category.tags.every((tag) => chosen.includes(tag.id))}
-              onClick={() => onChange(category.tags.map((tag) => tag.id))}
-            >
-              select all
-            </button>
+            <div className="tag-dropdown-links">
+              <button
+                type="button"
+                className="tag-dropdown-select-all"
+                disabled={category.tags.every((tag) => chosen.includes(tag.id))}
+                onClick={() => onChange(category.tags.map((tag) => tag.id))}
+              >
+                select all
+              </button>
+              <button
+                type="button"
+                className="tag-dropdown-select-all"
+                disabled={!noneChosen && chosen.every((id) => id === lockedTagId)}
+                onClick={() => onChange(lockedTagId !== undefined ? [lockedTagId] : [])}
+              >
+                clear selection
+              </button>
+            </div>
           )}
           {checkList ? (
             category.tags.map((tag) => {
