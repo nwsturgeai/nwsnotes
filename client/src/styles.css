@@ -1354,12 +1354,14 @@ body:has(.note-list li.dragging) {
   background: var(--bg);
 }
 
+/* The match-the-tab button stays at the far right; the Parent pill sits just after the dropdowns. */
 .lf-tags > .note-button {
   flex: none;
+  margin-left: auto;
 }
 
 .lf-tags .tag-pickers {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -1956,6 +1958,8 @@ body:has(.note-list li.dragging) {
   flex: none;
   align-items: center;
   gap: 0.3rem;
+  /* With the band's gap, the same 1rem as between the dropdowns. */
+  margin-left: 0.4rem;
 }
 
 /* The Parent pop-up: the long-form notes as a tree, scrolling when there are many. */
