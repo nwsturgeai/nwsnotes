@@ -2,7 +2,7 @@
 
 ## Long-form Notes
 
-A long-form note has "details" (text or image) as well as a title.  The title of a long-form note must always be text (i.e. never an image).  Long-form notes can have "child" regular notes.
+A long-form note has "details" (text or image) as well as a title.  The title of a long-form note must always be text (i.e. never an image).  Long-form notes can have "child" notes, regular or long-form (see "Parent notes" below).
 When creating or editing a long-form note, the long-form note editing area takes up all of the screen apart from the create/edit regular note section (which takes up the bottom 150px or 250px).  In other words, the long-form editing area covers over both header strips and the whole note list area.
 While creating or editing a long-form note with typed details, the create/edit regular note section can still be collapsed or expanded. While creating or editing a long-form note with handwritten details, that section switches to collapsed mode and can't be expanded.
 The button to create a new long-form note appears when the create-regular-note section is expanded to 250px height.  When this happens, a new "create long form note" button should appear underneath the create-note button (or underneath the "clear" button in stylus mode).  The new button should be the same size as the create-note button, and should have icon fa-file-lines, in its outline style (Font Awesome "regular").
@@ -66,13 +66,39 @@ New regular notes created whilst creating/editing a long-form note can have any 
 
 Any regular note created whilst creating/editing a long-form note:
 These new regular notes should have their "parentId" field populated with the id of the long-form-note.
-When these regular notes are shown in the notes-list: after any pills for their tags, the regular note should have an additional final pill with the title of the long-form note, truncated to at most 20 characters.  This final pill should have the same colour as the "Long Form" pill described above.
+When these regular notes are shown in the notes-list: after any pills for their tags, the regular note should have an additional final pill with the title of the long-form note, truncated to at most 20 characters.  This pill has a different colour from the "Long Form" pill described above.
+
+## Parent notes
+
+Long-form notes can be children of other long-form notes, so notes form a tree.
+
+### "Long-form" filter
+A dropdown in the filter row, just before the Properties dropdown, titled "Long-form". It's only shown when the tab has any long-form notes (with the filter row cleared).
+Its options are one tickbox per long-form note in the tab. A long-form note (Y) that is a child of another (X) is listed immediately under X, slightly indented.
+Ticking an option filters the list to that long-form note and every note under it (its children, their children, and so on).
+Ticking X also ticks Y, which stays ticked (and can't be unticked) while X is ticked. Unticking X always unticks Y.
+
+### Pills
+The "Long Form" pill is a different colour from the pill showing a child note's parent.
+A long-form note with child notes (direct children only) shows another pill: the fa-chart-diagram icon, then the number of child notes. If some of them aren't shown in this tab (ignoring the filter row), the pill says "<icon> <shown in this tab> of <total>".
+
+### Parent line and pop-up
+When adding or editing a regular note (not while a long-form note is being created or edited), with the add area expanded, and when there's at least one long-form note not in the Bin: the add area has a last line after the categories (after "Shared with me"), titled "Parent", with a single pill in the parent pill's colour.
+For new notes the pill starts as "(none)". When the note being added or edited has a parent, the pill is the same as the note's parent pill in the list.
+Tapping the pill opens a pop-up for setting, changing or removing the note's parent: every long-form note in the system (not just those in the tab), with tickboxes laid out like the "Long-form" filter. Zero or one can be ticked.
+When creating or editing a long-form note, the same "Parent" title and pill appear in the band between the title and the details, alongside the tag dropdowns, with the same pop-up.
+Changing the parent isn't offered when bulk-editing tags.
 
 ## Agreed technical decisions
 
 ### Long-form notes
 - **Data:** a long-form note has a text title (`titleText`, never `titleImage`) and exactly one of `detailsText` (at most 10,000 characters) or `detailsImage` (a PNG data URL). Having one of these fields is what makes a note long-form. The kind is chosen when the note is created, from stylus mode at that moment (canvas → `detailsImage`, otherwise `detailsText`), and never changes afterwards, like a regular note's title type. A new long-form note starts with empty details (`detailsText: ""` or `detailsImage: ""`).
-- **Child notes:** regular notes created while a long-form note is open get `parentId` set to its id. The server checks that `parentId` names an existing long-form note; long-form notes can't have a parent, and a child can't be long-form. If the parent is later deleted (Empty Bin), the child keeps its `parentId` but its parent pill no longer shows.
+- **Child notes:** regular notes created while a long-form note is open get `parentId` set to its id. Any note, long-form ones included, can also be given a parent with the Parent pill (see "Parent notes" below).
+  - The server checks that `parentId` names an existing long-form note in the same notebook: a child note always belongs to the same person as its parent, including for people a tag is shared with.
+  - On `PUT /api/notes/:id`, `parentId` sets the parent, `null` takes the note out of its parent, and leaving it out keeps the parent it has (so other edits, like tapping the date, don't need to know it).
+  - No loops: a note can't be its own parent, nor go inside one of its own descendants. The server refuses (400) and the pop-up greys those out.
+  - If a parent is deleted (Empty Bin, or cancelling a new long-form note), its children lose their `parentId`, as part of the same change. Going back to before it in the History brings the links back with the parent.
+  - The History describes a change of parent on its own as `Moved "Book flights" under "Holiday plans"` or `Took "Book flights" out of "Holiday plans"`; with other changes, it's added to "Edited …".
 - **Titles** follow the usual title rules (trimmed, not empty, at most 500 characters). They don't need to be unique.
 - **Image size:** handwritten details fill a much larger canvas than a title, so `detailsImage` may be up to 2 MB (counting the data URL's characters), and the server's request size limit rises to 3 MB. Like titles, the drawing is cropped to what's written plus a margin, and stored at 2× pixel density.
 - **API:** `POST /api/notes` with `{ "titleText": "...", "detailsText": "" | "detailsImage": "", "tagIds": [...] }` creates a long-form note (New, like any new note). `PUT /api/notes/:id` updates it with the same fields; the details kind can't change. Child notes are created with `POST /api/notes` plus `"parentId": <id>`.
@@ -80,7 +106,7 @@ When these regular notes are shown in the notes-list: after any pills for their 
   - Clicking it saves the note with its title and tags as they are in the edit, plus empty details, using `PUT /api/notes/:id` with `detailsText: ""`, or `detailsImage: ""` in stylus mode. The details kind is chosen from stylus mode, as when creating one.
   - It then opens in the long-form editor with the title accepted, ready for the details (typed details get the focus), like editing an existing long-form note: no Cancel button, and new regular notes become its children.
   - The note keeps its id, created time, Lifetime and place in the list.
-  - The server allows a regular note to gain details only if it could have been created as a long-form note: a typed title, and no parent. Otherwise the button is greyed out, with the hint "Only typed notes can become long-form notes" (handwritten notes) or "This note belongs to a long-form note, so it can't become one" (child notes).
+  - The server allows a regular note to gain details only if it has a typed title. Otherwise the button is greyed out, with the hint "Only typed notes can become long-form notes". A child note keeps its parent.
   - A long-form note can't be turned back into a regular one.
   - Offline, it's queued like any other edit.
 - **Opening the editor:** the "create long-form note" button (`fa-file-lines`, the outline ("regular") version, 40px like Add) appears under Add (or under Clear in stylus mode) only while the bottom area is at 250px. The pen on a long-form note in the list opens the same editor with the title locked and the details editable. While the editor is open:
@@ -135,4 +161,17 @@ When these regular notes are shown in the notes-list: after any pills for their 
   - **The image:** what's on the canvas at that moment, including strokes not yet autosaved, cropped to the ink with the usual margin, as a PNG of black ink on a white background (the stored image is transparent, which some apps show as black). Only the handwriting: no title.
   - **File name:** the note's title and the date, e.g. `Garden plan 2026-11-19.png`, with characters not allowed in file names taken out (just the date if nothing is left).
   - **How it's handed over:** the device's share sheet (`navigator.share` with the file) where the browser can share files, as on Android, so it can be saved to Photos or Files or sent to another app. Elsewhere (most PC browsers) the file is downloaded instead. Closing the share sheet without choosing anything does nothing.
-- **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters, in the same amber. Long-form notes get the usual buttons (edit, waiting, archive and so on).
+- **In the list:** long-form notes show their title and tag pills, then a "Long Form" pill in a distinct colour (amber); their details aren't shown. Child notes show, after their tag pills, a pill with the parent's title cut to at most 20 characters (19 and "…"), in purple (`--parent-pill-bg`, `--parent-pill-text`). Long-form notes get the usual buttons (edit, waiting, archive and so on).
+
+### Parent notes
+- **Pill order** after a note's tags: "Long Form", then the parent's pill, then the child-count pill.
+- **Child-count pill** (long-form notes with children): purple like the parent pill, the `fa-chart-diagram` icon, then the count of direct children not in the Bin (Archived and Waiting ones count). "Shown in this tab" uses the tab's own filters, not the filter row. Tapping it ticks that note in the Long-form filter (not while selecting or ordering notes, nor while a note is being edited).
+- **Long-form filter:**
+  - **Options:** the long-form notes that match the tab's own filters, in the notes' shared order, each followed by the long-form notes under it (indented 1.25rem per level). A note whose parent isn't an option is at the top level. Titles are cut to 40 characters; other people's notes show whose, like shared tags.
+  - **Ticks:** stored with the row's other choices (per tab, per device) under the made-up category id -1001, as the ticked notes' ids. A note under a ticked one is never stored: it shows ticked, greyed and locked ("Ticked because a note it's inside is ticked"), and unticking the parent unticks it.
+  - **Matching:** while any are ticked, a note must be a ticked note or under one (any depth, through notes the tab doesn't show too), as well as passing the tab, the other dropdowns and the search.
+  - **Like the other dropdowns:** it turns the row yellow, "reset filters" clears it, and each option shows how many notes ticking only it would list, with the TOTAL line. No "select all". The other dropdowns' counts take it into account.
+  - **New notes:** while exactly one note is ticked, new notes (regular and long-form) start with it as their parent, so they stay in the list. Otherwise a note that doesn't match is still added, with the notice "Note added, but it doesn't match the Long-form filter." An empty list says "No notes match the Long-form filter."
+- **Parent line:** the parent chosen for new notes is kept for the next note, like the tags. Changing tab goes back to the Long-form filter's default (above). While editing, the pill starts on the note's parent and the choice is saved with Update (or when converting to long-form).
+- **Parent pop-up:** titled "Parent note", with "Set Parent" (primary) and "Cancel" (and Escape). It lists every long-form note not in the Bin, as a tree like the filter, with full titles. Greyed out, with the reason on hover: the note being changed itself, notes under it, and notes in someone else's notebook (a parent must belong to the same person: the note's owner, or for a new note the owner of the shared tags it has).
+- **In the long-form editor:** the Parent pill sits in the tags band after the dropdowns, before the match-the-tab button, shown when there's another long-form note it could go inside. A change is saved like a tag change (with the 30-second autosave, or straight away with the title).

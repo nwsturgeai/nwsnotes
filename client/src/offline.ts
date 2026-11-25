@@ -363,11 +363,16 @@ export function isWaiting(id: number): boolean {
 /** An entry the sync isn't sending right now, so a newer change can be merged into it. */
 const mergeable = (entry: OutboxEntry) => !entry.sending;
 
+/** An edit with its parent's temporary id (a long-form note created offline) replaced by the real one once known. */
+function withParentResolved(body: NewNoteRequest): NewNoteRequest {
+  return typeof body.parentId === "number" ? { ...body, parentId: resolve(body.parentId) } : body;
+}
+
 export async function addNote(body: NewNoteRequest): Promise<Note> {
   // Sent with every add, so an add retried after its reply was lost isn't saved twice.
   const clientId = crypto.randomUUID();
   const sent = await tryOnline(() =>
-    api.addNote({ ...body, ...(body.parentId !== undefined && { parentId: resolve(body.parentId) }), clientId }),
+    api.addNote({ ...withParentResolved(body), clientId }),
   );
   if (sent !== QUEUE) return sent;
 
@@ -378,7 +383,7 @@ export async function addNote(body: NewNoteRequest): Promise<Note> {
     note = {
       id: tempId,
       ...titleAndDetails(body),
-      ...(body.parentId !== undefined && { parentId: body.parentId }),
+      ...(typeof body.parentId === "number" && { parentId: body.parentId }),
       createdDateTime: now,
       lastModifiedDateTime: now,
       tagsChangedDateTime: now,
@@ -399,14 +404,16 @@ export async function addNote(body: NewNoteRequest): Promise<Note> {
  * an offline change replaces any made elsewhere meanwhile, rather than being lost when it's sent.
  */
 export async function updateNote(id: number, body: NewNoteRequest, startedFrom?: string): Promise<Note> {
-  const sent = await tryOnline(() => api.updateNote(resolve(id), body, startedFrom));
+  const sent = await tryOnline(() => api.updateNote(resolve(id), withParentResolved(body), startedFrom));
   if (sent !== QUEUE) return sent;
 
   const base = localNote(id);
   if (!base) throw notAvailable("PUT", `/api/notes/${id}`);
   const noteId = resolve(id);
-  const { titleText, titleImage, detailsText, detailsImage, dueDateTime, ...rest } = base;
+  const { titleText, titleImage, detailsText, detailsImage, dueDateTime, parentId: oldParent, ...rest } = base;
   void [titleText, titleImage, detailsText, detailsImage, dueDateTime];
+  // A parent id sets it, null takes it away, and leaving it out keeps the one it has.
+  const parentId = body.parentId === undefined ? oldParent : (body.parentId ?? undefined);
   const now = new Date().toISOString();
   // Editing keeps the note's Lifetime.
   const tagIds = [...userTags(body.tagIds), lifetimeOf(base)];
@@ -414,6 +421,7 @@ export async function updateNote(id: number, body: NewNoteRequest, startedFrom?:
   const note: Note = {
     ...rest,
     ...titleAndDetails(body),
+    ...(parentId !== undefined && { parentId }),
     tagIds,
     lastModifiedDateTime: now,
     tagsChangedDateTime: tagsChanged ? now : base.tagsChangedDateTime,
@@ -425,12 +433,14 @@ export async function updateNote(id: number, body: NewNoteRequest, startedFrom?:
     const add = p.outbox.find((e) => e.kind === "add" && e.tempId === noteId && mergeable(e));
     const update = p.outbox.find((e) => e.kind === "update" && e.noteId === noteId && mergeable(e));
     if (add?.kind === "add") {
-      // Not sent yet: send the note as it is now, keeping what only an add has.
-      const { clientId, createdDateTime, parentId } = add.body;
-      add.body = { ...body, ...tagsTime(add.body), clientId, createdDateTime, ...(parentId !== undefined && { parentId }) };
+      // Not sent yet: send the note as it is now, keeping what only an add has (and its parent, unless changed).
+      const { clientId, createdDateTime } = add.body;
+      const { parentId: _parent, ...fields } = body;
+      add.body = { ...fields, ...tagsTime(add.body), clientId, createdDateTime, ...(parentId !== undefined && { parentId }) };
     } else if (update?.kind === "update") {
-      // Only the latest version needs sending (e.g. long-form autosaves).
-      update.body = { ...body, ...tagsTime(update.body) };
+      // Only the latest version needs sending (e.g. long-form autosaves), with a parent change it made kept.
+      const keptParent = body.parentId === undefined && update.body.parentId !== undefined ? { parentId: update.body.parentId } : {};
+      update.body = { ...body, ...keptParent, ...tagsTime(update.body) };
     } else {
       p.outbox.push({ seq: p.nextSeq++, kind: "update", noteId, body: { ...body, ...tagsTime(undefined) } });
     }
@@ -483,6 +493,8 @@ export async function deleteNote(id: number): Promise<{ ok: true }> {
           void parentId;
           entry.body = body as NewNoteRequest;
         }
+        // An edit that moved a note into it takes the note out of its parent instead.
+        if (entry.kind === "update" && entry.body.parentId === noteId) entry.body = { ...entry.body, parentId: null };
       }
       for (const [key, note] of Object.entries(p.latest)) {
         if (note?.parentId === noteId) {
@@ -565,10 +577,10 @@ async function send(entry: OutboxEntry): Promise<Note | undefined> {
   switch (entry.kind) {
     case "add": {
       const { body } = entry;
-      return api.addNote({ ...body, ...(body.parentId !== undefined && { parentId: resolve(body.parentId) }) });
+      return api.addNote(withParentResolved(body));
     }
     case "update":
-      await api.updateNote(resolve(entry.noteId), entry.body);
+      await api.updateNote(resolve(entry.noteId), withParentResolved(entry.body));
       return undefined;
     case "lifetime":
       await api.setLifetime(resolve(entry.noteId), entry.lifetime, entry.tagsChangedDateTime);

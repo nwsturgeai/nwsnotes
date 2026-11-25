@@ -15,6 +15,7 @@ import {
   faAnglesUp,
   faArrowDownWideShort,
   faBoxArchive,
+  faChartDiagram,
   faCheck,
   faChevronDown,
   faChevronUp,
@@ -67,6 +68,18 @@ import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
 import { useExtraFilters } from "./extraFilters";
 import { PROPERTIES_CATEGORY, PROPERTIES_CATEGORY_ID, noteMatchesProperties, validProperties } from "./propertyFilters";
+import {
+  childNotes,
+  LONG_FORM_FILTER_ID,
+  longFormCategory,
+  longFormTree,
+  possibleParents,
+  shortTitle,
+  toggleLongFormTick,
+  treeNoteIds,
+} from "./parents";
+import { ParentDialog, ParentPill } from "./ParentDialog";
+import type { ExtraPill } from "./TagPills";
 import { LongFormEditor } from "./LongFormEditor";
 import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
@@ -292,14 +305,6 @@ export function NotesPage({
     onTagSelectionChange(before && before.tabId === selectedTab?.id ? before.selection : {});
   }
 
-  /** The extra pills after a note's tags: "Long Form" on long-form notes, the parent's title on children. */
-  function specialPills(note: Note): string[] {
-    if (isLongForm(note)) return ["Long Form"];
-    const parent = note.parentId === undefined ? undefined : notes.find((n) => n.id === note.parentId);
-    // A child whose parent has been deleted shows no parent pill.
-    const title = parent?.titleText === undefined ? undefined : withoutMarkers(parent.titleText);
-    return title ? [title.length > 20 ? `${title.slice(0, 19)}…` : title] : [];
-  }
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
   const [extraSelection, setExtraSelection] = useExtraFilters(selectedTab?.id);
@@ -381,22 +386,44 @@ export function NotesPage({
   /** The filter row's ticked "Properties" rules (kept with the row's tag choices, under a made-up category id). */
   const properties = useMemo(() => validProperties(extraSelection[PROPERTIES_CATEGORY_ID]), [extraSelection]);
 
+  /**
+   * The "Long-form" dropdown's options: the long-form notes this tab shows when the filter row is clear,
+   * as a tree (each one's long-form child notes indented under it). With none, there's no dropdown.
+   */
+  const longFormOptions = useMemo(
+    () => longFormTree(notes.filter((note) => isLongForm(note) && noteMatchesFilters(note, tabFilters)), noteOrder),
+    [notes, tabFilters, noteOrder],
+  );
+  /** The ticked long-form notes (kept with the row's tag choices, under a made-up category id), if they're still options. */
+  const longFormTicks = useMemo(() => {
+    const options = new Set(longFormOptions.map(({ note }) => note.id));
+    return (extraSelection[LONG_FORM_FILTER_ID] ?? []).filter((id) => options.has(id));
+  }, [extraSelection, longFormOptions]);
+  /** While some are ticked, only the notes in their trees are listed: them, and every note under them. */
+  const longFormShown = useMemo(() => (longFormTicks.length > 0 ? treeNoteIds(notes, longFormTicks) : undefined), [notes, longFormTicks]);
+  const inLongFormTree = useCallback((note: Note) => longFormShown === undefined || longFormShown.has(note.id), [longFormShown]);
+  /** Ticks or unticks a long-form note in the filter (ticking it ticks the notes under it too). */
+  function tickLongForm(noteId: number, tick: boolean) {
+    setExtraSelection({ ...extraSelection, [LONG_FORM_FILTER_ID]: toggleLongFormTick(notes, longFormTicks, noteId, tick) });
+  }
+
   const visibleNotes = useMemo(() => {
     const matching = notes.filter(
       (note) =>
         noteMatchesFilters(note, allFilters) &&
         hasNoTagIn(note, noneFilters) &&
         noteMatchesProperties(note, properties, now) &&
+        inLongFormTree(note) &&
         matchesSearch(note, searchWords),
     );
     return orderNotes(matching, noteOrder);
-  }, [notes, allFilters, noneFilters, properties, now, searchWords, noteOrder]);
+  }, [notes, allFilters, noneFilters, properties, inLongFormTree, now, searchWords, noteOrder]);
 
   /** The filter row's ticked tags, as filters (the reset button only shows while there are some). */
   const extraFilters = useMemo(() => selectionToFilters(extraCategories, extraSelection), [extraCategories, extraSelection]);
 
-  /** Whether the row narrows the list at all: a tag, "(None)" or property ticked (the reset button shows, and the row is yellow). */
-  const rowFiltering = extraFilters.length > 0 || noneFilters.length > 0 || properties.length > 0;
+  /** Whether the row narrows the list at all: a tag, "(None)", property or long-form note ticked (the reset button shows, and the row is yellow). */
+  const rowFiltering = extraFilters.length > 0 || noneFilters.length > 0 || properties.length > 0 || longFormTicks.length > 0;
 
   /**
    * The filter row's note counts: for each tag, the notes listed if it were the only tag ticked in its
@@ -405,7 +432,8 @@ export function NotesPage({
    * with its own ticks left out.
    */
   const filterCounts = useMemo(() => {
-    const searched = notes.filter((note) => matchesSearch(note, searchWords));
+    const searchedAnywhere = notes.filter((note) => matchesSearch(note, searchWords));
+    const searched = searchedAnywhere.filter(inLongFormTree);
     const withProperties = searched.filter((note) => noteMatchesProperties(note, properties, now));
     const byTag = new Map<number, number>();
     const byNone = new Map<number, number>();
@@ -428,8 +456,65 @@ export function NotesPage({
     for (const rule of PROPERTIES_CATEGORY.tags) {
       byProperty.set(rule.id, tagged.filter((note) => noteMatchesProperties(note, [rule.id], now)).length);
     }
-    return { byTag, byNone, byProperty, total: visibleNotes.length };
-  }, [notes, searchWords, properties, now, extraCategories, tabFilters, extraFilters, noneFilters, allFilters, visibleNotes.length]);
+    // The Long-form dropdown's: the notes listed if that long-form note were the only one ticked.
+    const byLongForm = new Map<number, number>();
+    const others = searchedAnywhere.filter(
+      (note) => noteMatchesFilters(note, allFilters) && hasNoTagIn(note, noneFilters) && noteMatchesProperties(note, properties, now),
+    );
+    for (const { note } of longFormOptions) {
+      const tree = treeNoteIds(notes, [note.id]);
+      byLongForm.set(note.id, others.filter((other) => tree.has(other.id)).length);
+    }
+    return { byTag, byNone, byProperty, byLongForm, total: visibleNotes.length };
+  }, [
+    notes,
+    searchWords,
+    inLongFormTree,
+    properties,
+    now,
+    extraCategories,
+    tabFilters,
+    extraFilters,
+    noneFilters,
+    allFilters,
+    longFormOptions,
+    visibleNotes.length,
+  ]);
+
+  /** The extra pills after a note's tags: "Long Form", its parent's title, and a long-form note's child count. */
+  function specialPills(note: Note): ExtraPill[] {
+    const pills: ExtraPill[] = [];
+    if (isLongForm(note)) pills.push({ kind: "long-form", text: "Long Form" });
+    // A child whose parent has gone (or isn't shared with you) shows no parent pill.
+    const parent = note.parentId === undefined ? undefined : notes.find((n) => n.id === note.parentId);
+    if (parent?.titleText !== undefined) {
+      pills.push({ kind: "parent", text: shortTitle(parent, 20), title: `Inside "${withoutMarkers(parent.titleText)}"` });
+    }
+    if (isLongForm(note)) {
+      // Direct children only (not in the Bin): how many this tab shows (ignoring the filter row), of how many.
+      const children = childNotes(notes, note.id);
+      if (children.length > 0) {
+        const shown = children.filter((child) => noteMatchesFilters(child, tabFilters)).length;
+        const text = shown === children.length ? `${children.length}` : `${shown} of ${children.length}`;
+        const label = `${text} child ${children.length === 1 ? "note" : "notes"}`;
+        // Tapping it ticks the note in the Long-form filter, listing it and everything under it.
+        const canTick = longFormOptions.some((option) => option.note.id === note.id) && !bulk && !ordering;
+        pills.push({
+          kind: "children",
+          icon: faChartDiagram,
+          text,
+          label,
+          ...(canTick && {
+            title: `${label}: tap to show only this note and the notes inside it`,
+            onClick: () => tickLongForm(note.id, true),
+            // Not mid-edit: the note being edited could leave the list.
+            disabled: rowBlocked || editingNote !== undefined,
+          }),
+        });
+      }
+    }
+    return pills;
+  }
 
   function toggleSearch() {
     setSearchOn(!searchOn);
@@ -506,14 +591,14 @@ export function NotesPage({
   // just leaves the list (archived, moved to the bin, or changed elsewhere), it stays where it is: the
   // browser keeps the notes in view from moving (scroll anchoring).
   useLayoutEffect(() => {
-    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, noneFilters.map((none) => none.id), properties, searchWords]);
+    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, noneFilters.map((none) => none.id), properties, longFormTicks, searchWords]);
     const before = listShown.current;
     listShown.current = { key, length: visibleNotes.length };
     const jump = !before || before.key !== key || visibleNotes.length > before.length;
     const list = listRef.current;
     if (list && jump) list.scrollTop = scrollToTop.current ? 0 : list.scrollHeight;
     scrollToTop.current = false;
-  }, [visibleNotes.length, selectedTab?.id, allFilters, noneFilters, properties, searchWords]);
+  }, [visibleNotes.length, selectedTab?.id, allFilters, noneFilters, properties, longFormTicks, searchWords]);
 
   /**
    * Puts a just-added note at the top of the tab: straight before the first note the tab lists (or at the
@@ -563,6 +648,23 @@ export function NotesPage({
   const [choosingDueDate, setChoosingDueDate] = useState(false);
 
   /**
+   * The parent chosen for new notes in the Parent pop-up: a long-form note's id, null for none, or undefined
+   * when none has been chosen on this tab. Then, while exactly one long-form note is ticked in the
+   * Long-form filter, new notes go inside it, so they stay in the list. Kept for the next note, like the tags.
+   */
+  const [newParentChoice, setNewParentChoice] = useState<number | null>();
+  const newParent =
+    newParentChoice === null ? undefined : (newParentChoice ?? (longFormTicks.length === 1 ? longFormTicks[0] : undefined));
+  // Changing tab goes back to following the filter, as the tags go back to the tab's.
+  useEffect(() => setNewParentChoice(undefined), [selectedTab?.id]);
+  /** The parent of the note being edited, as chosen in the Parent pop-up (saved with the edit). */
+  const [editParent, setEditParent] = useState<number>();
+  /** The Parent pop-up is open (for the note being added or edited). */
+  const [choosingParent, setChoosingParent] = useState(false);
+  /** Whether there are long-form notes a note could go inside: the Parent line is only shown then. */
+  const hasPossibleParents = useMemo(() => possibleParents(notes).length > 0, [notes]);
+
+  /**
    * The note being edited as the server last had it when the edit started (its lastModifiedDateTime):
    * saving is refused if it has changed since, e.g. in another tab. Undefined: saving replaces whatever is
    * there (the note has offline changes waiting, or "save again" after a refusal).
@@ -587,6 +689,7 @@ export function NotesPage({
     // Any new note that was being typed or written is discarded.
     setTitle(note.titleText ?? "");
     setDueDate(note.dueDateTime);
+    setEditParent(note.parentId);
     setEditSelection(selectionFor(note, userCategories));
     setSaveError(undefined);
     // A handwritten note's writing is loaded into the canvas, so it starts with ink.
@@ -605,6 +708,7 @@ export function NotesPage({
   function finishEdit() {
     setTitle("");
     setDueDate(undefined);
+    setEditParent(undefined);
     setEditSelection({});
     setSaveError(undefined);
     setPadInked(false);
@@ -739,12 +843,7 @@ export function NotesPage({
   }
 
   /** Why the note being edited can't become a long-form note, if it can't (as one couldn't be created that way). */
-  const convertHint =
-    editingNote?.titleImage !== undefined
-      ? "Only typed notes can become long-form notes"
-      : editingNote?.parentId !== undefined
-        ? "This note belongs to a long-form note, so it can't become one"
-        : undefined;
+  const convertHint = editingNote?.titleImage !== undefined ? "Only typed notes can become long-form notes" : undefined;
   /** Long-form notes can't have a due date, so converting one removes it. */
   const convertTitle = convertHint ?? (dueDate ? "Convert to long-form note (removes its due date)" : "Convert to long-form note");
 
@@ -765,7 +864,11 @@ export function NotesPage({
     try {
       const tagIds = selectedTagIds(userCategories, editSelection);
       const details = stylusMode ? { detailsImage: "" } : { detailsText: "" };
-      const note = await offlineApi.updateNote(editingNote.id, { titleText: check.title, tagIds, ...details }, editBase.current);
+      const note = await offlineApi.updateNote(
+        editingNote.id,
+        { titleText: check.title, tagIds, ...details, parentId: editParent ?? null },
+        editBase.current,
+      );
       onNoteUpdated(note);
       finishEdit();
       openLongForm(note, true);
@@ -793,7 +896,11 @@ export function NotesPage({
     try {
       const tagIds = selectedTagIds(userCategories, editSelection);
       onNoteUpdated(
-        await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }, editBase.current),
+        await offlineApi.updateNote(
+          editingNote.id,
+          { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }), parentId: editParent ?? null },
+          editBase.current,
+        ),
       );
       finishEdit();
       return true;
@@ -844,11 +951,12 @@ export function NotesPage({
       {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
         const tagIds = selectedTagIds(userCategories, tagSelection, newNoteConstraints);
-        // While a long-form note is open, new notes are its children.
+        // While a long-form note is open, new notes are its children; otherwise they go in the chosen parent, if any.
+        const parentId = longFormId ?? newParent;
         const note = await offlineApi.addNote({
           ...noteTitle,
           tagIds,
-          ...(longFormId !== undefined && { parentId: longFormId }),
+          ...(parentId !== undefined && { parentId }),
           ...(dueDate && { dueDateTime: dueDate }),
         });
         // The due date doesn't carry over to the next note (unlike the tags).
@@ -871,6 +979,8 @@ export function NotesPage({
           setNotice({ text: "Note added, but it has a tag that a \"(None)\" filter hides." });
         } else if (!noteMatchesProperties(note, properties, Date.now())) {
           setNotice({ text: "Note added, but it doesn't match the Properties filter." });
+        } else if (longFormTicks.length > 0 && !(note.parentId !== undefined && treeNoteIds(notes, longFormTicks).has(note.parentId))) {
+          setNotice({ text: "Note added, but it doesn't match the Long-form filter." });
         } else if (!matchesSearch(note, searchWords)) {
           setNotice({ text: "Note added, but it doesn't match the search." });
         } else if (atTop && note.id < 0) {
@@ -1028,6 +1138,18 @@ export function NotesPage({
     return () => document.removeEventListener("keydown", onKeyDown);
   });
 
+  /**
+   * In the expanded area, the last line after the categories: the note's parent. Not while a long-form note
+   * is open (whose new notes go inside it), nor in multi-select, and only when there's a long-form note to choose.
+   */
+  const parentRow =
+    fullTagList && !longForm && hasPossibleParents ? (
+      <div className="tag-pill-row" role="group" aria-label="Parent">
+        <span className="tag-pill-category">Parent</span>
+        <ParentPill notes={notes} parentId={editingNote ? editParent : newParent} disabled={saving} onClick={() => setChoosingParent(true)} />
+      </div>
+    ) : undefined;
+
   /** Messages, then the dropdowns (or every tag as a pill in full-tag-list mode). Both share the same choices. */
   const belowTitle = (
     <>
@@ -1055,6 +1177,7 @@ export function NotesPage({
           onChange={setEditSelection}
           disabled={saving || editingNote.shared !== undefined}
           showSharing
+          lastRow={parentRow}
         />
       ) : (
         <TagChooser
@@ -1065,6 +1188,7 @@ export function NotesPage({
           constraints={newNoteConstraints}
           tabName={selectedTab?.name}
           showSharing
+          lastRow={parentRow}
         />
       )}
     </>
@@ -1208,6 +1332,29 @@ export function NotesPage({
                     noneOption
                   />
                 )}
+                {/* The tab's long-form notes, each with the notes inside it; only when the tab has some. */}
+                {longFormOptions.length > 0 && (
+                  <TagPickers
+                    categories={[longFormCategory(longFormOptions)]}
+                    selection={{ [LONG_FORM_FILTER_ID]: longFormTicks }}
+                    onChange={(selection) => {
+                      // One box changed: which, and whether it's now ticked.
+                      const next = selection[LONG_FORM_FILTER_ID] ?? [];
+                      const added = next.find((id) => !longFormTicks.includes(id));
+                      const removed = longFormTicks.find((id) => !next.includes(id));
+                      if (added !== undefined) tickLongForm(added, true);
+                      else if (removed !== undefined) tickLongForm(removed, false);
+                    }}
+                    disabled={rowBlocked}
+                    checkLists
+                    counts={{ byTag: filterCounts.byLongForm, total: filterCounts.total }}
+                    indents={new Map(longFormOptions.map(({ note, depth }) => [note.id, depth]))}
+                    implied={{
+                      ids: new Set([...(longFormShown ?? [])].filter((id) => !longFormTicks.includes(id))),
+                      hint: "Ticked because a note it's inside is ticked",
+                    }}
+                  />
+                )}
                 {/* Rules about the notes themselves (long-form, due dates), after the category dropdowns. */}
                 <TagPickers
                   categories={[PROPERTIES_CATEGORY]}
@@ -1284,7 +1431,9 @@ export function NotesPage({
                   ? "No notes match the search."
                   : properties.length > 0
                     ? "No notes match the Properties filter."
-                    : allFilters.length > 0 || noneFilters.length > 0
+                    : longFormTicks.length > 0
+                      ? "No notes match the Long-form filter."
+                      : allFilters.length > 0 || noneFilters.length > 0
                       ? "No notes in this tab yet."
                       : "No notes yet. Add your first one below."}
               </p>
@@ -1509,6 +1658,22 @@ export function NotesPage({
         />
       )}
 
+      {choosingParent && (
+        <ParentDialog
+          notes={notes}
+          noteOrder={noteOrder}
+          parentId={editingNote ? editParent : newParent}
+          childId={editingNote?.id}
+          owner={editingNote ? noteOwner(editingNote) : tagsOwner(selectedTagIds(userCategories, tagSelection, newNoteConstraints), userCategories)}
+          onSet={(parentId) => {
+            if (editingNote) setEditParent(parentId);
+            else setNewParentChoice(parentId ?? null);
+            setChoosingParent(false);
+          }}
+          onCancel={() => setChoosingParent(false)}
+        />
+      )}
+
       {listDueNote && (
         <DueDateDialog
           dueDate={listDueNote.dueDateTime}
@@ -1522,6 +1687,10 @@ export function NotesPage({
           // A fresh editor for each note opened.
           key={longForm.key}
           note={longForm.note}
+          notes={notes}
+          noteOrder={noteOrder}
+          // A new long-form note starts in the parent new notes would get.
+          initialParentId={longForm.note ? longForm.note.parentId : newParent}
           startInDetails={longForm.converted}
           tabTags={tabTags}
           tabName={selectedTab?.name}
@@ -1851,6 +2020,17 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 function dueClass(iso: string, now: number): string {
   const due = Date.parse(iso);
   return due < now ? "overdue" : due - now < WEEK_MS ? "due-soon" : "due-later";
+}
+
+/** Whose notebook a note is in, for choosing its parent: its owner's if it's shared with you, otherwise yours (undefined). */
+function noteOwner(note: Note): { id: number; name: string } | undefined {
+  return note.shared ? { id: note.shared.ownerId, name: note.shared.ownerName } : undefined;
+}
+
+/** Whose notebook a new note with these tags goes in: the owner of a tag shared with you, if it has one, otherwise yours. */
+function tagsOwner(tagIds: number[], categories: Category[]): { id: number; name: string } | undefined {
+  const shared = categories.find((category) => category.shared)?.tags.find((tag) => tagIds.includes(tag.id));
+  return shared?.ownerId !== undefined ? { id: shared.ownerId, name: shared.ownerName ?? "its owner" } : undefined;
 }
 
 /**

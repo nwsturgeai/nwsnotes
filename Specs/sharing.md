@@ -46,6 +46,7 @@ A note's Lifetime is shared: if a recipient archives one of the owner's notes, i
 - The note itself, in full, so anything the owner tags with a shared tag is visible to that recipient.
 - Only the tags of that note that are shared with them, and its Lifetime. The owner's other tags are hidden.
 - **Long-form notes:** a child note is shared only if it has a tag shared with the recipient itself. Sharing the parent doesn't share its children.
+- **Parents stay in one notebook:** a parent note can only ever have child notes owned by the same user as the parent. So a recipient can't put their own notes inside the owner's long-form notes, nor the owner's notes inside theirs; with edit permission they can put the owner's notes inside the owner's long-form notes shared with them.
 
 ### Note order
 - The owner's order of their notes doesn't change when a recipient reorders.

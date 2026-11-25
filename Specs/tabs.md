@@ -144,6 +144,9 @@ If any text is typed into the search box, the list of notes shown in the main ar
 - **Like the other filters:** ticking a rule turns the row yellow and shows "reset filters", which clears it too. The ticks are remembered per tab, per device, with the row's tag choices. There's no "select all".
 - **New notes:** the rules don't change the new-note dropdowns. A new note that doesn't pass them is still added, with the notice "Note added, but it doesn't match the Properties filter." An empty list says "No notes match the Properties filter."
 
+### Long-form filter
+- Just before Properties, a "Long-form" check-list of the tab's long-form notes as a tree, shown only when the tab has any. Ticking one lists it and every note under it. See [long-form.md](long-form.md#parent-notes).
+
 ### Search
 - **Button:** `fa-magnifying-glass`, the same 24px size, just right of the "reset filters" button. While search is on it's filled in green, like the list-check button. It's on every tab, "All" included.
 - **Search box:** a single-line text box on its own line at the bottom of the filter row, shown while search is on. It gets the focus when search is turned on. While a note is being edited it's blocked, like the rest of the row.

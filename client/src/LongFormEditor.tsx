@@ -19,6 +19,8 @@ import {
 import { ApiError } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { ParentDialog, ParentPill } from "./ParentDialog";
+import { possibleParents } from "./parents";
 import { FormattedText } from "./FormattedText";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
 import { PEN_WIDTHS, usePenWidth } from "./stylusMode";
@@ -30,6 +32,12 @@ const SAVE_DELAY_MS = 30_000;
 interface Props {
   /** The long-form note being edited, or undefined when creating a new one. */
   note: Note | undefined;
+  /** Every note the user can see, for the Parent pill and pop-up. */
+  notes: Note[];
+  /** The shared note order, for the Parent pop-up's list. */
+  noteOrder: number[];
+  /** The note's parent to start with: its own when editing, or the one new notes would get. */
+  initialParentId: number | undefined;
   /** User categories (no Lifetime dropdown). */
   categories: Category[];
   stylusMode: boolean;
@@ -72,6 +80,9 @@ function selectionFor(note: Note | undefined, categories: Category[]): TagSelect
  */
 export function LongFormEditor({
   note,
+  notes,
+  noteOrder,
+  initialParentId,
   categories,
   stylusMode,
   bottom,
@@ -89,6 +100,9 @@ export function LongFormEditor({
   const savedTitle = useRef(note?.titleText ?? "");
   const [titleLocked, setTitleLocked] = useState(note !== undefined);
   const [selection, setSelection] = useState<TagSelection>(() => selectionFor(note, categories));
+  /** The note's parent, saved with the tags (a new note is created with it). */
+  const [parentId, setParentId] = useState(initialParentId);
+  const [choosingParent, setChoosingParent] = useState(false);
   /** Typed or handwritten details: fixed for an existing note; for a new one, from stylus mode now. */
   const [kind] = useState<"text" | "image">(() =>
     note ? (note.detailsImage !== undefined ? "image" : "text") : stylusMode ? "image" : "text",
@@ -115,8 +129,8 @@ export function LongFormEditor({
   const [padHasInk, setPadHasInk] = useState(false);
 
   // The latest values, for saves that run from a timer.
-  const latest = useRef({ selection, detailsText });
-  latest.current = { selection, detailsText };
+  const latest = useRef({ selection, detailsText, parentId });
+  latest.current = { selection, detailsText, parentId };
   const dirty = useRef(false);
   const timer = useRef<number>(undefined);
   const saving = useRef<Promise<void>>(Promise.resolve());
@@ -148,8 +162,15 @@ export function LongFormEditor({
     return { detailsImage: pad?.hasInk() ? pad.toImage() : "" };
   }
 
-  function request(titleText: string) {
-    return { titleText, tagIds: selectedTagIds(categories, latest.current.selection), ...currentDetails() };
+  /** The note as it is now. An update says the parent either way (null for none); a new note only has one if chosen. */
+  function request(titleText: string, update = true) {
+    const parent = latest.current.parentId;
+    return {
+      titleText,
+      tagIds: selectedTagIds(categories, latest.current.selection),
+      ...currentDetails(),
+      ...(update ? { parentId: parent ?? null } : parent !== undefined && { parentId: parent }),
+    };
   }
 
   function failed(err: unknown, what: string) {
@@ -221,7 +242,7 @@ export function LongFormEditor({
     try {
       // Tag changes made while editing the title are saved with it.
       if (noteId === undefined) {
-        const created = await offlineApi.addNote(request(check.title));
+        const created = await offlineApi.addNote(request(check.title, false));
         base.current = isWaiting(created.id) ? undefined : created.lastModifiedDateTime;
         setNoteId(created.id);
         onSaved(created, true);
@@ -245,6 +266,14 @@ export function LongFormEditor({
   function changeTags(next: TagSelection) {
     setSelection(next);
     latest.current.selection = next;
+    if (detailsEditable) schedule();
+  }
+
+  /** A parent chosen in the Parent pop-up (undefined for none): saved like a tag change. */
+  function changeParent(next: number | undefined) {
+    setChoosingParent(false);
+    setParentId(next);
+    latest.current.parentId = next;
     if (detailsEditable) schedule();
   }
 
@@ -479,6 +508,13 @@ export function LongFormEditor({
           disabled={busy || note?.shared !== undefined}
           showSharing
         />
+        {/* After the dropdowns: the note's parent, when there's a long-form note it could go inside. */}
+        {possibleParents(notes).some((other) => other.id !== noteId) && (
+          <div className="lf-parent" role="group" aria-label="Parent">
+            <span className="tag-pill-category">Parent</span>
+            <ParentPill notes={notes} parentId={parentId} disabled={busy} onClick={() => setChoosingParent(true)} />
+          </div>
+        )}
         {/* At the far right: choose the tags the selected tab fixes. */}
         <button
           type="button"
@@ -615,6 +651,17 @@ export function LongFormEditor({
         </div>
       </div>
 
+      {choosingParent && (
+        <ParentDialog
+          notes={notes}
+          noteOrder={noteOrder}
+          parentId={parentId}
+          childId={noteId}
+          owner={note?.shared ? { id: note.shared.ownerId, name: note.shared.ownerName } : sharedTagsOwner(categories, selection)}
+          onSet={changeParent}
+          onCancel={() => setChoosingParent(false)}
+        />
+      )}
       {confirmingCancel && (
         <ConfirmDialog
           message="Are you sure you want to delete this note?"
@@ -635,6 +682,13 @@ export function LongFormEditor({
       )}
     </div>
   );
+}
+
+/** Whose notebook a note with these tags is in: the owner of a tag shared with you, if it has one; otherwise yours (undefined). */
+function sharedTagsOwner(categories: Category[], selection: TagSelection): { id: number; name: string } | undefined {
+  const tagIds = selectedTagIds(categories, selection);
+  const tag = categories.find((category) => category.shared)?.tags.find((t) => tagIds.includes(t.id));
+  return tag?.ownerId !== undefined ? { id: tag.ownerId, name: tag.ownerName ?? "its owner" } : undefined;
 }
 
 /** A data URL's contents, as a Blob. */
