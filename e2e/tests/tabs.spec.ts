@@ -93,7 +93,9 @@ test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
   const selectAll = topic.getByRole("button", { name: "select all" });
   await expect(selectAll).toBeEnabled();
   await selectAll.click();
-  for (const box of await topic.getByRole("checkbox").all()) await expect(box).toBeChecked();
+  // Every tag, that is: "(None)" is the opposite, so it stays unticked.
+  for (const box of await topic.locator("label:not(.tag-dropdown-none) input").all()) await expect(box).toBeChecked();
+  await expect(topic.getByRole("checkbox", { name: /^\(None\)/ })).not.toBeChecked();
   // Every tag is ticked now, so the link is greyed out.
   await expect(selectAll).toBeDisabled();
   // Notes with no Topic tag are hidden.
@@ -106,6 +108,51 @@ test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
   const lifetime = await openFilter(page, "Lifetime");
   await lifetime.getByRole("button", { name: "select all" }).click();
   await expectTitles(page, [...ALL.slice(0, 4), "Broken lamp", ...ALL.slice(4)]);
+});
+
+test('"(None)" lists the notes with none of the category\'s tags, and unticks the others', async ({ page }) => {
+  const topic = await openFilter(page, "Topic");
+  const none = topic.getByRole("checkbox", { name: /^\(None\)/ });
+  const reading = topic.getByRole("checkbox", { name: /^Reading/ });
+  // It's after the tags, just above the TOTAL, with its own count.
+  await expect(topic.locator("label").last()).toContainText("(None)(5)");
+  await reading.check();
+  await expectTitles(page, ["Read the quarterly report"]);
+
+  // Ticking (None) unticks the tags.
+  await none.check();
+  await expect(reading).not.toBeChecked();
+  await expectTitles(page, ["Plan the team meeting", "Old invoice", "", "Holiday plans", "Book flights"]);
+  await expect(topic).toContainText("TOTAL: 5");
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
+  await expect(filterRow(page).getByRole("button", { name: /^Topic: \(None\)/ })).toBeVisible();
+
+  // The other dropdowns count with it.
+  await page.keyboard.press("Escape");
+  const area = await openFilter(page, "Area");
+  await expect(area.getByRole("checkbox", { name: /^Work/ }).locator("..")).toContainText("(2)");
+  await expect(area.getByRole("checkbox", { name: /^\(None\)/ }).locator("..")).toContainText("(0)");
+  // Lifetime has no (None): every note has one.
+  await page.keyboard.press("Escape");
+  await expect((await openFilter(page, "Lifetime")).getByRole("checkbox", { name: /^\(None\)/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Ticking a tag unticks (None); so does "select all".
+  const topicAgain = await openFilter(page, "Topic");
+  await topicAgain.getByRole("checkbox", { name: /^Ideas/ }).check();
+  await expect(topicAgain.getByRole("checkbox", { name: /^\(None\)/ })).not.toBeChecked();
+  await expectTitles(page, ["Garden ideas"]);
+  await topicAgain.getByRole("checkbox", { name: /^\(None\)/ }).check();
+  await topicAgain.getByRole("button", { name: "select all" }).click();
+  await expect(topicAgain.getByRole("checkbox", { name: /^\(None\)/ })).not.toBeChecked();
+  await expectTitles(page, ["Buy milk", "Read the quarterly report", "Garden ideas"]);
+
+  // It's remembered, like the other filters, and Reset filters clears it.
+  await topicAgain.getByRole("checkbox", { name: /^\(None\)/ }).check();
+  await page.reload();
+  await expectTitles(page, ["Plan the team meeting", "Old invoice", "", "Holiday plans", "Book flights"]);
+  await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
+  await expectTitles(page, ALL);
 });
 
 test("each tab remembers its own filters", async ({ page }) => {

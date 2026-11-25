@@ -83,6 +83,8 @@ import {
   selectionToFilters,
   TagPickers,
   TagPillPicker,
+  hasNoTagIn,
+  noneCategories,
   type BulkTagChanges,
   type TagSelection,
 } from "./TagPickers";
@@ -353,6 +355,8 @@ export function NotesPage({
     () => [...tabFilters, ...selectionToFilters(extraCategories, extraSelection)],
     [tabFilters, extraCategories, extraSelection],
   );
+  /** The filter row's dropdowns with "(None)" ticked: listed notes have none of their tags. */
+  const noneFilters = useMemo(() => noneCategories(extraCategories, extraSelection), [extraCategories, extraSelection]);
 
   // Hidden notes aren't changed, just not listed. Bin notes are hidden unless a filter ticks Bin.
   // Every tab ("All" included) lists the notes in the shared order, then any unordered ones in creation order.
@@ -375,41 +379,52 @@ export function NotesPage({
   const visibleNotes = useMemo(() => {
     const matching = notes.filter(
       (note) =>
-        noteMatchesFilters(note, allFilters) && noteMatchesProperties(note, properties, now) && matchesSearch(note, searchWords),
+        noteMatchesFilters(note, allFilters) &&
+        hasNoTagIn(note, noneFilters) &&
+        noteMatchesProperties(note, properties, now) &&
+        matchesSearch(note, searchWords),
     );
     return orderNotes(matching, noteOrder);
-  }, [notes, allFilters, properties, now, searchWords, noteOrder]);
+  }, [notes, allFilters, noneFilters, properties, now, searchWords, noteOrder]);
 
   /** The filter row's ticked tags, as filters (the reset button only shows while there are some). */
   const extraFilters = useMemo(() => selectionToFilters(extraCategories, extraSelection), [extraCategories, extraSelection]);
 
-  /** Whether the row narrows the list at all: a tag or property ticked (the reset button shows, and the row is yellow). */
-  const rowFiltering = extraFilters.length > 0 || properties.length > 0;
+  /** Whether the row narrows the list at all: a tag, "(None)" or property ticked (the reset button shows, and the row is yellow). */
+  const rowFiltering = extraFilters.length > 0 || noneFilters.length > 0 || properties.length > 0;
 
   /**
    * The filter row's note counts: for each tag, the notes listed if it were the only tag ticked in its
    * dropdown, with every other filter (the tab, the other dropdowns, Properties, the search) as it is.
-   * Properties' counts work the same way, with its own ticks left out.
+   * "(None)" counts the notes listed if it were ticked instead. Properties' counts work the same way,
+   * with its own ticks left out.
    */
   const filterCounts = useMemo(() => {
     const searched = notes.filter((note) => matchesSearch(note, searchWords));
     const withProperties = searched.filter((note) => noteMatchesProperties(note, properties, now));
     const byTag = new Map<number, number>();
+    const byNone = new Map<number, number>();
     for (const category of extraCategories) {
       const others = [...tabFilters, ...extraFilters.filter((filter) => filter.categoryId !== category.id)];
+      const otherNones = noneFilters.filter((none) => none.id !== category.id);
+      const rest = withProperties.filter((note) => hasNoTagIn(note, otherNones));
       for (const tag of category.tags) {
+        // The tag's filter goes with the others, not after them: ticking Bin is what lets Bin notes through.
         const filters = [...others, { categoryId: category.id, tagIds: [tag.id] }];
-        byTag.set(tag.id, withProperties.filter((note) => noteMatchesFilters(note, filters)).length);
+        byTag.set(tag.id, rest.filter((note) => noteMatchesFilters(note, filters)).length);
+      }
+      if (!category.system) {
+        byNone.set(category.id, rest.filter((note) => noteMatchesFilters(note, others) && hasNoTagIn(note, [category])).length);
       }
     }
     // Properties' rules aren't tags, so they have their own map (their ids would clash with tag ids).
     const byProperty = new Map<number, number>();
-    const tagged = searched.filter((note) => noteMatchesFilters(note, allFilters));
+    const tagged = searched.filter((note) => noteMatchesFilters(note, allFilters) && hasNoTagIn(note, noneFilters));
     for (const rule of PROPERTIES_CATEGORY.tags) {
       byProperty.set(rule.id, tagged.filter((note) => noteMatchesProperties(note, [rule.id], now)).length);
     }
-    return { byTag, byProperty, total: visibleNotes.length };
-  }, [notes, searchWords, properties, now, extraCategories, tabFilters, extraFilters, allFilters, visibleNotes.length]);
+    return { byTag, byNone, byProperty, total: visibleNotes.length };
+  }, [notes, searchWords, properties, now, extraCategories, tabFilters, extraFilters, noneFilters, allFilters, visibleNotes.length]);
 
   function toggleSearch() {
     setSearchOn(!searchOn);
@@ -486,14 +501,14 @@ export function NotesPage({
   // just leaves the list (archived, moved to the bin, or changed elsewhere), it stays where it is: the
   // browser keeps the notes in view from moving (scroll anchoring).
   useLayoutEffect(() => {
-    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, properties, searchWords]);
+    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, noneFilters.map((none) => none.id), properties, searchWords]);
     const before = listShown.current;
     listShown.current = { key, length: visibleNotes.length };
     const jump = !before || before.key !== key || visibleNotes.length > before.length;
     const list = listRef.current;
     if (list && jump) list.scrollTop = scrollToTop.current ? 0 : list.scrollHeight;
     scrollToTop.current = false;
-  }, [visibleNotes.length, selectedTab?.id, allFilters, properties, searchWords]);
+  }, [visibleNotes.length, selectedTab?.id, allFilters, noneFilters, properties, searchWords]);
 
   /**
    * Puts a just-added note at the top of the tab: straight before the first note the tab lists (or at the
@@ -783,6 +798,8 @@ export function NotesPage({
               ? "Note added, but it doesn't match this tab, so it isn't shown here."
               : "Note added, but this tab doesn't show New notes.",
           });
+        } else if (!hasNoTagIn(note, noneFilters)) {
+          setNotice({ text: "Note added, but it has a tag that a \"(None)\" filter hides." });
         } else if (!noteMatchesProperties(note, properties, Date.now())) {
           setNotice({ text: "Note added, but it doesn't match the Properties filter." });
         } else if (!matchesSearch(note, searchWords)) {
@@ -1039,6 +1056,7 @@ export function NotesPage({
                     counts={filterCounts}
                     selectAll
                     showSharing
+                    noneOption
                   />
                 )}
                 {/* Rules about the notes themselves (long-form, due dates), after the category dropdowns. */}
@@ -1107,7 +1125,7 @@ export function NotesPage({
                   ? "No notes match the search."
                   : properties.length > 0
                     ? "No notes match the Properties filter."
-                    : allFilters.length > 0
+                    : allFilters.length > 0 || noneFilters.length > 0
                       ? "No notes in this tab yet."
                       : "No notes yet. Add your first one below."}
               </p>
