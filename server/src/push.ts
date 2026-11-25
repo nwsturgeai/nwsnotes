@@ -1,6 +1,7 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import webpush, { WebPushError, type PushSubscription } from "web-push";
+import * as webpush from "web-push";
+import { WebPushError, type PushSubscription } from "web-push";
 import { withoutMarkers } from "@nwsnotes/shared";
 import type { Notebooks } from "./notebooks.js";
 import { RequestError } from "./store.js";
