@@ -195,6 +195,11 @@ export function savedReply(tabName: string, title: string, cut: boolean): string
   return fitQuoted((quoted) => `${heading}: "${quoted}"`, title, fitsOneSms(`${heading}.`) ? `${heading}.` : "Saved.");
 }
 
+/** The confirmation texted back for "Reset New": how many New notes became Active. */
+export function resetNewReply(count: number): string {
+  return count === 0 ? "Reset New: there were no New notes." : `Reset New: ${count === 1 ? "1 note" : `${count} notes`} made Active.`;
+}
+
 /** The confirmation texted back for a tab email: `Emailed <tab> (<n> notes) to <email>.`, fitted into one SMS. */
 export function emailedReply(tabName: string, noteCount: number, email: string): string {
   const notes = noteCount === 1 ? "1 note" : `${noteCount} notes`;
@@ -204,12 +209,12 @@ export function emailedReply(tabName: string, noteCount: number, email: string):
   return `Emailed (${notes}).`;
 }
 
-/** The confirmation texted back for a due date set by "App due": `Due <when>: "<title>"`, fitted into one SMS. */
+/** The confirmation texted back for a due date set by "Due": `Due <when>: "<title>"`, fitted into one SMS. */
 export function dueSetReply(when: string, title: string): string {
   return fitQuoted((quoted) => `Due ${when}: "${quoted}"`, title, `Due ${when}.`);
 }
 
-/** The reply when "App due" was followed by something that isn't a date and time, quoting it cut short to fit one SMS. */
+/** The reply when "Due" was followed by something that isn't a date and time, quoting it cut short to fit one SMS. */
 export function dueNotUnderstoodReply(heard: string): string {
   return fitQuoted((quoted) => `Not set: couldn't understand "${quoted}" as a date and time.`, heard, "Not set: couldn't understand the date and time.");
 }
@@ -226,25 +231,52 @@ export function formatPhoneNumber(e164: string): string {
 
 // ---- Commands -----------------------------------------------------------------
 
+/** What a text asks for: every text starts with a command word, or it's simply a note with no tags. */
+export type SmsCommand =
+  /** "Add <tab name> <title>": `rest` is what follows "Add" (the tab's name, then the title). */
+  | { command: "add"; rest: string }
+  /** "New <title>": a note with no tags. */
+  | { command: "new"; title: string }
+  /** "Due <when>" (or "Due date <when>"): `when` is what follows, empty when nothing does. */
+  | { command: "due"; when: string }
+  /** "Reset New": the user's New notes become Active. */
+  | { command: "reset-new" }
+  /** "Email tab <tab name>": `named` is what follows "Email tab", empty when nothing does. */
+  | { command: "email-tab"; named: string }
+  /** No command word: the whole text is a note with no tags. */
+  | { command: "none" };
+
 /**
- * "App email tab <tab name>": emails the user a summary of the notes that tab shows. Returns the text
- * after "App email" (still starting with "tab", if it was said), or undefined if the text isn't this
- * command. "E-mail" and "e mail" count as "email", as dictation may write them either way.
+ * Reads the command word a text starts with (any case, any punctuation): Add, New, Due, Reset New or
+ * Email tab ("e-mail" and "e mail" count as "email", as dictation may write them either way). Anything
+ * else is no command. The words after the command are returned as written, without the punctuation between.
  */
-export function emailTabCommand(text: string): string | undefined {
+export function readSmsCommand(text: string): SmsCommand {
   const trimmed = text.trim();
   const words = wordsWithEnds(trimmed);
-  if (words[0]?.word !== "app") return undefined;
-  let last: number;
-  if (words[1]?.word === "email") last = 1;
-  else if (words[1]?.word === "e" && words[2]?.word === "mail") last = 2;
-  else return undefined;
-  return trimmed.slice(words[last]!.end).replace(LEADING_PUNCTUATION, "").trim();
+  const word = (i: number) => words[i]?.word;
+  /** What follows the command's words (the first `count`), as written. */
+  const after = (count: number) => trimmed.slice(words[count - 1]!.end).replace(LEADING_PUNCTUATION, "").trim();
+  switch (word(0)) {
+    case "add":
+      return { command: "add", rest: after(1) };
+    case "new":
+      return { command: "new", title: capitalised(after(1)) };
+    case "due":
+      return { command: "due", when: after(word(1) === "date" ? 2 : 1) };
+    case "reset":
+      // Only "Reset New" on its own: "Reset the boiler timer" is a note.
+      return word(1) === "new" && words.length === 2 ? { command: "reset-new" } : { command: "none" };
+  }
+  const email = word(0) === "email" ? 1 : word(0) === "e" && word(1) === "mail" ? 2 : 0;
+  if (email > 0 && word(email) === TAB_WORD) return { command: "email-tab", named: after(email + 1) };
+  return { command: "none" };
 }
 
 /**
- * Which tab an "App email tab" command names: one of the tabs (by its name or spoken name, as for
- * notes), "all" for the built-in All tab, or undefined when it names none or has words after the name.
+ * Which tab an "Email tab" command names (`named`, what follows "Email tab"): one of the tabs (by its
+ * name or spoken name, as for notes), "all" for the built-in All tab, or undefined when it names none or
+ * has words after the name.
  */
 export function emailTabTarget<T extends SpokenTab>(named: string, tabs: T[]): T | "all" | undefined {
   const words = wordsOf(named);

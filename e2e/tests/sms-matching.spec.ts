@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
 import {
-  emailTabCommand,
   emailTabTarget,
   emailedReply,
   fitsOneSms,
@@ -8,12 +7,14 @@ import {
   matchSpokenTab,
   normaliseSpoken,
   notSavedReply,
+  readSmsCommand,
+  resetNewReply,
   savedReply,
   spokenNameError,
   dueSetReply,
   dueNotUnderstoodReply,
 } from "../../shared/src/sms";
-import { dueCommand, formatSpokenDue, readSpokenDue } from "../../shared/src/spokenDue";
+import { formatSpokenDue, readSpokenDue } from "../../shared/src/spokenDue";
 
 // Unit tests of the shared text-message code: no browser or server needed, so they run once (desktop).
 test.beforeEach(() => {
@@ -127,16 +128,43 @@ test("UK numbers are shown in the usual form", () => {
   expect(formatPhoneNumber("+12025550123")).toBe("+12025550123");
 });
 
-test('"App email tab <name>" is the email command, however it is dictated', () => {
-  expect(emailTabCommand("App email tab Shopping")).toBe("tab Shopping");
-  expect(emailTabCommand("app e-mail tab shopping.")).toBe("tab shopping.");
-  expect(emailTabCommand("App, e mail: tab Home jobs")).toBe("tab Home jobs");
-  expect(emailTabCommand("App email")).toBe("");
-  // Anything else is a note, as before.
-  expect(emailTabCommand("Apple email tab Shopping")).toBeUndefined();
-  expect(emailTabCommand("App store review")).toBeUndefined();
-  expect(emailTabCommand("Email tab Shopping")).toBeUndefined();
-  expect(emailTabCommand("Shopping, app email")).toBeUndefined();
+test("every text starts with a command word: Add, New, Due, Reset New or Email tab, however it's dictated", () => {
+  expect(readSmsCommand("Add Shopping, oat milk")).toEqual({ command: "add", rest: "Shopping, oat milk" });
+  expect(readSmsCommand("add: tab home jobs fix the gate")).toEqual({ command: "add", rest: "tab home jobs fix the gate" });
+  expect(readSmsCommand("Add")).toEqual({ command: "add", rest: "" });
+  expect(readSmsCommand("New, call the garage")).toEqual({ command: "new", title: "Call the garage" });
+  expect(readSmsCommand("new")).toEqual({ command: "new", title: "" });
+  expect(readSmsCommand("Due tomorrow 3pm")).toEqual({ command: "due", when: "tomorrow 3pm" });
+  expect(readSmsCommand("due date: Friday")).toEqual({ command: "due", when: "Friday" });
+  expect(readSmsCommand("Due.")).toEqual({ command: "due", when: "" });
+  expect(readSmsCommand("Reset New")).toEqual({ command: "reset-new" });
+  expect(readSmsCommand("reset, new.")).toEqual({ command: "reset-new" });
+  expect(readSmsCommand("Email tab Shopping")).toEqual({ command: "email-tab", named: "Shopping" });
+  expect(readSmsCommand("e-mail tab shopping.")).toEqual({ command: "email-tab", named: "shopping." });
+  expect(readSmsCommand("E mail, tab: Home jobs")).toEqual({ command: "email-tab", named: "Home jobs" });
+  expect(readSmsCommand("Email tab")).toEqual({ command: "email-tab", named: "" });
+  // Anything else is a note with no tags: the old "App" commands, a tab's name on its own, a command
+  // word inside another word or later on, "Reset New" with more after it, and "Email" without "tab".
+  for (const text of [
+    "App email tab Shopping",
+    "App due tomorrow",
+    "Shopping, oat milk",
+    "Address the envelopes",
+    "Newspapers to recycle",
+    "Buy a new kettle",
+    "Reset new boiler timer",
+    "Reset the clocks",
+    "Email the plumber",
+    "Duet practice",
+  ]) {
+    expect(readSmsCommand(text)).toEqual({ command: "none" });
+  }
+});
+
+test('the "Reset New" confirmation says how many notes it changed', () => {
+  expect(resetNewReply(0)).toBe("Reset New: there were no New notes.");
+  expect(resetNewReply(1)).toBe("Reset New: 1 note made Active.");
+  expect(resetNewReply(12)).toBe("Reset New: 12 notes made Active.");
 });
 
 test("the email command names a tab by its name or spoken name, or All", () => {
@@ -160,7 +188,7 @@ test("the email command names a tab by its name or spoken name, or All", () => {
   expect(target("tab shopping and work")).toBeUndefined();
 });
 
-// ---- "App due": reading a dictated date and time --------------------------------------
+// ---- "Due": reading a dictated date and time --------------------------------------
 
 /** Tuesday 24 November 2026, 10:00 in the UK (GMT). */
 const NOW = new Date("2026-11-24T10:00:00Z");
@@ -170,18 +198,6 @@ const due = (text: string, now = NOW) => {
   const read = readSpokenDue(text, now);
   return read.ok ? formatSpokenDue(read.dueDateTime, now) : read.reason;
 };
-
-test('"App due", "App note due" and "App last note due" are the due-date command', () => {
-  expect(dueCommand("App due tomorrow 3pm")).toBe("tomorrow 3pm");
-  expect(dueCommand("app note due: Friday")).toBe("Friday");
-  expect(dueCommand("App Last Note Due, 9:30.")).toBe("9:30.");
-  expect(dueCommand("App due date tomorrow")).toBe("tomorrow");
-  expect(dueCommand("App due")).toBe("");
-  expect(dueCommand("App email tab Work")).toBeUndefined();
-  expect(dueCommand("Apple due tomorrow")).toBeUndefined();
-  expect(dueCommand("Due tomorrow, the gas bill")).toBeUndefined();
-  expect(dueCommand("App note about dues")).toBeUndefined();
-});
 
 test("today and tomorrow, with am/pm or the 24-hour clock", () => {
   expect(due("tomorrow at 3pm")).toBe("Wed 25/11 15:00");

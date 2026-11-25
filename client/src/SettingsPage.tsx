@@ -862,8 +862,9 @@ function TextMessages({ notes, tabs, onSessionExpired }: { notes: Note[]; tabs: 
     <section className="text-messages">
       <h2>Text messages</h2>
       <p>
-        Add notes by texting them to {smsNumber}, e.g. by saying "Hey Google, send a text to nwsnotes: {exampleTab}, buy
-        milk" in the car. Start a text with a tab's name (or its spoken name) to put the note in that tab.
+        Add notes by texting them to {smsNumber}, e.g. by saying "Hey Google, send a text to nwsnotes: Add {exampleTab}, buy
+        milk" in the car. Start a text with "Add" and a tab's name (or its spoken name) to put the note in that tab, or
+        with "New" for a note with no tags.
       </p>
       {status.linked ? (
         <>
