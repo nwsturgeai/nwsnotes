@@ -11,6 +11,7 @@ export const PROPERTY_LONG_FORM = 1;
 export const PROPERTY_DUE_SET = 2;
 export const PROPERTY_DUE_TODAY = 3;
 export const PROPERTY_OVERDUE = 4;
+export const PROPERTY_HAS_PARENT = 5;
 
 export const PROPERTIES_CATEGORY: Category = {
   id: PROPERTIES_CATEGORY_ID,
@@ -18,6 +19,7 @@ export const PROPERTIES_CATEGORY: Category = {
   multiSelect: true,
   tags: [
     { id: PROPERTY_LONG_FORM, name: "Long-form" },
+    { id: PROPERTY_HAS_PARENT, name: "Has a parent note" },
     { id: PROPERTY_DUE_SET, name: "Due date set" },
     { id: PROPERTY_DUE_TODAY, name: "Due today" },
     { id: PROPERTY_OVERDUE, name: "Overdue" },
@@ -37,6 +39,8 @@ export function noteHasProperty(note: Note, property: number, now: number): bool
   switch (property) {
     case PROPERTY_LONG_FORM:
       return isLongForm(note);
+    case PROPERTY_HAS_PARENT:
+      return note.parentId !== undefined;
     case PROPERTY_DUE_SET:
       return due !== undefined;
     case PROPERTY_DUE_TODAY:

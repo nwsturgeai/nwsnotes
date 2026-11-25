@@ -13,6 +13,7 @@ Just above your notes is a row of dropdowns, one for each Category. Tick Tags in
 After the Category dropdowns is a **Properties** dropdown, for narrowing the list by the notes themselves:
 
 - **Long-form**: only long-form notes.
+- **Has a parent note**: notes added inside a long-form note.
 - **Due date set**: notes with a due date.
 - **Due today**: notes due before midnight tonight, including overdue ones.
 - **Overdue**: notes whose due date has passed.
