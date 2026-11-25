@@ -121,7 +121,8 @@ export class PushReminders {
     await Promise.all(
       this.subscriptions.filter((device) => device.userId === userId).map(async ({ userId: _user, ...subscription }) => {
         try {
-          await webpush.sendNotification(subscription, payload);
+          // High urgency, or Android holds the reminder back while the phone is idle (Doze) until it next wakes.
+          await webpush.sendNotification(subscription, payload, { urgency: "high" });
           reached++;
         } catch (error) {
           if (error instanceof WebPushError && (error.statusCode === 404 || error.statusCode === 410)) {
