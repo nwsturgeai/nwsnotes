@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { SHARE_PERMISSIONS, SHARE_PERMISSION_NAMES, isValidLoginName, type SharePermission, type SharePerson } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { MessageDialog } from "./ConfirmDialog";
 
 interface Props {
   tagId: number;
@@ -16,6 +17,8 @@ interface Row {
   loginName: string;
   displayName?: string;
   permission: SharePermission;
+  /** Asked by email, and hasn't accepted yet. */
+  pending?: boolean;
 }
 
 /** "Choose someone" in the people list: typing an email address instead. */
@@ -34,6 +37,8 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  /** After saving: what to tell the user about the people this save emailed to ask (closing once they've read it). */
+  const [askedMessages, setAskedMessages] = useState<string[]>();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -45,7 +50,14 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
     Promise.all([api.tagShares(tagId), api.sharePeople()])
       .then(([shares, known]) => {
         if (cancelled) return;
-        setRows(shares.map((share) => ({ loginName: share.loginName, displayName: share.displayName, permission: share.permission })));
+        setRows(
+          shares.map((share) => ({
+            loginName: share.loginName,
+            displayName: share.displayName,
+            permission: share.permission,
+            ...(share.pending && { pending: true }),
+          })),
+        );
         setPeople(known);
         // Someone already linked by sharing is the likeliest choice; otherwise the email box shows.
         const first = known.find((person) => !shares.some((share) => share.loginName === person.loginName));
@@ -92,8 +104,18 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
     setSaving(true);
     setError(undefined);
     try {
-      await api.setTagShares(tagId, { shares: rows.map(({ loginName, permission }) => ({ loginName, permission })) });
-      onClose();
+      const saved = await api.setTagShares(tagId, { shares: rows.map(({ loginName, permission }) => ({ loginName, permission })) });
+      const asked = saved.filter((share) => share.asked);
+      if (asked.length === 0) {
+        onClose();
+        return;
+      }
+      setAskedMessages(
+        asked.map(
+          (share) =>
+            `${share.displayName} will get an email that you want to share ${tagName} tagged notes with them. They will see the notes after they click the 'accept' link in the email.`,
+        ),
+      );
     } catch (err) {
       if (err instanceof ApiError && err.isUnauthorized) {
         onSessionExpired();
@@ -103,6 +125,8 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
       setSaving(false);
     }
   }
+
+  if (askedMessages) return <MessageDialog messages={askedMessages} onClose={onClose} />;
 
   return (
     <dialog
@@ -117,7 +141,8 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
       <p className="due-date-title">Share “{tagName}”</p>
       <p className="hint">
         The people you share it with see your notes with this tag, but not your other tags. Notes they add with it are yours, and count
-        towards your note limit.
+        towards your note limit. Someone you haven't shared with before, and who hasn't shared with you, is emailed to ask if they're happy
+        to see your notes: it's shared with them once they accept.
       </p>
       {rows === undefined ? (
         !error && <p>Loading…</p>
@@ -132,6 +157,7 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
                   <span className="share-person">
                     <span>{row.displayName ?? row.loginName}</span>
                     {row.displayName !== undefined && <span className="share-email">{row.loginName}</span>}
+                    {row.pending && <span className="share-waiting">Waiting for them to accept</span>}
                   </span>
                   <select
                     aria-label={`What ${row.displayName ?? row.loginName} may do`}

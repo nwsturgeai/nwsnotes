@@ -215,3 +215,34 @@ export function readEmailChangeToken(token: unknown, secret: string, users: User
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return undefined;
   return { user, newLoginName };
 }
+
+/*
+ * Emailed links asking someone to accept notes shared by someone new: "<owner id>.<recipient id>.<signature>",
+ * signed with the session secret over "share-invite.<owner id>.<recipient id>.<the recipient's login name>".
+ * Nothing is stored: the link only does anything while one of the owner's shares waits for the recipient,
+ * so once it's answered it stops working. The "share-invite." start keeps it from passing as any other
+ * signed value, or them as it.
+ */
+function signShareInvite(ownerId: number | string, recipientId: number | string, recipient: Pick<User, "loginName">, secret: string): string {
+  return sign(`share-invite.${ownerId}.${recipientId}.${recipient.loginName}`, secret);
+}
+
+export function createShareInviteToken(secret: string, ownerId: number, recipient: Pick<User, "id" | "loginName">): string {
+  return `${ownerId}.${recipient.id}.${signShareInvite(ownerId, recipient.id, recipient, secret)}`;
+}
+
+/** The owner and recipient a sharing-request link is for, if it's signed right and both accounts are still there and turned on. */
+export function readShareInviteToken(token: unknown, secret: string, users: Users): { owner: User; recipient: User } | undefined {
+  if (typeof token !== "string") return undefined;
+  const parts = token.split(".");
+  if (parts.length !== 3) return undefined;
+  const [ownerId, recipientId, signature] = parts as [string, string, string];
+  if (!/^\d+$/.test(ownerId) || !/^\d+$/.test(recipientId)) return undefined;
+  const owner = users.byId(Number(ownerId));
+  const recipient = users.byId(Number(recipientId));
+  if (!owner || owner.disabled || !recipient || recipient.disabled) return undefined;
+  const expected = Buffer.from(signShareInvite(ownerId, recipientId, recipient, secret));
+  const actual = Buffer.from(signature);
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return undefined;
+  return { owner, recipient };
+}

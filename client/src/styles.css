@@ -268,6 +268,12 @@ body:has(.app) {
   height: 1em;
 }
 
+/* The hourglass that stands in for it in Settings while someone hasn't accepted yet: as wide, so names line up. */
+.sharing-icons.sharing-waiting svg {
+  width: 1.24em;
+  height: 1em;
+}
+
 /* In a left tab the icon runs down the page with the name. */
 .left-tab-name .sharing-icons {
   margin-top: 0.35em;
@@ -838,7 +844,12 @@ body:has(.note-list li.dragging) {
   white-space: nowrap;
 }
 
-/* A due date within the next week is bold; one that has passed is bold and red. */
+/* A due date still to come is in the text colour, not grey, and bold within the next week; one that has passed is bold and red. */
+.note-date.due-later,
+.note-date.due-soon {
+  color: var(--text);
+}
+
 .note-date.due-soon {
   font-weight: 700;
 }
@@ -2706,9 +2717,14 @@ body:has(.dragging) {
   white-space: nowrap;
 }
 
-.share-email {
+.share-email,
+.share-waiting {
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+.share-waiting {
+  font-style: italic;
 }
 
 .share-add {

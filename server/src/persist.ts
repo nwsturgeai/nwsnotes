@@ -101,6 +101,9 @@ const TABLES = [
      hue integer,
      PRIMARY KEY (tag_id, recipient_id)
    )`,
+  // A share waiting for its recipient to accept it (they'd never been linked with the owner by sharing):
+  // it gives them nothing until they do. Added after the table, so older databases get it here.
+  "ALTER TABLE nwsnotes.shares ADD COLUMN IF NOT EXISTS pending boolean NOT NULL DEFAULT false",
   // Note ids and tag ids are unique across all users, and never reused: new ones come from these.
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.note_ids",
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.tag_ids",

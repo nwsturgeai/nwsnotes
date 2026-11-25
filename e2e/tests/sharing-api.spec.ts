@@ -1,5 +1,5 @@
 import { request as newRequest, type APIRequestContext } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { answerSharingRequest, expect, shareTag, sharingRequestLink, test } from "./fixtures";
 
 /*
  * Sharing tags, through the API: what each permission level allows on the owner's notes, and what it
@@ -37,11 +37,8 @@ async function userSession(admin: APIRequestContext, baseURL: string, displayNam
   return session;
 }
 
-async function share(admin: APIRequestContext, tagId: number, shares: { loginName: string; permission: string }[]) {
-  const response = await admin.put(`/api/tags/${tagId}/shares`, { data: { shares } });
-  expect(response.ok(), await response.text()).toBe(true);
-  return (await response.json()) as { userId: number; displayName: string; loginName: string; permission: string }[];
-}
+/** Shares a tag, accepting for anyone asked first. */
+const share = shareTag;
 
 const data = async (session: APIRequestContext) => (await (await session.get("/api/notes")).json()) as ApiData;
 const edit = (session: APIRequestContext, note: ApiNote, change: Partial<ApiNote>) =>
@@ -206,4 +203,81 @@ test("choosing who to share with, and what can't be shared", async ({ page, base
   expect(await (await admin.get("/api/shares/people")).json()).toEqual([]);
   await sam.dispose();
   await robin.dispose();
+});
+
+test("someone new is asked by email before a share starts; once linked, shares start straight away", async ({ page, baseURL }) => {
+  const admin = page.request;
+  const sam = await userSession(admin, baseURL!, "Sam", "sam@example.com");
+  const emailsTo = async (to: string) => (await (await admin.get(`/api/test/emails?to=${to}`)).json()) as { subject: string; text: string }[];
+  const tagsOf = async (session: APIRequestContext) => (await data(session)).categories.flatMap((c) => c.tags) as { id: number; sharedOut?: string; sharePending?: boolean }[];
+
+  // Sam has never been linked with the admin, so the share waits, and Sam is emailed a link.
+  const saved = await admin.put(`/api/tags/${SHOPPING}/shares`, { data: { shares: [{ loginName: "sam@example.com", permission: "edit" }] } });
+  expect(await saved.json()).toEqual([expect.objectContaining({ loginName: "sam@example.com", permission: "edit", pending: true })]);
+  const emails = await emailsTo("sam@example.com");
+  expect(emails.map((email) => email.subject)).toEqual(["Admin wants to share notes with you on nwsnotes"]);
+  expect(emails[0]!.text).toContain('Admin (admin@example.com) would like to share their notes tagged "Shopping" with you on nwsnotes.');
+  // Until Sam accepts: nothing for Sam, not even the admin in Sam's people; the admin's tag is marked as waiting, with no sharing icon.
+  expect((await data(sam)).categories.map((c) => c.name)).toEqual(["Lifetime"]);
+  expect((await sam.put(`/api/notes/${BUY_MILK}/lifetime`, { data: { lifetime: "Waiting" } })).status()).toBe(404);
+  expect(await (await sam.get("/api/shares/people")).json()).toEqual([]);
+  expect((await tagsOf(admin)).find((t) => t.id === SHOPPING)).toEqual(expect.objectContaining({ sharePending: true }));
+  expect((await tagsOf(admin)).find((t) => t.id === SHOPPING)?.sharedOut).toBeUndefined();
+
+  // A second tag shared while the first waits isn't asked about again: it's accepted along with it.
+  await admin.put(`/api/tags/${HOME}/shares`, { data: { shares: [{ loginName: "sam@example.com", permission: "read" }] } });
+  expect(await emailsTo("sam@example.com")).toHaveLength(1);
+  const token = decodeURIComponent(new URL(await sharingRequestLink(admin, "sam@example.com")).hash.slice(1));
+  // The link's page asks first (public: no login), listing both tags. A wrong link doesn't work.
+  const anon = await newRequest.newContext({ baseURL });
+  expect(await (await anon.post("/api/share-invite/check", { data: { token } })).json()).toEqual({
+    ownerName: "Admin",
+    ownerLoginName: "admin@example.com",
+    tagNames: ["Shopping", "Home"],
+  });
+  expect((await anon.post("/api/share-invite/accept", { data: { token: token.replace(/.$/, (c) => (c === "A" ? "B" : "A")) } })).status()).toBe(400);
+  expect((await anon.post("/api/share-invite/accept", { data: { token } })).ok()).toBe(true);
+  const view = await data(sam);
+  expect(view.categories[0]!.tags.map((t) => [t.name, t.permission])).toEqual([["Shopping", "edit"], ["Home", "read"]]);
+  expect((await tagsOf(admin)).find((t) => t.id === SHOPPING)).toEqual(expect.objectContaining({ sharedOut: "edit" }));
+  expect((await tagsOf(admin)).find((t) => t.id === SHOPPING)?.sharePending).toBeUndefined();
+  // Answered, the link stops working.
+  expect((await anon.post("/api/share-invite/check", { data: { token } })).status()).toBe(400);
+
+  // Now they're linked, either way round, a share starts straight away with no email.
+  const samCategory = await sam.post("/api/categories", { data: { name: "Mine", multiSelect: false, tags: [{ name: "Errands" }] } });
+  const errands = ((await samCategory.json()) as { tags: { id: number }[] }).tags[0]!.id;
+  const back = await sam.put(`/api/tags/${errands}/shares`, { data: { shares: [{ loginName: "admin@example.com", permission: "read" }] } });
+  expect(((await back.json()) as { pending?: boolean }[])[0]!.pending).toBeUndefined();
+  expect(await emailsTo("admin@example.com")).toEqual([]);
+  expect((await data(admin)).categories.find((c) => c.name === "Shared with me")?.tags.map((t) => t.name)).toEqual(["Errands"]);
+
+  // Turning a request down removes the waiting share, and tells the owner.
+  const robin = await userSession(admin, baseURL!, "Robin", "robin@example.com");
+  await admin.put(`/api/tags/${SHOPPING}/shares`, { data: { shares: [{ loginName: "sam@example.com", permission: "edit" }, { loginName: "robin@example.com", permission: "read" }] } });
+  await answerSharingRequest(anon, "robin@example.com", false);
+  expect((await (await admin.get(`/api/tags/${SHOPPING}/shares`)).json()).map((s: { loginName: string }) => s.loginName)).toEqual(["sam@example.com"]);
+  expect((await emailsTo("admin@example.com")).map((email) => email.subject)).toEqual(["Robin didn't accept your sharing on nwsnotes"]);
+  expect((await data(robin)).categories.map((c) => c.name)).toEqual(["Lifetime"]);
+  await anon.dispose();
+  await robin.dispose();
+  await sam.dispose();
+});
+
+test("a recipient stops viewing a tag shared with them, and its owner is emailed", async ({ page, baseURL }) => {
+  const admin = page.request;
+  const sam = await userSession(admin, baseURL!, "Sam", "sam@example.com");
+  await share(admin, SHOPPING, [{ loginName: "sam@example.com", permission: "edit" }]);
+  // Only a tag shared with you can be left.
+  expect((await sam.delete(`/api/shared-tags/${GARDEN_IDEAS}`)).status()).toBe(404);
+  expect((await admin.delete(`/api/shared-tags/${SHOPPING}`)).status()).toBe(404);
+
+  expect((await sam.delete(`/api/shared-tags/${SHOPPING}`)).ok()).toBe(true);
+  expect((await data(sam)).notes).toEqual([]);
+  expect((await data(sam)).categories.map((c) => c.name)).toEqual(["Lifetime"]);
+  expect(await (await admin.get(`/api/tags/${SHOPPING}/shares`)).json()).toEqual([]);
+  const emails = (await (await admin.get("/api/test/emails")).json()) as { subject: string; text: string }[];
+  expect(emails.map((email) => email.subject)).toEqual(['Sam stopped viewing "Shopping" on nwsnotes']);
+  expect(emails[0]!.text).toContain('Sam (sam@example.com) has stopped viewing your shared tag "Shopping" on nwsnotes.');
+  await sam.dispose();
 });

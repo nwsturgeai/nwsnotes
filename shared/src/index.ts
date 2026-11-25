@@ -101,6 +101,13 @@ export interface TagShare {
   displayName: string;
   loginName: string;
   permission: SharePermission;
+  /**
+   * True while the share waits for the person to accept it: they hadn't been linked with the owner by
+   * sharing (either way), so they were emailed to ask. Until they accept, they see nothing of it.
+   */
+  pending?: boolean;
+  /** Only in the answer to PUT /api/tags/:id/shares: this save emailed them to ask. */
+  asked?: boolean;
 }
 
 /** Body of PUT /api/tags/:id/shares: everyone the tag is shared with (a person by login email), replacing the list. */
@@ -143,6 +150,11 @@ export interface Tag {
    * any of the people it's shared with may do. Shown as icons on the tag's pills on notes.
    */
   sharedOut?: SharePermission;
+  /**
+   * Only on the user's own tags, as the server sends them (never stored): true while one of its shares is
+   * waiting for the person to accept it. Shown as an hourglass in Settings, in place of the sharing icon.
+   */
+  sharePending?: boolean;
 }
 
 /** A group of tags. Tags can be added and renamed, but not deleted. */
@@ -433,6 +445,21 @@ export interface EmailChangeLink {
 
 /** An email-change link that has expired, been used, or been overtaken by another change to the account. */
 export const EMAIL_LINK_NOT_WORKING = "This link has expired or has already been used. Ask for a new one in Settings.";
+
+/** The public page a sharing request's emailed link opens, to accept or turn down notes shared by someone new. */
+export const SHARE_INVITE_PATH = "/share-invite";
+
+/** What a working sharing-request link is for (POST /api/share-invite/check). */
+export interface ShareInviteLink {
+  /** Who is sharing, and the email they log in with. */
+  ownerName: string;
+  ownerLoginName: string;
+  /** The names of their tags waiting to be shared with the person the link is for. */
+  tagNames: string[];
+}
+
+/** A sharing-request link that has already been answered, or whose sharing the owner has since stopped. */
+export const SHARE_INVITE_NOT_WORKING = "This sharing request has already been answered, or is no longer waiting.";
 
 /** Forgotten passwords: the public page that emails a link, and the one the link opens. */
 export const FORGOT_PASSWORD_PATH = "/forgot-password";

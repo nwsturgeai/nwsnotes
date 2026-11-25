@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { test as base, expect, type Locator, type Page } from "@playwright/test";
+import { test as base, expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +17,36 @@ export async function logIn(page: Page, loginName: string, password: string) {
   await page.getByLabel("Email").fill(loginName);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Log in" }).click();
+}
+
+/** The link in the latest sharing request emailed to this address (the tests' server keeps emails rather than sending them). */
+export async function sharingRequestLink(request: APIRequestContext, loginName: string): Promise<string> {
+  const emails = (await (await request.get(`/api/test/emails?to=${encodeURIComponent(loginName)}`)).json()) as { text: string }[];
+  const link = emails
+    .map((email) => /https?:\/\/\S+\/share-invite#\S+/.exec(email.text)?.[0])
+    .filter((found): found is string => found !== undefined)
+    .at(-1);
+  expect(link, `a sharing request emailed to ${loginName}`).toBeDefined();
+  return link!;
+}
+
+/** Answers the latest sharing request emailed to this address, as its link's page would. */
+export async function answerSharingRequest(request: APIRequestContext, loginName: string, accept = true) {
+  const token = decodeURIComponent(new URL(await sharingRequestLink(request, loginName)).hash.slice(1));
+  const response = await request.post(`/api/share-invite/${accept ? "accept" : "decline"}`, { data: { token } });
+  expect(response.ok(), await response.text()).toBe(true);
+}
+
+/**
+ * Shares a tag through the API (replacing its list), and accepts for anyone who was asked first, so the
+ * shares are in use, as most tests want.
+ */
+export async function shareTag(request: APIRequestContext, tagId: number, shares: { loginName: string; permission: string }[]) {
+  const response = await request.put(`/api/tags/${tagId}/shares`, { data: { shares } });
+  expect(response.ok(), await response.text()).toBe(true);
+  const saved = (await response.json()) as { userId: number; displayName: string; loginName: string; permission: string; pending?: boolean }[];
+  for (const share of saved) if (share.pending) await answerSharingRequest(request, share.loginName);
+  return saved.map(({ pending: _pending, ...share }) => share);
 }
 
 /** Puts the test server's data back to the seed. */

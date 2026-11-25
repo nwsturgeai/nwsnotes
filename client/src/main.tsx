@@ -7,10 +7,11 @@ import "@fontsource-variable/atkinson-hyperlegible-next/wght.css";
 import { App } from "./App";
 import { initAppUpdates } from "./appUpdate";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
-import { CONFIRM_EMAIL_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH } from "@nwsnotes/shared";
+import { CONFIRM_EMAIL_PATH, FORGOT_PASSWORD_PATH, RESET_PASSWORD_PATH, SHARE_INVITE_PATH } from "@nwsnotes/shared";
 import { ConfirmEmailPage } from "./ConfirmEmailPage";
 import { ForgotPasswordPage } from "./ForgotPasswordPage";
 import { ResetPasswordPage } from "./ResetPasswordPage";
+import { ShareInvitePage } from "./ShareInvitePage";
 import { SIGN_UP_PATH, SignUpPage } from "./SignUpPage";
 import "./styles.css";
 
@@ -30,6 +31,8 @@ function PublicOrApp() {
       return <ResetPasswordPage />;
     case CONFIRM_EMAIL_PATH:
       return <ConfirmEmailPage />;
+    case SHARE_INVITE_PATH:
+      return <ShareInvitePage />;
     default:
       return <App />;
   }

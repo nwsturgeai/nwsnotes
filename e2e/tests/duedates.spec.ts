@@ -71,20 +71,26 @@ test("the due-date pop-up needs a date and a time", async ({ page }) => {
   await expect(addArea(page).getByRole("button", { name: "Set due date" })).toBeVisible();
 });
 
-test("a due date turns bold in its last week, and red once it has passed", async ({ page }) => {
+test("a due date still to come is in the text colour, bold in its last week, and red once it has passed", async ({ page }) => {
   await page.clock.install();
   await openNotes(page);
   await page.getByRole("button", { name: "Show all tags" }).click();
   await setDueDate(page, dayFromNow(10).input, "12:00");
   await addNote(page, "Pay the tax bill");
   const date = noteRow(page, "Pay the tax bill").locator("time");
+  // In the text colour (the note's title's), not the grey of a creation date.
+  const textColour = await noteRow(page, "Pay the tax bill").getByText("Pay the tax bill").evaluate((e) => getComputedStyle(e).color);
+  const greyColour = await noteRow(page, "Buy milk").locator("time").evaluate((e) => getComputedStyle(e).color);
+  expect(textColour).not.toBe(greyColour);
   await expect(date).not.toHaveClass(/due-soon|overdue/);
   await expect(date).toHaveCSS("font-weight", "400");
+  await expect(date).toHaveCSS("color", textColour);
 
-  // Five days on, it's due within the week.
+  // Five days on, it's due within the week: bold, and still in the text colour.
   await page.clock.fastForward(5 * DAY_MS);
   await expect(date).toHaveClass(/\bdue-soon\b/);
   await expect(date).toHaveCSS("font-weight", "700");
+  await expect(date).toHaveCSS("color", textColour);
 
   // Past the due date, it's overdue.
   await page.clock.fastForward(6 * DAY_MS);

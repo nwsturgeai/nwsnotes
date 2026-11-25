@@ -1,5 +1,6 @@
 import { useId } from "react";
-import { faUsers } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faHourglassHalf, faUsers } from "@fortawesome/free-solid-svg-icons";
 import { higherPermission, type Category, type SharePermission, type Tab, type Tag } from "@nwsnotes/shared";
 
 /** What the icons say, for hovering and screen readers. */
@@ -109,4 +110,21 @@ export function SharingIcons({ permission, decorative }: { permission: SharePerm
       </svg>
     </span>
   );
+}
+
+const WAITING_TITLE = "Shared by you; waiting for someone to accept";
+
+/**
+ * In Settings (the categories' summary and a category's page): the sharing icon of one of your tags, or an
+ * hourglass in its place while someone you've asked hasn't accepted yet. Nothing for a tag that isn't shared.
+ */
+export function SettingsSharingIcon({ tag }: { tag: Tag }) {
+  if (tag.sharePending) {
+    return (
+      <span className="sharing-icons sharing-waiting" role="img" aria-label={WAITING_TITLE} title={WAITING_TITLE}>
+        <FontAwesomeIcon icon={faHourglassHalf} />
+      </span>
+    );
+  }
+  return tag.sharedOut ? <SharingIcons permission={tag.sharedOut} /> : null;
 }

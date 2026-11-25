@@ -6,7 +6,7 @@ With the area at the bottom expanded, tap the **alarm clock** button while addin
 
 In the list, a note with a due date shows "Due" and the date under its buttons, instead of when it was created ("Cr."):
 
-- in **bold** in its last week;
+- in black (not grey) while it's still to come, and **bold** in its last week;
 - in **bold red** once it has passed.
 
 ## Reminders
