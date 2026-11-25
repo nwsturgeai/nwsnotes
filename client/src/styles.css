@@ -803,7 +803,12 @@ body:has(.note-list li.dragging) {
   white-space: nowrap;
 }
 
-/* A due date within the next week is bold; one that has passed is bold and red. */
+/* A due date still to come is in the text colour, not grey, and bold within the next week; one that has passed is bold and red. */
+.note-date.due-later,
+.note-date.due-soon {
+  color: var(--text);
+}
+
 .note-date.due-soon {
   font-weight: 700;
 }

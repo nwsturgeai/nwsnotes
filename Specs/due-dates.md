@@ -14,6 +14,7 @@ Any Due Date populated on a note should be saved to the server whenever the note
 
 In the notes-list view, if a note has a due-date, then that date and time should be displayed under the three right-hand buttons (instead of the creation date).
 In this case, the label prefix should be "Due " (instead of "Cr. ").
+If the due-date-time is in the future, then show the date and time and label in black (the text colour) instead of dark grey.
 If the due-date-time is less than a week away from the current local time, then show the date and time and label in bold text.
 If the due-date-time is in the past, then show the date and time and label in bold red text.
 
@@ -46,7 +47,7 @@ A note is due
   - Unlike the tags, it doesn't carry over: after a note is added, the next new note starts with no due date.
 - **In the list:** a note with a due date shows "Due 12/11 20:00" under its buttons, in place of "Cr. …". Hovering shows "Due" or "Created" with the full date.
   - The year is added when it isn't this year, e.g. "Due 12/01/27 20:00".
-  - Due within the next 7 days: the label and date are bold. Already past: bold and red.
+  - Still to come: the label and date are in the text colour (black), not the grey of a creation date. Due within the next 7 days: also bold. Already past: bold and red.
   - The list re-checks once a minute, so dates turn bold, then red, without a reload.
 
 ### Reminders (push notifications)

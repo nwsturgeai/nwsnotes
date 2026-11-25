@@ -1638,10 +1638,10 @@ function formatNoteDate(iso: string): string {
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** How a due date stands out: red and bold once past, bold within the next week. */
-function dueClass(iso: string, now: number): string | undefined {
+/** How a due date stands out: red and bold once past; still to come, black (not grey), and bold within the next week. */
+function dueClass(iso: string, now: number): string {
   const due = Date.parse(iso);
-  return due < now ? "overdue" : due - now < WEEK_MS ? "due-soon" : undefined;
+  return due < now ? "overdue" : due - now < WEEK_MS ? "due-soon" : "due-later";
 }
 
 /**
