@@ -136,7 +136,7 @@ It costs about $0.0075 for each text received and $0.05 for each text sent back 
 
 ### 7. Sending email (Brevo, optional)
 
-Lets nwsnotes send email, e.g. a summary of a tab when someone texts "App email tab Shopping" (see "Emailing a tab" in [Specs/text-messages.md](Specs/text-messages.md)). It goes through Brevo's API over HTTPS, as DigitalOcean blocks the usual mail ports. Without it, the app works as before, and the email command texts back that email isn't set up.
+Lets nwsnotes send email, e.g. a summary of a tab when someone texts "Email tab Shopping" (see "Emailing a tab" in [Specs/text-messages.md](Specs/text-messages.md)). It goes through Brevo's API over HTTPS, as DigitalOcean blocks the usual mail ports. Without it, the app works as before, and the email command texts back that email isn't set up.
 
 1. At https://www.brevo.com, sign up (the free plan sends 300 emails a day).
 2. In **Senders, Domains & Dedicated IPs → Domains**, add `nwsnotes.com` and add the DNS records it shows (a `brevo-code` TXT record, DKIM records and, if there isn't one, DMARC). Wait until Brevo shows the domain as authenticated.

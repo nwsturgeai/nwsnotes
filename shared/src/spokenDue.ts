@@ -204,7 +204,7 @@ export type SpokenDue =
 const isNumber = (word: string | undefined): word is string => word !== undefined && /^\d+$/.test(word);
 
 /**
- * Reads what was dictated after "App due" as a due date and time, in UK time (GMT or BST), e.g.
+ * Reads what was dictated after "Due" as a due date and time, in UK time (GMT or BST), e.g.
  * "tomorrow at 3pm", "Friday 15:00", "25th December", "9:30", "tonight". The rules:
  * - a date with no time is due at 20:00; a part of the day with no time at 09:00 (morning), 15:00
  *   (afternoon) or 20:00 (evening, night, tonight);
@@ -416,25 +416,4 @@ export function readSpokenDue(text: string, now: Date = new Date()): SpokenDue {
   const dueDateTime = due.toISOString();
   if (due.getTime() <= now.getTime()) return { ok: false, reason: "past", dueDateTime };
   return { ok: true, dueDateTime };
-}
-
-// ---- The command -------------------------------------------------------------------
-
-/**
- * "App due <when>", "App note due <when>" or "App last note due <when>" (any case and punctuation, with
- * "date" allowed after "due"): sets the due date of the note the person added last. Returns the text
- * after the command words (empty when nothing follows), or undefined if the text isn't this command.
- */
-export function dueCommand(text: string): string | undefined {
-  const trimmed = text.trim();
-  const words = [...trimmed.matchAll(/[\p{L}\p{N}]+/gu)];
-  const word = (i: number) => words[i]?.[0].toLowerCase();
-  if (word(0) !== "app") return undefined;
-  let at = 1;
-  if (word(at) === "last" && word(at + 1) === "note") at += 2;
-  else if (word(at) === "note") at += 1;
-  if (word(at) !== "due") return undefined;
-  if (word(at + 1) === "date") at++;
-  const last = words[at]!;
-  return trimmed.slice(last.index + last[0].length).replace(/^[\s,:;.\-–—]+/u, "").trim();
 }

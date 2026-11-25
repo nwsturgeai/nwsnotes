@@ -7,6 +7,22 @@ import { SharingIcons } from "./sharingIcons";
 /** The tags chosen in each category's dropdown: category id -> tag ids. */
 export type TagSelection = Record<number, number[]>;
 
+/**
+ * The filter row's "(None)" choice, kept in a category's selection in place of tag ids: it lists only
+ * notes with none of the category's tags. Tag ids start at 1 (and Lifetime's are negative), so 0 can't clash.
+ */
+export const NONE_TAG_ID = 0;
+
+/** The categories whose filter dropdown has "(None)" ticked. Lifetime has no "(None)": every note has one. */
+export function noneCategories(categories: Category[], selection: TagSelection): Category[] {
+  return categories.filter((category) => !category.system && (selection[category.id] ?? []).includes(NONE_TAG_ID));
+}
+
+/** Whether a note has none of the tags of any of these categories. */
+export function hasNoTagIn(note: Note, categories: Category[]): boolean {
+  return categories.every((category) => !category.tags.some((tag) => note.tagIds.includes(tag.id)));
+}
+
 /** What the selected tab (and its additional filters) require of new notes: category id -> tag ids. */
 export type TabConstraints = Map<number, number[]>;
 
@@ -94,12 +110,17 @@ interface Props {
   tabName?: string;
   /** Every dropdown is a check-list, even for single-select categories (the tab editor). */
   checkLists?: boolean;
-  /** The filter row: how many notes each tag would show (tag id -> count), and how many are shown now. */
-  counts?: { byTag: ReadonlyMap<number, number>; total: number };
+  /**
+   * The filter row: how many notes each tag would show (tag id -> count), how many "(None)" would show
+   * (category id -> count), and how many are shown now.
+   */
+  counts?: { byTag: ReadonlyMap<number, number>; byNone?: ReadonlyMap<number, number>; total: number };
   /** The filter row: each check-list starts with a small "select all" link that ticks every tag. */
   selectAll?: boolean;
   /** Your own shared tags show the sharing icon after their names. */
   showSharing?: boolean;
+  /** The filter row: each check-list (but Lifetime's) ends with "(None)", for notes with none of its tags. */
+  noneOption?: boolean;
 }
 
 /** The sharing icon after a tag's name in a picker, if it's one of yours that you've shared. */
@@ -108,7 +129,19 @@ function TagSharing({ tag, show }: { tag: Tag; show: boolean | undefined }) {
 }
 
 /** One dropdown per category. They have no titles: an unset one shows its category name. */
-export function TagPickers({ categories, selection, onChange, disabled, constraints, tabName, checkLists, counts, selectAll, showSharing }: Props) {
+export function TagPickers({
+  categories,
+  selection,
+  onChange,
+  disabled,
+  constraints,
+  tabName,
+  checkLists,
+  counts,
+  selectAll,
+  showSharing,
+  noneOption,
+}: Props) {
   if (categories.length === 0) return null;
 
   return (
@@ -126,6 +159,8 @@ export function TagPickers({ categories, selection, onChange, disabled, constrai
           counts={counts}
           selectAll={selectAll}
           showSharing={showSharing}
+          noneOption={noneOption && !category.system}
+          noneChosen={(selection[category.id] ?? []).includes(NONE_TAG_ID)}
         />
       ))}
     </div>
@@ -142,6 +177,10 @@ interface DropdownProps {
   counts?: Props["counts"];
   selectAll?: boolean;
   showSharing?: boolean;
+  /** The list ends with a "(None)" check-box (filter row only). */
+  noneOption?: boolean;
+  /** "(None)" is ticked: then no tags are. */
+  noneChosen?: boolean;
   category: Category;
   chosen: number[];
   /** The selected tab's tags for this category, if the tab filters on it. */
@@ -165,13 +204,27 @@ const LIST_MARGIN_PX = 8;
  * Built by the app rather than using the browser's own dropdown, so both kinds look and behave alike
  * and the app decides which inputs they respond to (see NotesPage's stylus-mode touch handling).
  */
-function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled, onChange, counts, selectAll, showSharing }: DropdownProps) {
+function TagDropdown({
+  category,
+  chosen,
+  tabTagIds,
+  tabName,
+  checkList,
+  disabled,
+  onChange,
+  counts,
+  selectAll,
+  showSharing,
+  noneOption,
+  noneChosen,
+}: DropdownProps) {
   /** Where the open list sits. It is positioned on the window, so a scrolling area can't clip it. */
   const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; room: number }>();
   const open = position !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const names = category.tags.filter((tag) => chosen.includes(tag.id)).map(tagLabel);
+  const withNone = checkList && noneOption === true;
+  const names = withNone && noneChosen ? ["(None)"] : category.tags.filter((tag) => chosen.includes(tag.id)).map(tagLabel);
   const listId = `tag-dropdown-${category.id}`;
 
   /** A one-tag tab filter fixes this tag. */
@@ -196,7 +249,8 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
     // Opens downwards when the whole list fits (e.g. in Settings); otherwise towards the side with more
     // room (upwards from the new-note area at the bottom). It's limited to the room there, and scrolls.
     const rows =
-      (checkList ? category.tags.length + (selectAll ? 1 : 0) : options.length + (tabTagIds ? 0 : 1)) + (counts ? 1 : 0);
+      (checkList ? category.tags.length + (selectAll ? 1 : 0) + (withNone ? 1 : 0) : options.length + (tabTagIds ? 0 : 1)) +
+      (counts ? 1 : 0);
     const needed = Math.min(rows, LIST_MAX_ROWS) * LIST_ROW_PX + LIST_PADDING_PX;
     const spaceBelow = window.innerHeight - rect.bottom - 4 - LIST_MARGIN_PX;
     const spaceAbove = rect.top - 4 - LIST_MARGIN_PX;
@@ -242,6 +296,7 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
     buttonRef.current?.focus();
   }
 
+  /** Ticking a tag unticks "(None)" (it's never in `chosen`, which only holds tags). */
   function toggle(tagId: number, checked: boolean) {
     onChange(checked ? [...chosen, tagId] : chosen.filter((id) => id !== tagId));
   }
@@ -319,6 +374,18 @@ function TagDropdown({ category, chosen, tabTagIds, tabName, checkList, disabled
                 />
               ))}
             </>
+          )}
+          {/* Notes with none of this category's tags. Ticking it unticks every tag. */}
+          {withNone && (
+            <label className="tag-dropdown-none">
+              <input
+                type="checkbox"
+                checked={noneChosen === true}
+                onChange={(event) => onChange(event.target.checked ? [NONE_TAG_ID] : [])}
+              />
+              (None)
+              <TagCount count={counts?.byNone?.get(category.id)} />
+            </label>
           )}
           {/* Not an option: how many notes the list shows now. */}
           {counts && <div className="tag-dropdown-total">TOTAL: {counts.total}</div>}

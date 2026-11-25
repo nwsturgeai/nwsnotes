@@ -65,6 +65,10 @@ export function App() {
   const [bulkActive, setBulkActive] = useState(false);
   /** The notes page has unsaved work, so the "new version" notice (whose Reload would lose it) is hidden. */
   const [notesUnsaved, setNotesUnsaved] = useState(false);
+  /** The note being edited has no title (or is being saved), so nothing else can be used until it's finished. */
+  const [editLocked, setEditLocked] = useState(false);
+  /** The tabs and cog are blocked: while an edit can't be saved by using them (see NotesPage), or in multi-select. */
+  const tabsBlocked = (editingNote !== undefined && editLocked) || bulkActive;
   const updateReady = useUpdateReady();
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
@@ -324,7 +328,7 @@ export function App() {
             tabCounts={tabCounts}
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
-            editing={editingNote !== undefined || bulkActive}
+            editing={tabsBlocked}
             onNavigate={navigate}
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
@@ -462,7 +466,8 @@ export function App() {
                 })),
               ]}
               onSelectTab={selectTab}
-              tabsBlocked={editingNote !== undefined || bulkActive}
+              tabsBlocked={tabsBlocked}
+              onEditLockChange={setEditLocked}
               stylusMode={stylusMode}
               columns={columns}
               tagSelection={tagSelection}

@@ -618,7 +618,7 @@ export class NoteStore {
 
   /**
    * Sets a regular note's due date (already validated), keeping everything else about it, and saves.
-   * Used by "App due" texts; the page sets due dates with the rest of the note (updateNote).
+   * Used by "Due" texts; the page sets due dates with the rest of the note (updateNote).
    */
   setDueDate(id: number, dueDateTime: string, options: { source?: "sms" } = {}): Promise<Note> {
     return this.enqueue(async () => {

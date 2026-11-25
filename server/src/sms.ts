@@ -6,10 +6,8 @@ import {
   LIFETIME_NEW,
   TITLE_MAX_LENGTH,
   LINKED_REPLY,
-  dueCommand,
   dueNotUnderstoodReply,
   dueSetReply,
-  emailTabCommand,
   emailTabTarget,
   emailedReply,
   fitsOneSms,
@@ -19,7 +17,9 @@ import {
   isValidLoginName,
   matchSpokenTab,
   notSavedReply,
+  readSmsCommand,
   readSpokenDue,
+  resetNewReply,
   savedReply,
   withoutMarkers,
   type Note,
@@ -51,7 +51,7 @@ const RATE_WINDOW_MS = 10 * 60 * 1000;
 /** At most this many tab emails a day for each user, as Brevo's free plan sends 300 a day for everyone. */
 const EMAILS_PER_DAY = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** "App due" sets the due date of a note added at most this long ago. */
+/** "Due" sets the due date of a note added at most this long ago. */
 const DUE_WINDOW_MS = 5 * 60 * 1000;
 
 /** Texts that are only one of these words aren't notes: Twilio may act on them itself (opting out of texts). */
@@ -278,24 +278,67 @@ export class SmsNotes {
       log(`not saved: user ${user.id}'s account is turned off.`);
       return this.failed(user.id, text, "your nwsnotes account is turned off.");
     }
-    const when = dueCommand(text);
-    if (when !== undefined) return this.setDue(user, when, log);
-    const named = emailTabCommand(text);
-    if (named !== undefined) return this.emailTab(user, named, log);
-    return this.addNote(user, text, log);
+    // Every text starts with a command word; one that doesn't is a note with no tags.
+    const command = readSmsCommand(text);
+    switch (command.command) {
+      case "due":
+        return this.setDue(user, command.when, log);
+      case "email-tab":
+        return this.emailTab(user, command.named, log);
+      case "reset-new":
+        return this.resetNew(user, log);
+      case "new":
+        if (command.title === "") {
+          log(`not saved: nothing after "New", for user ${user.id}.`);
+          return "Nothing to save after New.";
+        }
+        return this.addNote(user, text, undefined, command.title, undefined, log);
+      case "add":
+        return this.addToTab(user, text, command.rest, log);
+      case "none":
+        return this.addNote(user, text, undefined, matchSpokenTab<Tab>(text, []).title, "It didn't start with a command, so it has no tags.", log);
+    }
   }
 
-  /** Adds the texted note to the user's notebook, in the tab its first words name. */
-  private async addNote(user: User, text: string, log: (outcome: string) => void): Promise<string | undefined> {
+  /**
+   * "Add <tab name> <title>": a note in the tab named first. When no tab's name matches, everything
+   * after "Add" (the name included) is the title, with no tags.
+   */
+  private async addToTab(user: User, text: string, rest: string, log: (outcome: string) => void): Promise<string | undefined> {
+    if (rest === "") {
+      log(`not saved: nothing after "Add", for user ${user.id}.`);
+      return "Nothing to save after Add.";
+    }
+    let tabs: Tab[];
     try {
-      const store = await this.notebooks.for(user.id);
-      const { tabs } = store.getAll();
-      const { tab, title: spokenTitle } = matchSpokenTab<Tab>(text, tabs);
-      if (tab && spokenTitle === "") {
-        log(`not saved: only tab ${tab.id}'s name, for user ${user.id}.`);
-        return "Nothing to save after the tab name.";
-      }
-      const { title, cut } = cutToLimit(spokenTitle);
+      tabs = (await this.notebooks.for(user.id)).getAll().tabs;
+    } catch (error) {
+      log(`not saved: an error (below) reading user ${user.id}'s tabs.`);
+      console.error(`Couldn't read user ${user.id}'s tabs:`, error);
+      return this.failed(user.id, text, "nwsnotes can't save right now. Please send it again later.");
+    }
+    const { tab, title } = matchSpokenTab<Tab>(rest, tabs);
+    if (tab && title === "") {
+      log(`not saved: only tab ${tab.id}'s name, for user ${user.id}.`);
+      return "Nothing to save after the tab name.";
+    }
+    return this.addNote(user, text, tab, title, tab ? undefined : "No tab matched, so it has no tags.", log);
+  }
+
+  /**
+   * Adds a texted note to the user's notebook, with the tab's tags (none without a tab). `text` is the
+   * whole text, for failure replies; `untagged` says in the notification why a note without a tab has no tags.
+   */
+  private async addNote(
+    user: User,
+    text: string,
+    tab: Tab | undefined,
+    fullTitle: string,
+    untagged: string | undefined,
+    log: (outcome: string) => void,
+  ): Promise<string | undefined> {
+    try {
+      const { title, cut } = cutToLimit(fullTitle);
       // The first tag of each category the tab filters on (they're in the category's tag order). Lifetime
       // isn't set: new notes are always New. A tab of tags shared with the user adds to their owner's
       // notebook, which needs one shared tag chosen: a text can't choose between several.
@@ -329,7 +372,7 @@ export class SmsNotes {
 
       const lifetime = tab?.categories.find((filter) => filter.categoryId === LIFETIME_CATEGORY_ID);
       const notes = [
-        !tab && "No tab matched, so it has no tags.",
+        !tab && untagged,
         lifetime && !lifetime.tagIds.includes(LIFETIME_NEW) && "This tab doesn't show New notes.",
         cut && "It was too long and has been cut short.",
       ].filter((line): line is string => typeof line === "string");
@@ -351,7 +394,34 @@ export class SmsNotes {
     }
   }
 
-  /** "App email tab <name>": emails the user a summary of the notes that tab shows. Texts back only if it couldn't. */
+  /** "Reset New": the user's New notes become Active, with the shared ones they may edit (as the Settings button). */
+  private async resetNew(user: User, log: (outcome: string) => void): Promise<string | undefined> {
+    let count: number;
+    try {
+      count = await actingUser.run({ userId: user.id, displayName: user.displayName }, () => this.sharing.bulkLifetime(user, "reset-new", undefined));
+    } catch (error) {
+      log(`not reset: an error (below) resetting user ${user.id}'s New notes.`);
+      console.error(`Couldn't reset user ${user.id}'s New notes by text:`, error);
+      const reply = "Not reset: nwsnotes can't save right now. Please send it again later.";
+      try {
+        await this.push.notify(user.id, { title: "New notes not reset", body: reply.replace(/^Not reset: n/, "N"), tag: `sms-reset-new-${Date.now()}` });
+      } catch (notifyError) {
+        console.error("Couldn't send a notification:", notifyError);
+      }
+      return reply;
+    }
+    if (count > 0) this.live.notifyChanged(user.id, undefined);
+    const confirm = user.smsConfirmations === true;
+    log(`reset New: ${count} of user ${user.id}'s notes made Active${confirm ? "; confirmed by text" : ""}.`);
+    await this.push.notify(user.id, {
+      title: "Reset New",
+      body: count === 0 ? "There were no New notes." : `${count === 1 ? "1 note" : `${count} notes`} made Active.`,
+      tag: `sms-reset-new-${Date.now()}`,
+    });
+    return confirm ? resetNewReply(count) : undefined;
+  }
+
+  /** "Email tab <name>": emails the user a summary of the notes that tab shows. Texts back only if it couldn't. */
   private async emailTab(user: User, named: string, log: (outcome: string) => void): Promise<string | undefined> {
     if (!this.mailer.enabled) {
       log(`not emailed: email isn't set up, for user ${user.id}.`);
@@ -396,14 +466,14 @@ export class SmsNotes {
   }
 
   /**
-   * "App due <when>": sets the due date of the note the user added last, if that was in the last 5 minutes
+   * "Due <when>": sets the due date of the note the user added last, if that was in the last 5 minutes
    * (by text or in the app). Notes others added in the user's notebook don't count. Texts back only if it
    * couldn't (or with confirmations on).
    */
   private async setDue(user: User, when: string, log: (outcome: string) => void): Promise<string | undefined> {
     if (when === "") {
       log(`due date not set: no date or time given, for user ${user.id}.`);
-      return this.dueNotSet(user.id, 'Not set: say when it\'s due, e.g. "App due tomorrow 3pm".');
+      return this.dueNotSet(user.id, 'Not set: say when it\'s due, e.g. "Due tomorrow 3pm".');
     }
     try {
       const now = new Date();
@@ -476,7 +546,7 @@ export class SmsNotes {
     const heard = named.trim().replace(/\s+/g, " ").replace(/^tab\b[\s,:;.-]*/i, "");
     const make = (quoted: string) => `Not emailed: no tab called "${quoted}".`;
     let reply =
-      reason !== undefined ? `Not emailed: ${reason}` : heard === "" ? 'Not emailed: say which tab, e.g. "App email tab Shopping".' : make(heard);
+      reason !== undefined ? `Not emailed: ${reason}` : heard === "" ? 'Not emailed: say which tab, e.g. "Email tab Shopping".' : make(heard);
     if (reason === undefined && heard !== "" && !fitsOneSms(reply)) {
       const chars = [...heard];
       let length = chars.length - 1;

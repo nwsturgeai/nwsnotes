@@ -71,7 +71,7 @@ import { LongFormEditor } from "./LongFormEditor";
 import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
-import { columnCount, useFullTagList, type ColumnsChoice } from "./stylusMode";
+import { columnCount, useFilterRowCollapsed, useFullTagList, useLeftTabsHidden, type ColumnsChoice } from "./stylusMode";
 
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
@@ -83,6 +83,8 @@ import {
   selectionToFilters,
   TagPickers,
   TagPillPicker,
+  hasNoTagIn,
+  noneCategories,
   type BulkTagChanges,
   type TagSelection,
 } from "./TagPickers";
@@ -123,6 +125,8 @@ interface Props {
   onBulkChange: (active: boolean) => void;
   /** Whether there's unsaved work on the page (an edit, a long-form note, a title being written), which hides "Reload". */
   onUnsavedChange: (unsaved: boolean) => void;
+  /** Whether the note being edited can't be saved by using another control (no title, or saving). */
+  onEditLockChange: (locked: boolean) => void;
   /** The server can't be reached: bulk tag updates, note ordering and resetting New aren't available. */
   offline: boolean;
   /** Notes with changes still waiting to be sent; they show a clock by their date. */
@@ -168,6 +172,7 @@ export function NotesPage({
   onNoteOrderChanged,
   onBulkChange,
   onUnsavedChange,
+  onEditLockChange,
   offline,
   pendingIds,
   syncNotice,
@@ -298,6 +303,8 @@ export function NotesPage({
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
   const [extraSelection, setExtraSelection] = useExtraFilters(selectedTab?.id);
+  /** The left strip is hidden by the eye button above it (in the header). */
+  const [leftTabsHidden] = useLeftTabsHidden();
   const [fullTagListSetting, setFullTagList] = useFullTagList();
   /**
    * While a long-form note with handwritten details is open, the area is collapsed (more room for the
@@ -353,6 +360,8 @@ export function NotesPage({
     () => [...tabFilters, ...selectionToFilters(extraCategories, extraSelection)],
     [tabFilters, extraCategories, extraSelection],
   );
+  /** The filter row's dropdowns with "(None)" ticked: listed notes have none of their tags. */
+  const noneFilters = useMemo(() => noneCategories(extraCategories, extraSelection), [extraCategories, extraSelection]);
 
   // Hidden notes aren't changed, just not listed. Bin notes are hidden unless a filter ticks Bin.
   // Every tab ("All" included) lists the notes in the shared order, then any unordered ones in creation order.
@@ -375,41 +384,52 @@ export function NotesPage({
   const visibleNotes = useMemo(() => {
     const matching = notes.filter(
       (note) =>
-        noteMatchesFilters(note, allFilters) && noteMatchesProperties(note, properties, now) && matchesSearch(note, searchWords),
+        noteMatchesFilters(note, allFilters) &&
+        hasNoTagIn(note, noneFilters) &&
+        noteMatchesProperties(note, properties, now) &&
+        matchesSearch(note, searchWords),
     );
     return orderNotes(matching, noteOrder);
-  }, [notes, allFilters, properties, now, searchWords, noteOrder]);
+  }, [notes, allFilters, noneFilters, properties, now, searchWords, noteOrder]);
 
   /** The filter row's ticked tags, as filters (the reset button only shows while there are some). */
   const extraFilters = useMemo(() => selectionToFilters(extraCategories, extraSelection), [extraCategories, extraSelection]);
 
-  /** Whether the row narrows the list at all: a tag or property ticked (the reset button shows, and the row is yellow). */
-  const rowFiltering = extraFilters.length > 0 || properties.length > 0;
+  /** Whether the row narrows the list at all: a tag, "(None)" or property ticked (the reset button shows, and the row is yellow). */
+  const rowFiltering = extraFilters.length > 0 || noneFilters.length > 0 || properties.length > 0;
 
   /**
    * The filter row's note counts: for each tag, the notes listed if it were the only tag ticked in its
    * dropdown, with every other filter (the tab, the other dropdowns, Properties, the search) as it is.
-   * Properties' counts work the same way, with its own ticks left out.
+   * "(None)" counts the notes listed if it were ticked instead. Properties' counts work the same way,
+   * with its own ticks left out.
    */
   const filterCounts = useMemo(() => {
     const searched = notes.filter((note) => matchesSearch(note, searchWords));
     const withProperties = searched.filter((note) => noteMatchesProperties(note, properties, now));
     const byTag = new Map<number, number>();
+    const byNone = new Map<number, number>();
     for (const category of extraCategories) {
       const others = [...tabFilters, ...extraFilters.filter((filter) => filter.categoryId !== category.id)];
+      const otherNones = noneFilters.filter((none) => none.id !== category.id);
+      const rest = withProperties.filter((note) => hasNoTagIn(note, otherNones));
       for (const tag of category.tags) {
+        // The tag's filter goes with the others, not after them: ticking Bin is what lets Bin notes through.
         const filters = [...others, { categoryId: category.id, tagIds: [tag.id] }];
-        byTag.set(tag.id, withProperties.filter((note) => noteMatchesFilters(note, filters)).length);
+        byTag.set(tag.id, rest.filter((note) => noteMatchesFilters(note, filters)).length);
+      }
+      if (!category.system) {
+        byNone.set(category.id, rest.filter((note) => noteMatchesFilters(note, others) && hasNoTagIn(note, [category])).length);
       }
     }
     // Properties' rules aren't tags, so they have their own map (their ids would clash with tag ids).
     const byProperty = new Map<number, number>();
-    const tagged = searched.filter((note) => noteMatchesFilters(note, allFilters));
+    const tagged = searched.filter((note) => noteMatchesFilters(note, allFilters) && hasNoTagIn(note, noneFilters));
     for (const rule of PROPERTIES_CATEGORY.tags) {
       byProperty.set(rule.id, tagged.filter((note) => noteMatchesProperties(note, [rule.id], now)).length);
     }
-    return { byTag, byProperty, total: visibleNotes.length };
-  }, [notes, searchWords, properties, now, extraCategories, tabFilters, extraFilters, allFilters, visibleNotes.length]);
+    return { byTag, byNone, byProperty, total: visibleNotes.length };
+  }, [notes, searchWords, properties, now, extraCategories, tabFilters, extraFilters, noneFilters, allFilters, visibleNotes.length]);
 
   function toggleSearch() {
     setSearchOn(!searchOn);
@@ -486,14 +506,14 @@ export function NotesPage({
   // just leaves the list (archived, moved to the bin, or changed elsewhere), it stays where it is: the
   // browser keeps the notes in view from moving (scroll anchoring).
   useLayoutEffect(() => {
-    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, properties, searchWords]);
+    const key = JSON.stringify([selectedTab?.id ?? null, allFilters, noneFilters.map((none) => none.id), properties, searchWords]);
     const before = listShown.current;
     listShown.current = { key, length: visibleNotes.length };
     const jump = !before || before.key !== key || visibleNotes.length > before.length;
     const list = listRef.current;
     if (list && jump) list.scrollTop = scrollToTop.current ? 0 : list.scrollHeight;
     scrollToTop.current = false;
-  }, [visibleNotes.length, selectedTab?.id, allFilters, properties, searchWords]);
+  }, [visibleNotes.length, selectedTab?.id, allFilters, noneFilters, properties, searchWords]);
 
   /**
    * Puts a just-added note at the top of the tab: straight before the first note the tab lists (or at the
@@ -569,6 +589,8 @@ export function NotesPage({
     setDueDate(note.dueDateTime);
     setEditSelection(selectionFor(note, userCategories));
     setSaveError(undefined);
+    // A handwritten note's writing is loaded into the canvas, so it starts with ink.
+    setPadInked(note.titleImage !== undefined);
     onEditStart(note);
     if (note.titleText !== undefined) {
       requestAnimationFrame(() => {
@@ -585,6 +607,7 @@ export function NotesPage({
     setDueDate(undefined);
     setEditSelection({});
     setSaveError(undefined);
+    setPadInked(false);
     onEditEnd();
   }
 
@@ -726,16 +749,52 @@ export function NotesPage({
     }
   }
 
+  /**
+   * Saves the note being edited, as Update does, and goes back to adding notes. Returns whether it was
+   * saved: if not, the edit stays open with the error shown.
+   */
+  async function saveEdit(): Promise<boolean> {
+    if (!editingNote || saving) return false;
+    const noteTitle = newTitle();
+    if (!noteTitle) return false;
+    setSaving(true);
+    setSaveError(undefined);
+    try {
+      const tagIds = selectedTagIds(userCategories, editSelection);
+      onNoteUpdated(
+        await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }, editBase.current),
+      );
+      finishEdit();
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return false;
+      }
+      // The typed title or the writing is kept, so it can be saved again.
+      editFailed(error, "The note wasn't saved");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const atTop = addAtTop.current;
     addAtTop.current = false;
     if (saving) return;
+    if (editingNote) {
+      await saveEdit();
+      // Focus after the input is re-enabled (to type the next note, or to fix this one).
+      if (!showCanvas) requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
 
     const noteTitle = newTitle();
     if (!noteTitle) return;
     // The filters' rules only apply to new notes; an edited note can be given any tags.
-    if (!editingNote) {
+    {
       const missing = missingRequiredCategory(userCategories, tagSelection, newNoteConstraints);
       if (missing) {
         setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
@@ -751,13 +810,7 @@ export function NotesPage({
     setSaving(true);
     setSaveError(undefined);
     try {
-      if (editingNote) {
-        const tagIds = selectedTagIds(userCategories, editSelection);
-        onNoteUpdated(
-          await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }, editBase.current),
-        );
-        finishEdit();
-      } else {
+      {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
         const tagIds = selectedTagIds(userCategories, tagSelection, newNoteConstraints);
         // While a long-form note is open, new notes are its children.
@@ -783,6 +836,8 @@ export function NotesPage({
               ? "Note added, but it doesn't match this tab, so it isn't shown here."
               : "Note added, but this tab doesn't show New notes.",
           });
+        } else if (!hasNoTagIn(note, noneFilters)) {
+          setNotice({ text: "Note added, but it has a tag that a \"(None)\" filter hides." });
         } else if (!noteMatchesProperties(note, properties, Date.now())) {
           setNotice({ text: "Note added, but it doesn't match the Properties filter." });
         } else if (!matchesSearch(note, searchWords)) {
@@ -797,8 +852,7 @@ export function NotesPage({
         return;
       }
       // The typed title or the writing is kept, so it can be saved again.
-      if (editingNote) editFailed(error, "The note wasn't saved");
-      else setSaveError(`The note wasn't saved: ${error instanceof Error ? error.message : String(error)}`);
+      setSaveError(`The note wasn't saved: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSaving(false);
       // Focus after the input is re-enabled.
@@ -806,13 +860,55 @@ export function NotesPage({
     }
   }
 
-  const blocked = editingNote !== undefined;
-
   /** Why list-check can't be turned on now, if it can't. */
   const titleEmpty = showCanvas ? !padInked : title.trim() === "";
+  /**
+   * While a note is being edited, the tabs, cog, filter row, edit-order button and other notes' buttons
+   * save it first (as Update does) and then do what they do. Only when it has no title (typed, or written
+   * on the canvas), or while it's being saved, are they blocked instead.
+   */
+  const blocked = editingNote !== undefined && (titleEmpty || saving);
+  const onEditLockChangeRef = useRef(onEditLockChange);
+  onEditLockChangeRef.current = onEditLockChange;
+  useEffect(() => onEditLockChangeRef.current(blocked), [blocked]);
+  useEffect(() => () => onEditLockChangeRef.current(false), []);
+
+  // Using one of those controls (marked `data-saves-edit`, here and in the header) during an edit: the
+  // click is held back, the note saved, and then the click is made again, once the page has caught up.
+  const saveEditRef = useRef(saveEdit);
+  saveEditRef.current = saveEdit;
+  /** Set while the held-back click is made again, so it isn't held back a second time. */
+  const replayingClick = useRef(false);
+  const editOpen = editingNote !== undefined;
+  useEffect(() => {
+    if (!editOpen) return;
+    const onClick = (event: MouseEvent) => {
+      if (replayingClick.current || !(event.target instanceof Element)) return;
+      const control = event.target.closest<HTMLElement>("button, a, input, label, [role='tab']");
+      if (!control || !control.closest("[data-saves-edit]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void saveEditRef.current().then((saved) => {
+        if (!saved) return;
+        requestAnimationFrame(() => {
+          if (!control.isConnected) return;
+          replayingClick.current = true;
+          try {
+            control.click();
+          } finally {
+            replayingClick.current = false;
+          }
+        });
+      });
+    };
+    // On the document, before the page's own handlers.
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [editOpen]);
+
   const listCheckHint = offline
     ? OFFLINE_HINT
-    : blocked || longForm
+    : editingNote || longForm
       ? "Finish or cancel the edit first"
       : ordering
         ? "Finish ordering first"
@@ -963,12 +1059,46 @@ export function NotesPage({
   const rowBlocked = blocked || bulkActive;
   const rowHint = bulkActive ? "Finish selecting notes first" : "Finish or cancel the edit first";
 
+  // Collapsing the filter row: when its dropdowns and buttons wrap onto more than one line, a chevron
+  // shrinks it to the first line, and back. The choice is one for every tab, remembered on this device.
+  const [rowCollapsedSetting, setRowCollapsed] = useFilterRowCollapsed();
+  const rowMainRef = useRef<HTMLDivElement>(null);
+  /** The height of the row's first line (px) when it wraps onto more, otherwise undefined. */
+  const [firstLineHeight, setFirstLineHeight] = useState<number>();
+  const rowCollapsed = rowCollapsedSetting && firstLineHeight !== undefined;
+  useLayoutEffect(() => {
+    const main = rowMainRef.current;
+    if (!main) return;
+    function measure() {
+      if (!main) return;
+      // The row's items: the dropdowns' own wrapper has no box ("display: contents"), so its children are items.
+      const items = [...main.children].flatMap((child) =>
+        getComputedStyle(child).display === "contents" ? [...child.children] : [child],
+      ) as HTMLElement[];
+      const first = items[0]?.getBoundingClientRect();
+      if (!first) return setFirstLineHeight(undefined);
+      // Items are centred on their line, so one on a later line starts below the bottom of the very first.
+      const rects = items.map((item) => item.getBoundingClientRect());
+      const below = rects.map((rect) => rect.top >= first.bottom);
+      const top = main.getBoundingClientRect().top;
+      const lineBottom = Math.max(...rects.filter((_, index) => !below[index]).map((rect) => rect.bottom));
+      const wraps = below.some(Boolean);
+      setFirstLineHeight(wraps ? Math.ceil(lineBottom - top) : undefined);
+      // While collapsed, what's hidden can't be reached with Tab either.
+      items.forEach((item, index) => (item.inert = rowCollapsedSetting && wraps && below[index]!));
+    }
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    return () => observer.disconnect();
+  });
+
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
       {/* The left tab strip (if any tabs are set to "Left") beside the filter row and the list. */}
       <div className="notes-body">
-        {leftTabs.length > 0 && (
+        {leftTabs.length > 0 && !leftTabsHidden && (
           <LeftTabStrip tabs={leftTabs} selectedTabId={selectedTab?.id} onSelectTab={onSelectTab} editing={tabsBlocked} />
         )}
         <div className="notes-main">
@@ -978,7 +1108,12 @@ export function NotesPage({
             aria-label="More filters for this tab"
           >
             {/* The dropdowns, reset and search wrap together like words; edit-order stays top-right. */}
-            <div className="filter-row-main">
+            <div
+              className={rowCollapsed ? "filter-row-main collapsed" : "filter-row-main"}
+              data-saves-edit
+              ref={rowMainRef}
+              style={rowCollapsed ? { maxHeight: firstLineHeight } : undefined}
+            >
             {bulk ? (
               // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
               <div className="bulk-select-all" role="group" aria-label="Select notes">
@@ -1039,6 +1174,7 @@ export function NotesPage({
                     counts={filterCounts}
                     selectAll
                     showSharing
+                    noneOption
                   />
                 )}
                 {/* Rules about the notes themselves (long-form, due dates), after the category dropdowns. */}
@@ -1089,11 +1225,21 @@ export function NotesPage({
             )}
             </div>
             <div className="filter-row-end">
+              {/* Only while the row takes more than one line (or would, when collapsed). */}
+              {firstLineHeight !== undefined && (
+                <IconButton
+                  icon={rowCollapsed ? faChevronDown : faChevronUp}
+                  label={rowCollapsed ? "Show all filters" : "Collapse filters to one row"}
+                  disabled={false}
+                  onClick={() => setRowCollapsed(!rowCollapsed)}
+                />
+              )}
               <IconButton
                 icon={ordering ? faFinishOrdering : faArrowDownWideShort}
                 wide={ordering}
                 primary={ordering}
                 label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
+                savesEdit
                 disabled={!ordering && (editBlocked || offline)}
                 onClick={() => setOrdering(!ordering)}
               />
@@ -1107,7 +1253,7 @@ export function NotesPage({
                   ? "No notes match the search."
                   : properties.length > 0
                     ? "No notes match the Properties filter."
-                    : allFilters.length > 0
+                    : allFilters.length > 0 || noneFilters.length > 0
                       ? "No notes in this tab yet."
                       : "No notes yet. Add your first one below."}
               </p>
@@ -1193,7 +1339,7 @@ export function NotesPage({
                       </div>
                       {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
                       <div className="note-side">
-                      <div className="note-actions">
+                      <div className="note-actions" data-saves-edit>
                         {ordering ? (
                           // Edit-order mode: instead of the usual buttons, move the note to the top or bottom of the tab.
                           <>
@@ -1215,7 +1361,7 @@ export function NotesPage({
                         <IconButton
                           icon={faPen}
                           label={note.id === editingNote?.id ? "Editing this note" : (hint ?? "Edit note")}
-                          disabled={busy || saving}
+                          disabled={busy || saving || note.id === editingNote?.id}
                           onClick={() => (isLongForm(note) ? openLongForm(note) : startEdit(note))}
                         />
                         {/* New and Active notes can be put on hold; anything else can be reinstated to Active. */}
@@ -1559,6 +1705,7 @@ function IconButton({
   pressed,
   wide,
   primary,
+  savesEdit,
 }: {
   icon: IconDefinition;
   label: string;
@@ -1570,6 +1717,8 @@ function IconButton({
   wide?: boolean;
   /** Styled like the app's main buttons: white on the accent green. */
   primary?: boolean;
+  /** Using it during an edit saves the note first (see `data-saves-edit`). */
+  savesEdit?: boolean;
 }) {
   return (
     <button
@@ -1580,6 +1729,7 @@ function IconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
+      data-saves-edit={savesEdit || undefined}
     >
       <FontAwesomeIcon icon={icon} />
     </button>

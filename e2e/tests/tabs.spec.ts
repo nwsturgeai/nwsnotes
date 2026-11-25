@@ -93,7 +93,9 @@ test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
   const selectAll = topic.getByRole("button", { name: "select all" });
   await expect(selectAll).toBeEnabled();
   await selectAll.click();
-  for (const box of await topic.getByRole("checkbox").all()) await expect(box).toBeChecked();
+  // Every tag, that is: "(None)" is the opposite, so it stays unticked.
+  for (const box of await topic.locator("label:not(.tag-dropdown-none) input").all()) await expect(box).toBeChecked();
+  await expect(topic.getByRole("checkbox", { name: /^\(None\)/ })).not.toBeChecked();
   // Every tag is ticked now, so the link is greyed out.
   await expect(selectAll).toBeDisabled();
   // Notes with no Topic tag are hidden.
@@ -106,6 +108,51 @@ test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
   const lifetime = await openFilter(page, "Lifetime");
   await lifetime.getByRole("button", { name: "select all" }).click();
   await expectTitles(page, [...ALL.slice(0, 4), "Broken lamp", ...ALL.slice(4)]);
+});
+
+test('"(None)" lists the notes with none of the category\'s tags, and unticks the others', async ({ page }) => {
+  const topic = await openFilter(page, "Topic");
+  const none = topic.getByRole("checkbox", { name: /^\(None\)/ });
+  const reading = topic.getByRole("checkbox", { name: /^Reading/ });
+  // It's after the tags, just above the TOTAL, with its own count.
+  await expect(topic.locator("label").last()).toContainText("(None)(5)");
+  await reading.check();
+  await expectTitles(page, ["Read the quarterly report"]);
+
+  // Ticking (None) unticks the tags.
+  await none.check();
+  await expect(reading).not.toBeChecked();
+  await expectTitles(page, ["Plan the team meeting", "Old invoice", "", "Holiday plans", "Book flights"]);
+  await expect(topic).toContainText("TOTAL: 5");
+  await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
+  await expect(filterRow(page).getByRole("button", { name: /^Topic: \(None\)/ })).toBeVisible();
+
+  // The other dropdowns count with it.
+  await page.keyboard.press("Escape");
+  const area = await openFilter(page, "Area");
+  await expect(area.getByRole("checkbox", { name: /^Work/ }).locator("..")).toContainText("(2)");
+  await expect(area.getByRole("checkbox", { name: /^\(None\)/ }).locator("..")).toContainText("(0)");
+  // Lifetime has no (None): every note has one.
+  await page.keyboard.press("Escape");
+  await expect((await openFilter(page, "Lifetime")).getByRole("checkbox", { name: /^\(None\)/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Ticking a tag unticks (None); so does "select all".
+  const topicAgain = await openFilter(page, "Topic");
+  await topicAgain.getByRole("checkbox", { name: /^Ideas/ }).check();
+  await expect(topicAgain.getByRole("checkbox", { name: /^\(None\)/ })).not.toBeChecked();
+  await expectTitles(page, ["Garden ideas"]);
+  await topicAgain.getByRole("checkbox", { name: /^\(None\)/ }).check();
+  await topicAgain.getByRole("button", { name: "select all" }).click();
+  await expect(topicAgain.getByRole("checkbox", { name: /^\(None\)/ })).not.toBeChecked();
+  await expectTitles(page, ["Buy milk", "Read the quarterly report", "Garden ideas"]);
+
+  // It's remembered, like the other filters, and Reset filters clears it.
+  await topicAgain.getByRole("checkbox", { name: /^\(None\)/ }).check();
+  await page.reload();
+  await expectTitles(page, ["Plan the team meeting", "Old invoice", "", "Holiday plans", "Book flights"]);
+  await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
+  await expectTitles(page, ALL);
 });
 
 test("each tab remembers its own filters", async ({ page }) => {
@@ -163,8 +210,10 @@ test("tabs that don't fit are in the … menu", async ({ page }) => {
   await expectTitles(page, ["Read the quarterly report"]);
 });
 
-test("tabs can't be changed while a note is being edited", async ({ page }) => {
+test("tabs can't be changed while a note being edited has no title", async ({ page }) => {
   await noteRow(page, "Buy milk").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await page.getByRole("textbox", { name: "Note title" }).fill("");
   const work = page.getByRole("tab", { name: "Work" });
   await expect(work).toHaveAttribute("aria-disabled", "true");
   // Tapping it does nothing.
@@ -333,4 +382,45 @@ test("\"Create Tab for this Tag\" asks first where Save would, and saves only on
   data = (await (await page.request.get("/api/notes")).json()) as NotesData;
   expect(data.categories.find((category) => category.id === places.id)!.multiSelect).toBe(false);
   expect(data.tabs.some((tab) => tab.name === "Paris")).toBe(true);
+});
+
+test("a filter row that wraps onto more lines can be collapsed to its first line, remembered for every tab", async ({ page }) => {
+  const collapse = filterRow(page).getByRole("button", { name: "Collapse filters to one row" });
+  const expand = filterRow(page).getByRole("button", { name: "Show all filters" });
+  const search = filterRow(page).getByRole("button", { name: "Search" });
+  // Everything fits on one line, so there's nothing to collapse.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(search).toBeVisible();
+  await expect(collapse).toHaveCount(0);
+
+  // Narrow enough that the row wraps: the up chevron sits just left of Edit order.
+  await page.setViewportSize({ width: 340, height: 800 });
+  await expect(collapse).toBeVisible();
+  const editOrder = filterRow(page).getByRole("button", { name: "Edit order" });
+  const [chevronBox, editBox] = [await collapse.boundingBox(), await editOrder.boundingBox()];
+  expect(chevronBox!.x + chevronBox!.width).toBeLessThanOrEqual(editBox!.x);
+  expect(Math.abs(chevronBox!.y - editBox!.y)).toBeLessThan(2);
+  const tall = (await filterRow(page).boundingBox())!.height;
+
+  // Collapsed: one line, and what was on the later lines is hidden (and out of the Tab order).
+  await collapse.click();
+  await expect(expand).toBeVisible();
+  const short = (await filterRow(page).boundingBox())!.height;
+  expect(short).toBeLessThan(tall - 10);
+  await expect(filterRow(page).getByRole("button", { name: /^Area: / })).toBeInViewport();
+  await expect(search).not.toBeInViewport({ ratio: 0.5 });
+  expect(await search.evaluate((button) => button.closest("[inert]") !== null)).toBe(true);
+
+  // The same on other tabs, and after a reload.
+  await selectTab(page, "Work");
+  await expect(expand).toBeVisible();
+  await page.reload();
+  await expect(expand).toBeVisible();
+
+  // Expanding shows everything again.
+  await expand.click();
+  await expect(collapse).toBeVisible();
+  await expect(search).toBeInViewport();
+  expect(await search.evaluate((button) => button.closest("[inert]") !== null)).toBe(false);
+  expect((await filterRow(page).boundingBox())!.height).toBeCloseTo(tall, 0);
 });

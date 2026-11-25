@@ -125,7 +125,7 @@ test("a texted note goes into the tab it names, with the tab's tag, and appears 
   await openNotes(page);
   await selectTab(page, "Work");
 
-  expect(reply((await text(page.request, "Work, ring the bank about the loan")).body)).toBeUndefined();
+  expect(reply((await text(page.request, "Add Work, ring the bank about the loan")).body)).toBeUndefined();
   await expect(noteRow(page, "Ring the bank about the loan")).toBeVisible();
   // Work's one tag (Area: Work, id 1), and New.
   expect((await lastNote(page.request)).tagIds.sort()).toEqual([-1, 1]);
@@ -134,7 +134,7 @@ test("a texted note goes into the tab it names, with the tab's tag, and appears 
   ]);
 
   // Slips and odd punctuation still find the tab.
-  await text(page.request, "homes: fix the gate");
+  await text(page.request, "Add homes: fix the gate");
   expect(await lastNote(page.request)).toMatchObject({ titleText: "Fix the gate", tagIds: [2, -1] });
 
   // The History says it was texted in.
@@ -150,7 +150,7 @@ test("a spoken name, set in the tab editor, puts texted notes in that tab", asyn
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("link", { name: /^Home\s*\(house\)/ })).toBeVisible();
 
-  await text(page.request, "House, descale the kettle");
+  await text(page.request, "Add House, descale the kettle");
   expect(await lastNote(page.request)).toMatchObject({ titleText: "Descale the kettle", tagIds: [2, -1] });
 
   // Spoken names can't clash with another tab's name.
@@ -160,25 +160,85 @@ test("a spoken name, set in the tab editor, puts texted notes in that tab", asyn
   await expect(page.getByRole("alert")).toContainText("Another tab already uses that name");
 });
 
-test("with no tab named, the note goes to All with no tags, and the notification says so", async ({ page }) => {
+test("a text with no command word is a note in All with no tags, and the notification says so", async ({ page }) => {
   await linkPhone(page.request);
   await addDevice(page.request);
   await text(page.request, "call the garage about the tyres");
   expect(await lastNote(page.request)).toMatchObject({ titleText: "Call the garage about the tyres", tagIds: [-1] });
   expect((await notifications(page.request)).at(-1)).toEqual({
     title: "Saved to All",
-    body: "Call the garage about the tyres\nNo tab matched, so it has no tags.",
+    body: "Call the garage about the tyres\nIt didn't start with a command, so it has no tags.",
     tag: expect.stringMatching(/^sms-note-/),
     devices: 1,
   });
   await openNotes(page);
   expect(await noteTitles(page)).toContain("Call the garage about the tyres");
+
+  // A tab's name without "Add" is just the start of the note; so are the old "App" commands.
+  await text(page.request, "Work, ring the bank");
+  expect(await lastNote(page.request)).toMatchObject({ titleText: "Work, ring the bank", tagIds: [-1] });
+  expect(reply((await text(page.request, "App due tomorrow 3pm")).body)).toBeUndefined();
+  expect(await lastNote(page.request)).toMatchObject({ titleText: "App due tomorrow 3pm", tagIds: [-1] });
+  expect(reply((await text(page.request, "App email tab Work")).body)).toBeUndefined();
+  expect(await lastNote(page.request)).toMatchObject({ titleText: "App email tab Work", tagIds: [-1] });
+});
+
+test('"New <title>" adds a note with no tags', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  // Even when the title starts with a tab's name.
+  expect(reply((await text(page.request, "New: work out the budget")).body)).toBeUndefined();
+  expect(await lastNote(page.request)).toMatchObject({ titleText: "Work out the budget", tagIds: [-1] });
+  expect((await notifications(page.request)).at(-1)).toMatchObject({ title: "Saved to All", body: "Work out the budget" });
+  const before = (await notes(page.request)).length;
+  expect(reply((await text(page.request, "New.")).body)).toBe("Nothing to save after New.");
+  expect(await notes(page.request)).toHaveLength(before);
+});
+
+test('"Reset New" makes every New note Active, as the Settings button does', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  // The seed's New note, and two texted in (texted notes are New).
+  await text(page.request, "Add Work, the budget");
+  await text(page.request, "Call the garage");
+  const isNew = (note: { tagIds: number[] }) => note.tagIds.includes(-1);
+  const newCount = (await notes(page.request)).filter(isNew).length;
+  expect(newCount).toBe(3);
+
+  expect(reply((await text(page.request, "reset new.")).body)).toBeUndefined();
+  expect((await notes(page.request)).filter(isNew)).toHaveLength(0);
+  expect((await notifications(page.request)).at(-1)).toMatchObject({ title: "Reset New", body: "3 notes made Active." });
+  // It's in the History, as the button's is.
+  await page.goto("/history");
+  await expect(page.locator(".history-summary").first()).toHaveText("Reset New (3 notes made Active)");
+
+  // Again, with none left.
+  await text(page.request, "Reset New");
+  expect((await notifications(page.request)).at(-1)).toMatchObject({ title: "Reset New", body: "There were no New notes." });
+
+  // Only "Reset New" on its own: anything more is a note.
+  await text(page.request, "Reset new the boiler timer");
+  expect(await lastNote(page.request)).toMatchObject({ titleText: "Reset new the boiler timer", tagIds: [-1] });
+});
+
+test('"Add" with no tab matching: everything after "Add" is the title, with no tags', async ({ page }) => {
+  await linkPhone(page.request);
+  await addDevice(page.request);
+  await text(page.request, "Add holidays, book the ferry");
+  expect(await lastNote(page.request)).toMatchObject({ titleText: "Holidays, book the ferry", tagIds: [-1] });
+  expect((await notifications(page.request)).at(-1)).toMatchObject({
+    title: "Saved to All",
+    body: "Holidays, book the ferry\nNo tab matched, so it has no tags.",
+  });
+  const before = (await notes(page.request)).length;
+  expect(reply((await text(page.request, "Add")).body)).toBe("Nothing to save after Add.");
+  expect(await notes(page.request)).toHaveLength(before);
 });
 
 test("a tab that hides New notes still gets the note, and the notification says so", async ({ page }) => {
   await linkPhone(page.request);
   await addDevice(page.request);
-  await text(page.request, "On hold, the loft conversion");
+  await text(page.request, "Add On hold, the loft conversion");
   expect(await lastNote(page.request)).toMatchObject({ titleText: "The loft conversion", tagIds: [-1] });
   expect((await notifications(page.request)).at(-1)).toMatchObject({
     title: "Saved to On hold",
@@ -193,7 +253,7 @@ test("a tab whose filter has several tags in a category gives the note the first
   });
   expect(response.status()).toBe(201);
   await linkPhone(page.request);
-  await text(page.request, "Errands post the parcel");
+  await text(page.request, "Add Errands post the parcel");
   expect(await lastNote(page.request)).toMatchObject({ titleText: "Post the parcel", tagIds: [4, -1] });
 });
 
@@ -201,7 +261,7 @@ test("failures get a text back, and a notification with the whole note", async (
   await linkPhone(page.request);
   await addDevice(page.request);
 
-  expect(reply((await text(page.request, "Work.")).body)).toBe("Nothing to save after the tab name.");
+  expect(reply((await text(page.request, "Add Work.")).body)).toBe("Nothing to save after the tab name.");
 
   // The note limit (the seed's notes plus one more).
   const count = (await notes(page.request)).length;
@@ -221,8 +281,8 @@ test("the database being down gets a text back saying to send it again later", a
   await linkPhone(page.request);
   await page.request.post("/api/test/database", { data: { reachable: false } });
   try {
-    expect(reply((await text(page.request, "Work, the budget")).body)).toBe(
-      `Not saved: "Work, the budget" - nwsnotes can't save right now. Please send it again later.`,
+    expect(reply((await text(page.request, "Add Work, the budget")).body)).toBe(
+      `Not saved: "Add Work, the budget" - nwsnotes can't save right now. Please send it again later.`,
     );
   } finally {
     await page.request.post("/api/test/database", { data: { reachable: true } });
@@ -297,7 +357,7 @@ test("texts go to the linked user's own notebook, and a turned-off account gets 
 
 test("the admin can turn on a text back confirming each text that works, from the users page", async ({ page }) => {
   await linkPhone(page.request);
-  expect(reply((await text(page.request, "Work, before it's on")).body)).toBeUndefined();
+  expect(reply((await text(page.request, "Add Work, before it's on")).body)).toBeUndefined();
 
   // Turned on in the admin's own Edit form; the row then says so.
   await page.goto("/settings/users");
@@ -309,24 +369,26 @@ test("the admin can turn on a text back confirming each text that works, from th
   await page.getByRole("button", { name: "Save" }).click();
   await expect(row).toContainText("Texts back");
 
-  // Each note saved, tab email and phone linked gets a text back.
-  expect(reply((await text(page.request, "Work, ring the bank")).body)).toBe(`Saved to Work: "Ring the bank"`);
+  // Each note saved, tab email, Reset New and phone linked gets a text back.
+  expect(reply((await text(page.request, "Add Work, ring the bank")).body)).toBe(`Saved to Work: "Ring the bank"`);
   expect(reply((await text(page.request, "No tab for this one")).body)).toBe(`Saved to All: "No tab for this one"`);
-  const long = reply((await text(page.request, `Work ${"word ".repeat(120)}`)).body)!;
+  const long = reply((await text(page.request, `Add Work ${"word ".repeat(120)}`)).body)!;
   expect(long).toMatch(/^Saved to Work, cut short: "Word word .*\.\.\."$/);
   expect(long.length).toBeLessThanOrEqual(160);
-  expect(reply((await text(page.request, "App email tab work")).body)).toMatch(/^Emailed Work \(\d+ notes\) to admin@example\.com\.$/);
+  expect(reply((await text(page.request, "Email tab work")).body)).toMatch(/^Emailed Work \(\d+ notes\) to admin@example\.com\.$/);
+  expect(reply((await text(page.request, "Reset New")).body)).toMatch(/^Reset New: \d+ notes made Active\.$/);
+  expect(reply((await text(page.request, "Reset New")).body)).toBe("Reset New: there were no New notes.");
   const code = (await (await page.request.post("/api/me/sms/link-code")).json()) as { code: string };
   expect(reply((await text(page.request, code.code)).body)).toBe("Phone linked: notes you text from it will be added to nwsnotes.");
   // Failures are as before, and ignored texts still get nothing.
-  expect(reply((await text(page.request, "Work")).body)).toBe("Nothing to save after the tab name.");
+  expect(reply((await text(page.request, "Add Work")).body)).toBe("Nothing to save after the tab name.");
   expect(reply((await text(page.request, "STOP")).body)).toBeUndefined();
 
   // Turned off again (through the API, as the page does): no more texts back.
   const me = (await (await page.request.get("/api/me")).json()) as { id: number };
   const off = await page.request.put(`/api/users/${me.id}`, { data: { smsConfirmations: false } });
   expect(((await off.json()) as { smsConfirmations: boolean }).smsConfirmations).toBe(false);
-  expect(reply((await text(page.request, "Work, after it's off")).body)).toBeUndefined();
+  expect(reply((await text(page.request, "Add Work, after it's off")).body)).toBeUndefined();
   expect((await page.request.put(`/api/users/${me.id}`, { data: { smsConfirmations: "yes" } })).status()).toBe(400);
 });
 
@@ -366,11 +428,11 @@ async function emails(request: APIRequestContext): Promise<SentEmail[]> {
 /** The note lines of an email's text. */
 const emailedLines = (email: SentEmail) => email.text.split("\n").filter((line) => line.startsWith("- "));
 
-test('"App email tab <name>" emails a summary of the notes that tab shows, with no text back', async ({ page }) => {
+test('"Email tab <name>" emails a summary of the notes that tab shows, with no text back', async ({ page }) => {
   await linkPhone(page.request);
   await addDevice(page.request);
 
-  expect(reply((await text(page.request, "App email tab work")).body)).toBeUndefined();
+  expect(reply((await text(page.request, "Email tab work")).body)).toBeUndefined();
   const [work] = await emails(page.request);
   expect(work!.to).toBe("admin@example.com");
   expect(work!.toName).toBe("Admin");
@@ -395,7 +457,7 @@ test("the tab email follows the notes page: its order, Bin hidden, handwritten a
   expect((await page.request.put("/api/notes/order", { data: { noteOrder: [9, ...all.filter((id) => id !== 9)] } })).ok()).toBe(true);
   expect((await page.request.put("/api/notes/2", { data: { titleText: "Buy milk", tagIds: [2, 4, -1], dueDateTime: "2030-03-05T14:30:00.000Z" } })).ok()).toBe(true);
 
-  expect(reply((await text(page.request, "App e-mail tab Home.")).body)).toBeUndefined();
+  expect(reply((await text(page.request, "E-mail tab Home.")).body)).toBeUndefined();
   const [home] = await emails(page.request);
   expect(home!.subject).toBe("nwsnotes: Home (5 notes)");
   // "Broken lamp" is in the Bin, so the tab doesn't show it.
@@ -408,9 +470,9 @@ test("the tab email follows the notes page: its order, Bin hidden, handwritten a
   ]);
 
   // A tab with a Lifetime filter, and All.
-  await text(page.request, "app email tab on hold");
+  await text(page.request, "email tab on hold");
   expect(emailedLines((await emails(page.request)).at(-1)!)).toEqual(["- Read the quarterly report"]);
-  await text(page.request, "App email tab all");
+  await text(page.request, "Email tab all");
   const everything = (await emails(page.request)).at(-1)!;
   expect(everything.subject).toBe("nwsnotes: All (8 notes)");
   expect(emailedLines(everything)).not.toContain("- Broken lamp");
@@ -425,12 +487,12 @@ test("a tab's spoken name works in the email command, and an empty tab says so",
   const empty = await page.request.post("/api/tabs", { data: { name: "Reading", categories: [{ categoryId: 2, tagIds: [5] }, { categoryId: 1, tagIds: [2] }] } });
   expect(empty.ok()).toBe(true);
 
-  await text(page.request, "App email tab do it yourself");
+  await text(page.request, "Email tab do it yourself");
   const diy = (await emails(page.request)).at(-1)!;
   expect(diy.subject).toBe("nwsnotes: DIY (1 note)");
   expect(emailedLines(diy)).toEqual(["- Garden ideas"]);
 
-  await text(page.request, "App email tab reading");
+  await text(page.request, "Email tab reading");
   const reading = (await emails(page.request)).at(-1)!;
   expect(reading.subject).toBe("nwsnotes: Reading (0 notes)");
   expect(reading.text).toContain("This tab shows no notes.");
@@ -439,10 +501,10 @@ test("a tab's spoken name works in the email command, and an empty tab says so",
 test("an email command naming no tab gets a text back, and sends nothing", async ({ page }) => {
   await linkPhone(page.request);
   await addDevice(page.request);
-  expect(reply((await text(page.request, "App email tab holidays")).body)).toBe('Not emailed: no tab called "holidays".');
-  expect(reply((await text(page.request, "App email")).body)).toBe('Not emailed: say which tab, e.g. "App email tab Shopping".');
-  expect(reply((await text(page.request, "App email tab work and home")).body)).toBe('Not emailed: no tab called "work and home".');
-  const long = `App email tab ${"very ".repeat(40)}long name`;
+  expect(reply((await text(page.request, "Email tab holidays")).body)).toBe('Not emailed: no tab called "holidays".');
+  expect(reply((await text(page.request, "Email tab")).body)).toBe('Not emailed: say which tab, e.g. "Email tab Shopping".');
+  expect(reply((await text(page.request, "Email tab work and home")).body)).toBe('Not emailed: no tab called "work and home".');
+  const long = `Email tab ${"very ".repeat(40)}long name`;
   const longReply = reply((await text(page.request, long)).body)!;
   expect(longReply).toMatch(/^Not emailed: no tab called "very very .*\.\.\."\.$/);
   expect(longReply.length).toBeLessThanOrEqual(160);
@@ -460,8 +522,8 @@ test("tab emails go only to the texting user's own email, with their own tabs", 
   await linkPhone(kit.request, "+447700900456");
 
   // Kit has no tabs, so "Work" is none of theirs.
-  expect(reply((await text(kit.request, "App email tab work", { from: "+447700900456" })).body)).toBe('Not emailed: no tab called "work".');
-  await text(kit.request, "App email tab all", { from: "+447700900456" });
+  expect(reply((await text(kit.request, "Email tab work", { from: "+447700900456" })).body)).toBe('Not emailed: no tab called "work".');
+  await text(kit.request, "Email tab all", { from: "+447700900456" });
   const [kitsEmail] = await emails(kit.request);
   expect(kitsEmail!.to).toBe("kit@example.com");
   expect(kitsEmail!.subject).toBe("nwsnotes: All (0 notes)");
@@ -472,18 +534,18 @@ test("tab emails go only to the texting user's own email, with their own tabs", 
 test("at most 10 tab emails a day for each user", async ({ page }) => {
   await linkPhone(page.request);
   await addDevice(page.request);
-  for (let i = 0; i < 10; i++) expect(reply((await text(page.request, "App email tab work")).body)).toBeUndefined();
+  for (let i = 0; i < 10; i++) expect(reply((await text(page.request, "Email tab work")).body)).toBeUndefined();
   expect(await emails(page.request)).toHaveLength(10);
-  expect(reply((await text(page.request, "App email tab work")).body)).toBe(
+  expect(reply((await text(page.request, "Email tab work")).body)).toBe(
     "Not emailed: you've had 10 tab emails in the last day. Try again later.",
   );
   expect(await emails(page.request)).toHaveLength(10);
   // Notes can still be texted in.
-  expect(reply((await text(page.request, "Work, still saved")).body)).toBeUndefined();
+  expect(reply((await text(page.request, "Add Work, still saved")).body)).toBeUndefined();
   expect((await lastNote(page.request)).titleText).toBe("Still saved");
 });
 
-// ---- "App due": setting the due date of the note just added ------------------------------
+// ---- "Due": setting the due date of the note just added ------------------------------
 
 interface DueNote {
   id: number;
@@ -502,25 +564,25 @@ function expectedDue(when: string) {
   return { dueDateTime: read.dueDateTime, shown: formatSpokenDue(read.dueDateTime) };
 }
 
-test('"App due" sets the due date of the note just texted in, or just added in the app', async ({ page }) => {
+test('"Due" sets the due date of the note just texted in, or just added in the app', async ({ page }) => {
   await linkPhone(page.request);
   await addDevice(page.request);
   const me = (await (await page.request.get("/api/me")).json()) as { id: number };
 
-  await text(page.request, "Work, ring the bank");
+  await text(page.request, "Add Work, ring the bank");
   const texted = await lastNote(page.request);
   const tomorrow = expectedDue("tomorrow 3pm");
-  expect(reply((await text(page.request, "App due tomorrow at 3 p.m.")).body)).toBeUndefined();
+  expect(reply((await text(page.request, "Due tomorrow at 3 p.m.")).body)).toBeUndefined();
   const withDue = await noteById(page.request, (texted as unknown as DueNote).id);
   expect(withDue).toMatchObject({ titleText: "Ring the bank", dueDateTime: tomorrow.dueDateTime, createdByUserId: me.id });
   expect((await notifications(page.request)).at(-1)).toEqual(expect.objectContaining({ title: `Due ${tomorrow.shown}`, body: "Ring the bank" }));
 
-  // A note added in the app counts too, and a second "App due" replaces the date.
+  // A note added in the app counts too, and a second "Due" replaces the date.
   const added = (await (await page.request.post("/api/notes", { data: { titleText: "Book the car in", tagIds: [] } })).json()) as DueNote;
   expect(added.createdByUserId).toBe(me.id);
-  await text(page.request, "App last note due Friday");
+  await text(page.request, "Due Friday");
   expect((await noteById(page.request, added.id)).dueDateTime).toBe(expectedDue("Friday").dueDateTime);
-  await text(page.request, "App note due: the 25th of December at nine");
+  await text(page.request, "Due date: the 25th of December at nine");
   expect((await noteById(page.request, added.id)).dueDateTime).toBe(expectedDue("25 December 9am").dueDateTime);
   // The earlier note keeps its own.
   expect((await noteById(page.request, withDue.id)).dueDateTime).toBe(tomorrow.dueDateTime);
@@ -534,18 +596,18 @@ test('"App due" sets the due date of the note just texted in, or just added in t
   // With confirmations on, it's confirmed by text.
   await page.request.put(`/api/users/${me.id}`, { data: { smsConfirmations: true } });
   const at = expectedDue("tomorrow 18:00");
-  expect(reply((await text(page.request, "App due tomorrow 18:00")).body)).toBe(`Due ${at.shown}: "Book the car in"`);
+  expect(reply((await text(page.request, "Due tomorrow 18:00")).body)).toBe(`Due ${at.shown}: "Book the car in"`);
 });
 
-test('"App due" gets a text back when it can\'t be set, and sets nothing', async ({ page }) => {
+test('"Due" gets a text back when it can\'t be set, and sets nothing', async ({ page }) => {
   await linkPhone(page.request);
   await addDevice(page.request);
   const note = (await (await page.request.post("/api/notes", { data: { titleText: "Pay the gas bill", tagIds: [] } })).json()) as DueNote;
 
-  expect(reply((await text(page.request, "App due")).body)).toBe('Not set: say when it\'s due, e.g. "App due tomorrow 3pm".');
-  expect(reply((await text(page.request, "App due whenever")).body)).toBe(`Not set: couldn't understand "whenever" as a date and time.`);
-  expect(reply((await text(page.request, "App due 1/1/2026 9am")).body)).toBe(`Not set: ${formatSpokenDue("2026-01-01T09:00:00.000Z")} has already passed.`);
-  expect(reply((await text(page.request, "App due yesterday")).body)).toMatch(/^Not set: couldn't understand/);
+  expect(reply((await text(page.request, "Due")).body)).toBe('Not set: say when it\'s due, e.g. "Due tomorrow 3pm".');
+  expect(reply((await text(page.request, "Due whenever")).body)).toBe(`Not set: couldn't understand "whenever" as a date and time.`);
+  expect(reply((await text(page.request, "Due 1/1/2026 9am")).body)).toBe(`Not set: ${formatSpokenDue("2026-01-01T09:00:00.000Z")} has already passed.`);
+  expect(reply((await text(page.request, "Due yesterday")).body)).toMatch(/^Not set: couldn't understand/);
   expect((await noteById(page.request, note.id)).dueDateTime).toBeUndefined();
   expect((await notifications(page.request)).at(-1)).toEqual(
     expect.objectContaining({ title: "Due date not set", body: "Couldn't understand \"yesterday\" as a date and time." }),
@@ -553,15 +615,15 @@ test('"App due" gets a text back when it can\'t be set, and sets nothing', async
 
   // A long-form note can't have one.
   await page.request.post("/api/notes", { data: { titleText: "Trip plans", tagIds: [], detailsText: "" } });
-  expect(reply((await text(page.request, "App due tomorrow")).body)).toBe("Not set: your last note is a long-form note, which can't have a due date.");
+  expect(reply((await text(page.request, "Due tomorrow")).body)).toBe("Not set: your last note is a long-form note, which can't have a due date.");
 });
 
-test('"App due" only counts the user\'s own note from the last 5 minutes, not one others added to their notebook', async ({ page, browser }) => {
+test('"Due" only counts the user\'s own note from the last 5 minutes, not one others added to their notebook', async ({ page, browser }) => {
   await linkPhone(page.request);
   // Added offline 6 minutes ago, so it was created then.
   const old = new Date(Date.now() - 6 * 60 * 1000).toISOString();
   const oldNote = (await (await page.request.post("/api/notes", { data: { titleText: "Old one", tagIds: [], createdDateTime: old } })).json()) as DueNote;
-  expect(reply((await text(page.request, "App due tomorrow")).body)).toBe("Not set: you haven't added a note in the last 5 minutes.");
+  expect(reply((await text(page.request, "Due tomorrow")).body)).toBe("Not set: you haven't added a note in the last 5 minutes.");
   expect((await noteById(page.request, oldNote.id)).dueDateTime).toBeUndefined();
 
   // Sam, who the admin shares Shopping with, adds a note in the admin's notebook: it isn't the admin's to date.
@@ -575,12 +637,12 @@ test('"App due" only counts the user\'s own note from the last 5 minutes, not on
     expect(samsNote.shared?.ownerName).toBe("Admin");
     const inAdmins = await noteById(page.request, samsNote.id);
     expect(inAdmins.createdByUserId).toBe(user.id);
-    expect(reply((await text(page.request, "App due tomorrow")).body)).toBe("Not set: you haven't added a note in the last 5 minutes.");
+    expect(reply((await text(page.request, "Due tomorrow")).body)).toBe("Not set: you haven't added a note in the last 5 minutes.");
     expect((await noteById(page.request, samsNote.id)).dueDateTime).toBeUndefined();
 
-    // Sam's own "App due" finds it, but only the admin sets due dates on the admin's notes.
+    // Sam's own "Due" finds it, but only the admin sets due dates on the admin's notes.
     await linkPhone(sam.request, "+447700900456");
-    expect(reply((await text(sam.request, "App due tomorrow", { from: "+447700900456" })).body)).toBe(
+    expect(reply((await text(sam.request, "Due tomorrow", { from: "+447700900456" })).body)).toBe(
       "Not set: your last note is in Admin's notebook, so only they can set its due date.",
     );
   } finally {

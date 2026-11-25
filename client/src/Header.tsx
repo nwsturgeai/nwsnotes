@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCloud, faEllipsis, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { faCloud, faEllipsis, faEye, faEyeSlash, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { ALL_TAB_NAME, type Category, type SharePermission, type Tab } from "@nwsnotes/shared";
 import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
 import { SharingIcons, tabSharedOut } from "./sharingIcons";
+import { useLeftTabsHidden } from "./stylusMode";
 
 interface Props {
   page: Page;
@@ -22,7 +23,10 @@ interface Props {
   /** The selected tab's id, or undefined for the built-in "All" tab. */
   selectedTabId: number | undefined;
   onSelectTab: (id: number | undefined) => void;
-  /** While a note is being edited, the tabs and the Settings cog are blocked. */
+  /**
+   * While a note being edited has no title (or in multi-select), the tabs and the Settings cog are
+   * blocked. With a title, using them saves the note first (see NotesPage's `data-saves-edit`).
+   */
   editing: boolean;
   onNavigate: (page: Page) => void;
   /** Set when a background reload of the notes failed. */
@@ -63,6 +67,7 @@ export function Header({
   accountsWaiting = 0,
 }: Props) {
   const cogBlocked = editing || offline;
+  const [leftTabsHidden, setLeftTabsHidden] = useLeftTabsHidden();
   const offlineTitle =
     pendingCount === 0 ? "Offline" : `Offline: ${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting`;
   const waitingTitle = `${accountsWaiting} ${accountsWaiting === 1 ? "account is" : "accounts are"} waiting to be confirmed`;
@@ -81,6 +86,19 @@ export function Header({
   return (
     <>
       <header className={page.name === "notes" && leftStrip ? "app-header with-left-tabs" : "app-header"}>
+        {/* Above the left strip, the strip's width and half the header's height: hides or shows the strip. */}
+        {page.name === "notes" && leftStrip && (
+          <button
+            type="button"
+            className="left-tabs-toggle"
+            aria-label={leftTabsHidden ? "Show left tabs" : "Hide left tabs"}
+            aria-pressed={leftTabsHidden}
+            title={leftTabsHidden ? "Show left tabs" : "Hide left tabs"}
+            onClick={() => setLeftTabsHidden(!leftTabsHidden)}
+          >
+            <FontAwesomeIcon icon={leftTabsHidden ? faEye : faEyeSlash} />
+          </button>
+        )}
         {page.name === "notes" && (
           <TabStrip
             tabs={tabs}
@@ -111,6 +129,7 @@ export function Header({
             <a
               href={pathFor({ name: "users" })}
               className={cogBlocked ? "accounts-waiting blocked" : "accounts-waiting"}
+              data-saves-edit
               aria-label={waitingTitle}
               aria-disabled={cogBlocked || undefined}
               title={offline ? OFFLINE_HINT : editing ? BLOCKED_HINT : waitingTitle}
@@ -129,6 +148,7 @@ export function Header({
             <a
               href="/settings"
               className={cogBlocked ? "cog blocked" : "cog"}
+              data-saves-edit
               aria-label="Settings"
               aria-disabled={cogBlocked || undefined}
               title={offline ? OFFLINE_HINT : editing ? BLOCKED_HINT : "Settings"}
@@ -201,7 +221,7 @@ export function LeftTabStrip({
   editing: boolean;
 }) {
   return (
-    <div className="left-tabs" role="tablist" aria-label="Left tabs" aria-orientation="vertical">
+    <div className="left-tabs" role="tablist" aria-label="Left tabs" aria-orientation="vertical" data-saves-edit>
       {tabs.map((tab) => {
         const selected = tab.id === selectedTabId;
         return (
@@ -326,7 +346,7 @@ function TabStrip({
   const stripClass = ["tab-strip", measuring && "measuring"].filter(Boolean).join(" ");
 
   return (
-    <div className={stripClass} role="tablist" aria-label="Tabs" ref={stripRef}>
+    <div className={stripClass} role="tablist" aria-label="Tabs" ref={stripRef} data-saves-edit>
       {shown.map((tab) => {
         const selected = tab.id === selectedTabId;
         return (
