@@ -372,14 +372,27 @@ export class Sharing {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown },
+    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown; parentId?: number | null },
   ): Promise<Note> {
     const resolved = await this.resolve(user.id, id);
+    // A note's parent must be in the same notebook: a child note always has the same owner as its parent.
+    const newParent = options.parentId ?? undefined;
+    const parent =
+      newParent === undefined || newParent === resolved.note.parentId ? undefined : await this.resolve(user.id, newParent).catch(() => undefined);
     if (resolved.kind === "own") {
+      if (parent?.kind === "shared") {
+        throw new RequestError(400, `Your note can't go inside ${parent.owner.displayName}'s long-form note: a note's parent must belong to the same person.`);
+      }
       return resolved.store.updateNote(id, title, rawTagIds, details, { ...options, stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(user)) });
     }
     this.require(resolved, "edit");
     const owner = resolved.owner;
+    if (newParent !== undefined && newParent !== resolved.note.parentId) {
+      if (!parent || parent.kind !== "shared" || parent.owner.id !== owner.id) {
+        throw new RequestError(400, `${owner.displayName}'s note can only go inside one of their own long-form notes shared with you.`);
+      }
+      this.require(parent, "edit");
+    }
     const withoutLifetime = (ids: number[]) => ids.filter((tagId) => !isLifetimeTag(tagId));
     const sent = Array.isArray(rawTagIds) ? withoutLifetime(rawTagIds.filter((tagId): tagId is number => typeof tagId === "number")) : undefined;
     if (sent && !sameSet(sent, withoutLifetime(resolved.view.tagIds))) {
@@ -395,6 +408,7 @@ export class Sharing {
       baseModifiedDateTime: options.baseModifiedDateTime,
       stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(owner)),
       ownerName: owner.displayName,
+      parentId: options.parentId,
     });
     return this.viewAfter(user.id, note);
   }

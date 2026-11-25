@@ -382,7 +382,12 @@ export function createApp(
     res.json(notes);
   });
 
-  notesRouter.put("/:id", async (req: Request<{ id: string }, object, { tagIds?: unknown; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown } | undefined>, res) => {
+  notesRouter.put(
+    "/:id",
+    async (
+      req: Request<{ id: string }, object, { tagIds?: unknown; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown; parentId?: unknown } | undefined>,
+      res,
+    ) => {
     const id = Number(req.params.id);
     if (!Number.isInteger(id)) {
       res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
@@ -395,14 +400,22 @@ export function createApp(
       res.status(400).json({ error: !check.ok ? check.error : !details.ok ? details.error : !due.ok ? due.error : "" });
       return;
     }
+    // A long-form note's id makes it that note's child, null takes it out of its parent, and leaving it out keeps it.
+    const parentId = req.body?.parentId;
+    if (parentId !== undefined && parentId !== null && !Number.isInteger(parentId)) {
+      res.status(400).json({ error: '"parentId" must be a note id or null.' });
+      return;
+    }
     const note = await sharing.updateNote(userOf(res), id, check.title, req.body?.tagIds, details.details, {
       dueDateTime: due.dueDateTime,
       tagsChangedDateTime: req.body?.tagsChangedDateTime,
       baseModifiedDateTime: req.body?.baseModifiedDateTime,
+      parentId: parentId as number | null | undefined,
     });
     notifyChanged(req, res);
     res.json(note);
-  });
+    },
+  );
 
   // Delete a note (used when cancelling a new long-form note).
   notesRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {

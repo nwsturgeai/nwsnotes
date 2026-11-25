@@ -121,6 +121,12 @@ interface Props {
   showSharing?: boolean;
   /** The filter row: each check-list (but Lifetime's) ends with "(None)", for notes with none of its tags. */
   noneOption?: boolean;
+  /** Check-lists: how far each option is indented (option id -> level, 0 for none), e.g. long-form notes under their parents. */
+  indents?: ReadonlyMap<number, number>;
+  /** Check-lists: options ticked because of another one (a ticked note's child notes), which can't be unticked themselves. */
+  implied?: { ids: ReadonlySet<number>; hint: string };
+  /** Full-tag-list mode: a last line after the categories (the note's parent), scrolling with them. */
+  lastRow?: ReactNode;
 }
 
 /** The sharing icon after a tag's name in a picker, if it's one of yours that you've shared. */
@@ -141,6 +147,8 @@ export function TagPickers({
   selectAll,
   showSharing,
   noneOption,
+  indents,
+  implied,
 }: Props) {
   if (categories.length === 0) return null;
 
@@ -161,6 +169,8 @@ export function TagPickers({
           showSharing={showSharing}
           noneOption={noneOption && !category.system}
           noneChosen={(selection[category.id] ?? []).includes(NONE_TAG_ID)}
+          indents={indents}
+          implied={implied}
         />
       ))}
     </div>
@@ -175,6 +185,8 @@ function TagCount({ count }: { count: number | undefined }) {
 
 interface DropdownProps {
   counts?: Props["counts"];
+  indents?: Props["indents"];
+  implied?: Props["implied"];
   selectAll?: boolean;
   showSharing?: boolean;
   /** The list ends with a "(None)" check-box (filter row only). */
@@ -217,6 +229,8 @@ function TagDropdown({
   showSharing,
   noneOption,
   noneChosen,
+  indents,
+  implied,
 }: DropdownProps) {
   /** Where the open list sits. It is positioned on the window, so a scrolling area can't clip it. */
   const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; room: number }>();
@@ -353,12 +367,18 @@ function TagDropdown({
           )}
           {checkList ? (
             category.tags.map((tag) => {
-              const locked = tag.id === lockedTagId;
+              const locked = tag.id === lockedTagId || implied?.ids.has(tag.id) === true;
+              const indent = indents?.get(tag.id) ?? 0;
               return (
-                <label key={tag.id} className={locked ? "locked" : undefined} title={locked ? lockHint : undefined}>
+                <label
+                  key={tag.id}
+                  className={locked ? "locked" : undefined}
+                  title={tag.id === lockedTagId ? lockHint : locked ? implied?.hint : undefined}
+                  style={indent > 0 ? { paddingLeft: `${0.75 + indent * 1.25}rem` } : undefined}
+                >
                   <input
                     type="checkbox"
-                    checked={chosen.includes(tag.id)}
+                    checked={chosen.includes(tag.id) || locked}
                     disabled={locked}
                     onChange={(event) => toggle(tag.id, event.target.checked)}
                   />
@@ -436,8 +456,8 @@ function Option({
  * rules apply as for the dropdowns: a locked tag can't be turned off, and in a single-select category
  * where one of several tags is required, the others can't be chosen.
  */
-export function TagPillPicker({ categories, selection, onChange, disabled, constraints, tabName, showSharing }: Props) {
-  if (categories.length === 0) return null;
+export function TagPillPicker({ categories, selection, onChange, disabled, constraints, tabName, showSharing, lastRow }: Props) {
+  if (categories.length === 0 && !lastRow) return null;
   const lockHint = tabName ? `set by the "${tabName}" tab's filters` : "set by this tab's filters";
 
   return (
@@ -488,6 +508,7 @@ export function TagPillPicker({ categories, selection, onChange, disabled, const
           </div>
         );
       })}
+      {lastRow}
     </div>
   );
 }

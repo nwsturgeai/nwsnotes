@@ -10,7 +10,9 @@ Just above your notes is a row of dropdowns, one for each Category. Tick Tags in
 - Each Tag shows how many notes it would list, in brackets.
 - While anything is ticked, the row turns **yellow**, so you can see the list is narrowed. The **reset** button (a curved arrow) clears it.
 
-After the Category dropdowns is a **Properties** dropdown, for narrowing the list by the notes themselves:
+If the tab has any long-form notes, the next dropdown is **Long-form**. It lists them, each with the long-form notes inside it indented below. Tick one to see just that note and every note inside it, all the way down. Ticking a note also ticks the long-form notes inside it (they can't be unticked on their own), and unticking it unticks them again. While exactly one is ticked, notes you add go inside it, so they stay in the list.
+
+Then comes a **Properties** dropdown, for narrowing the list by the notes themselves:
 
 - **Long-form**: only long-form notes.
 - **Has a parent note**: notes added inside a long-form note.

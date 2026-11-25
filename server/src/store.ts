@@ -2,6 +2,7 @@ import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CLIENT_ID_MAX_LENGTH,
+  isAncestor,
   isLifetimeTag,
   isLongForm,
   isStylusNote,
@@ -419,7 +420,8 @@ export class NoteStore {
 
   /**
    * Adds a note (title and details already validated) and saves. Resolves once it is on disk.
-   * With details it's a long-form note; with a parent id it's a child of an open long-form note.
+   * With details it's a long-form note; with a parent id it's a child of that long-form note (one in this
+   * notebook; long-form notes can be children too).
    * `created` says whether it was new: an add with a `clientId` the store already has returns that
    * note unchanged (a retried add whose reply was lost). A valid `createdDateTime` that isn't in the
    * future (a note written offline) is kept as its created time, and likewise `tagsChangedDateTime`
@@ -472,15 +474,7 @@ export class NoteStore {
         throw new RequestError(400, "A long-form note's title must be typed text.");
       }
       if (details && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
-      let parentId: number | undefined;
-      if (rawParentId !== undefined && rawParentId !== null) {
-        const parent = this.notes.find((n) => n.id === rawParentId);
-        if (!parent || !isLongForm(parent)) {
-          throw new RequestError(400, `Note ${String(rawParentId)} isn't a long-form note, so it can't have child notes.`);
-        }
-        if (details) throw new RequestError(400, "A long-form note can't be the child of another one.");
-        parentId = parent.id;
-      }
+      const parentId = rawParentId === undefined || rawParentId === null ? undefined : this.parentFor(rawParentId);
 
       const now = this.nextSaveTime();
       const timestamp = now.toISOString();
@@ -540,6 +534,8 @@ export class NoteStore {
       baseModifiedDateTime?: unknown;
       stylusNoteLimit?: number;
       ownerName?: string;
+      /** A long-form note to make it a child of, or null to take it out of its parent. Left out, it keeps its parent. */
+      parentId?: unknown;
     } = {},
   ): Promise<Note> {
     return this.enqueue(async () => {
@@ -561,17 +557,25 @@ export class NoteStore {
         );
       }
       // A long-form note stays long-form, with the same kind of details. A regular note sent with
-      // details becomes long-form, if it could have been created as one: a typed title, and no parent.
+      // details becomes long-form, if it could have been created as one: a typed title. A child note
+      // keeps its parent when it does.
       const longForm = isLongForm(existing);
       if (longForm && details === undefined) {
         throw new RequestError(400, "This is a long-form note, so it must be updated with its details.");
       }
-      if (!longForm && details !== undefined) {
-        if (title.titleText === undefined) throw new RequestError(400, "A long-form note's title must be typed text.");
-        if (existing.parentId !== undefined) {
-          throw new RequestError(400, "This note belongs to a long-form note, so it can't become one itself.");
-        }
+      if (!longForm && details !== undefined && title.titleText === undefined) {
+        throw new RequestError(400, "A long-form note's title must be typed text.");
       }
+      // Left out, the parent stays (even one that's gone); otherwise it's checked if it changes.
+      const rawParent = options.parentId;
+      const parentId =
+        rawParent === undefined
+          ? existing.parentId
+          : rawParent === null
+            ? undefined
+            : rawParent === existing.parentId
+              ? existing.parentId
+              : this.parentFor(rawParent, id);
       if (longForm && details && (existing.detailsImage !== undefined) !== (details.detailsImage !== undefined)) {
         throw new RequestError(
           400,
@@ -593,8 +597,7 @@ export class NoteStore {
         id,
         ...title,
         ...details,
-        // A child keeps its parent.
-        ...(existing.parentId !== undefined && { parentId: existing.parentId }),
+        ...(parentId !== undefined && { parentId }),
         ...dueDateFields(options.dueDateTime, existing, now),
         ...(existing.createdByUserId !== undefined && { createdByUserId: existing.createdByUserId }),
         createdDateTime: existing.createdDateTime,
@@ -603,11 +606,25 @@ export class NoteStore {
         tagIds: newTagIds,
       };
       // Repeated saves of a long-form note being edited replace each other (see save()).
-      const summary = longForm
+      const edited = longForm
         ? `Edited long-form note ${label(note)}`
         : details
           ? `Made ${label(note)} a long-form note`
           : `Edited ${label(note)}`;
+      // Only the parent changed (the Parent pop-up, say): just the move.
+      const onlyMoved =
+        note.titleText === existing.titleText &&
+        note.titleImage === existing.titleImage &&
+        note.detailsText === existing.detailsText &&
+        note.detailsImage === existing.detailsImage &&
+        note.dueDateTime === existing.dueDateTime &&
+        sameTags(note.tagIds, existing.tagIds);
+      const summary =
+        parentId === existing.parentId
+          ? edited
+          : onlyMoved
+            ? this.moveSummary(label(note), existing.parentId, parentId)
+            : `${edited}, and ${this.moveSummary("it", existing.parentId, parentId).replace(/^M|^T/, (first) => first.toLowerCase())}`;
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
         record: { summary },
         longFormUpdateId: longForm ? id : undefined,
@@ -739,7 +756,7 @@ export class NoteStore {
   /** The Settings "Empty Bin" button: every Bin note is deleted. Returns how many. */
   emptyBin(): Promise<number> {
     return this.enqueue(async () => {
-      const kept = this.notes.filter((n) => lifetimeOf(n) !== LIFETIME_BIN);
+      const kept = this.withoutParents(this.notes.filter((n) => lifetimeOf(n) !== LIFETIME_BIN));
       const count = this.notes.length - kept.length;
       if (count > 0) {
         await this.save(this.nextSaveTime(), { notes: kept, noteOrder: this.orderKeepingNotes(kept) }, {
@@ -750,12 +767,12 @@ export class NoteStore {
     });
   }
 
-  /** Deletes one note (cancelling a new long-form note), then saves. Child notes keep their `parentId`. */
+  /** Deletes one note (cancelling a new long-form note), then saves. Its child notes lose their parent. */
   deleteNote(id: number): Promise<void> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
-      const notes = this.notes.filter((n) => n.id !== id);
+      const notes = this.withoutParents(this.notes.filter((n) => n.id !== id));
       await this.save(this.nextSaveTime(), { notes, noteOrder: this.orderKeepingNotes(notes) }, {
         record: { summary: `Deleted ${label(existing)}` },
       });
@@ -797,6 +814,44 @@ export class NoteStore {
       // Bookkeeping rather than a change of yours, so it isn't in the history.
       if (changed) await this.save(this.nextSaveTime(), { notes });
     });
+  }
+
+  /**
+   * `notes` (what's left after deleting some) with the deleted notes' children taken out of them: they
+   * lose their parent. Tidying up, so their modified times stay as they are. Undoing the delete in the
+   * History puts the parents back, as it brings back the whole notebook as it was.
+   */
+  private withoutParents(notes: Note[]): Note[] {
+    const ids = new Set(notes.map((n) => n.id));
+    return notes.map((note) => {
+      if (note.parentId === undefined || ids.has(note.parentId)) return note;
+      const { parentId: _gone, ...rest } = note;
+      return rest;
+    });
+  }
+
+  /**
+   * The parent a note is being given, checked: a long-form note in this notebook, and (for an existing
+   * note, `childId`) not the note itself or one of its own descendants, which would make a loop.
+   */
+  private parentFor(rawParentId: unknown, childId?: number): number {
+    const parent = Number.isInteger(rawParentId) ? this.notes.find((n) => n.id === rawParentId) : undefined;
+    if (!parent || !isLongForm(parent)) {
+      throw new RequestError(400, `Note ${String(rawParentId)} isn't a long-form note in this notebook, so it can't be a parent.`);
+    }
+    if (childId !== undefined && (parent.id === childId || isAncestor(this.notes, childId, parent.id))) {
+      throw new RequestError(400, "A note can't be put inside itself or one of its own child notes.");
+    }
+    return parent.id;
+  }
+
+  /** How a change of parent is described in the history, e.g. `Moved "Book flights" under "Holiday plans"`. */
+  private moveSummary(what: string, from: number | undefined, to: number | undefined): string {
+    const name = (id: number | undefined) => {
+      const note = id === undefined ? undefined : this.notes.find((n) => n.id === id);
+      return note ? label(note) : "its parent note";
+    };
+    return to !== undefined ? `Moved ${what} under ${name(to)}` : `Took ${what} out of ${name(from)}`;
   }
 
   /** The note order with deleted notes' ids taken out. */

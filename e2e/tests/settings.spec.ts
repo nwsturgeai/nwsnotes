@@ -99,8 +99,8 @@ test.describe("categories", () => {
     await page.reload();
     await expect(section(page, "Categories").locator(".category-name")).toHaveText(["Topic", "Area", "Lifetime"]);
     await page.getByRole("link", { name: "← Notes" }).click();
-    // Properties isn't a category: it always comes after them.
-    await expect(filterRow(page).locator(".tag-dropdown-button")).toHaveText([/^Topic/, /^Area/, /^Lifetime/, /^Properties/]);
+    // Long-form and Properties aren't categories: they always come after them.
+    await expect(filterRow(page).locator(".tag-dropdown-button")).toHaveText([/^Topic/, /^Area/, /^Lifetime/, /^Long-form/, /^Properties/]);
   });
 
   test("a tag's colour tints its notes, and can be taken off", async ({ page }) => {

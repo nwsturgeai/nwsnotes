@@ -28,7 +28,10 @@ export interface Note {
    */
   detailsText?: string;
   detailsImage?: string;
-  /** For a note added while a long-form note was open: that long-form note's id. */
+  /**
+   * For a child note: its parent's id, a long-form note in the same notebook. Any note can have one,
+   * long-form notes included, so long-form notes can form a tree (never a loop).
+   */
   parentId?: number;
   /**
    * The id of the user who added the note: its owner, or someone a tag is shared with who added it in
@@ -132,6 +135,39 @@ export const CLIENT_ID_MAX_LENGTH = 64;
 
 export function isLongForm(note: Note): boolean {
   return note.detailsText !== undefined || note.detailsImage !== undefined;
+}
+
+/**
+ * Whether `ancestorId` is `noteId`'s parent, its parent's parent, and so on up the chain (among `notes`).
+ * A note can't be given a parent that is itself or one of its own descendants, which would make a loop.
+ */
+export function isAncestor(notes: readonly Note[], ancestorId: number, noteId: number): boolean {
+  const byId = new Map(notes.map((note) => [note.id, note]));
+  const seen = new Set<number>();
+  let parentId = byId.get(noteId)?.parentId;
+  while (parentId !== undefined && !seen.has(parentId)) {
+    if (parentId === ancestorId) return true;
+    seen.add(parentId);
+    parentId = byId.get(parentId)?.parentId;
+  }
+  return false;
+}
+
+/** The ids of every note below `noteId` (its children, their children, and so on), among `notes`. */
+export function descendantIds(notes: readonly Note[], noteId: number): Set<number> {
+  const children = new Map<number, number[]>();
+  for (const note of notes) {
+    if (note.parentId !== undefined) children.set(note.parentId, [...(children.get(note.parentId) ?? []), note.id]);
+  }
+  const found = new Set<number>();
+  const queue = [...(children.get(noteId) ?? [])];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (found.has(id) || id === noteId) continue;
+    found.add(id);
+    queue.push(...(children.get(id) ?? []));
+  }
+  return found;
 }
 
 /** A tag within a category. */
@@ -317,14 +353,15 @@ export type NoteDetails = { detailsText: string; detailsImage?: never } | { deta
 
 /**
  * Body of POST /api/notes and PUT /api/notes/:id. Details make it a long-form note;
- * parentId (POST only) makes it a child of an open long-form note. Also POST only: clientId (see
+ * parentId makes it a child of a long-form note (in the same notebook). On a PUT, null takes it out of
+ * its parent and leaving it out keeps the parent it has. Also POST only: clientId (see
  * Note), and createdDateTime for a note created offline (used if it's valid and not in the future).
  * Both: tagsChangedDateTime, when the tags were changed offline (used the same way), and
  * dueDateTime (regular notes only; leaving it out of a PUT clears it).
  */
 export type NewNoteRequest = NoteTitle & {
   tagIds: number[];
-  parentId?: number;
+  parentId?: number | null;
   dueDateTime?: string;
   clientId?: string;
   createdDateTime?: string;

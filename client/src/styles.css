@@ -14,6 +14,9 @@
   --focus: #6fa594;
   --pill-bg: #e3ece8;
   --pill-text: #2f5d50;
+  /* Parent notes' pills: a soft purple, apart from the tags' green and "Long Form"'s amber. */
+  --parent-pill-bg: #e9e0f7;
+  --parent-pill-text: #55308a;
   --paper: #fffdf7;
   --editing-bg: #eef5f2;
   /* Always light, whatever the device's dark-mode setting. */
@@ -813,11 +816,17 @@ body:has(.note-list li.dragging) {
   color: var(--muted);
 }
 
-/* The title and pills sit in the middle of the row's height (the buttons and date stay at the top). */
+/* The title and pills sit in the middle of the row's height (the buttons and date stay at the top). Lines are
+   closer together than the page's, and the pills closer to the title, so rows are no taller than they need be. */
 .note-body {
   flex: 1;
   align-self: center;
   min-width: 0;
+  line-height: 1.3;
+}
+
+.note-body .pills {
+  margin-top: 0.2rem;
 }
 
 /* The note's buttons (edit, archive / reinstate, move to bin), right-aligned, with its date below. */
@@ -851,9 +860,16 @@ body:has(.note-list li.dragging) {
   padding: 0;
   border: none;
   background: none;
+  /* The date's own size, not the body's: a full-size line would make the button (and the row) taller than the date. */
   font: inherit;
+  font-size: 0.7rem;
+  line-height: 1.2;
   text-align: right;
   cursor: pointer;
+}
+
+.note-date-button .note-date {
+  display: block;
 }
 
 .note-date-button:disabled {
@@ -1338,12 +1354,14 @@ body:has(.note-list li.dragging) {
   background: var(--bg);
 }
 
+/* The match-the-tab button stays at the far right; the Parent pill sits just after the dropdowns. */
 .lf-tags > .note-button {
   flex: none;
+  margin-left: auto;
 }
 
 .lf-tags .tag-pickers {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -1906,10 +1924,91 @@ body:has(.note-list li.dragging) {
   box-shadow: inset 0 0 0 1px var(--pill-text);
 }
 
-/* "Long Form" on long-form notes, and the parent's title on their child notes. */
+/* "Long Form" on long-form notes is amber. */
 .pills li.special {
   background: #f6dfa4;
   color: #6b4a00;
+}
+
+/* A child note's parent, and a long-form note's child count, are purple (as is the Parent pill when adding or editing). */
+.pills li.special.parent,
+.pills li.special.children,
+.parent-pill {
+  background: var(--parent-pill-bg);
+  color: var(--parent-pill-text);
+}
+
+.pills li.special.clickable button:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--parent-pill-text);
+}
+
+.pill-icon {
+  margin-right: 0.3rem;
+  font-size: 0.85em;
+}
+
+/* The "Parent" line's pill, under the tag pills when adding or editing a note (expanded area). */
+.tag-pill.parent-pill:hover:not(:disabled) {
+  border-color: var(--parent-pill-text);
+}
+
+/* In the long-form editor's tags band, after the dropdowns. */
+.lf-parent {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.3rem;
+  /* With the band's gap, the same 1rem as between the dropdowns. */
+  margin-left: 0.4rem;
+}
+
+/* The Parent pop-up: the long-form notes as a tree, scrolling when there are many. */
+.parent-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  max-width: none;
+}
+
+.parent-dialog-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(24rem, 55vh);
+  margin-bottom: 1rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.parent-dialog-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.parent-dialog-list label:hover {
+  background: var(--bg);
+}
+
+.parent-dialog-list input {
+  flex: none;
+  margin-top: 0.3rem;
+}
+
+/* Can't be the parent (itself, a note inside it, or someone else's): greyed, with the reason on hover. */
+.parent-dialog-list label.unavailable {
+  color: var(--muted);
+  cursor: default;
+}
+
+.parent-dialog-owner {
+  color: var(--muted);
+}
+
+.parent-dialog-empty {
+  margin-bottom: 1rem !important;
+  color: var(--muted) !important;
 }
 
 .tag-pickers {

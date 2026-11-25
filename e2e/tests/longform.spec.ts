@@ -102,11 +102,8 @@ test.describe("with the page loaded", () => {
     expect((await savedNote(page, "Garden ideas"))?.detailsText).toBe("Plant tulips");
   });
 
-  test("a handwritten or child note can't be converted", async ({ page }) => {
+  test("a handwritten note can't be converted (a child note can: see parents.spec.ts)", async ({ page }) => {
     await page.getByRole("button", { name: "Show all tags" }).click();
-    await noteRow(page, "Book flights").getByRole("button", { name: "Edit note" }).click();
-    await expect(addArea(page).getByRole("button", { name: "Convert to long-form note" })).toBeDisabled();
-    await addArea(page).getByRole("button", { name: "Cancel" }).click();
     await page.locator(".note-list li[data-note-id]").filter({ has: page.getByRole("img", { name: "Handwritten note" }) }).getByRole("button", { name: "Edit note" }).click();
     await expect(addArea(page).getByRole("button", { name: "Convert to long-form note" })).toBeDisabled();
   });

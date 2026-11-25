@@ -12,7 +12,7 @@ timestamps should be set by the server.  Dates should be stored in ISO 8601 form
 Tags - can have multiple.  More details below.  The note should reference/store the ids of the tags it is tagged with.
 detailsText (string, max length 10000 character)
 detailsImage - a string containing base64 image data.  Exactly One of detailsText or detailsImage will be populated for long-form notes
-parentId - an integer, nullable.  When this note is a child of a long-form note, then parentId gives the id of that associated long-form note.
+parentId - an integer, nullable.  When this note is a child of a long-form note, then parentId gives the id of that associated long-form note.  Any note can have one, long-form notes included (see [long-form.md](long-form.md#parent-notes)).
 dueDateTime - an optional date-time value for when this note is due to be resolved.  May only be populated for regular notes, not long-form notes.
 
 The main app screen will show:

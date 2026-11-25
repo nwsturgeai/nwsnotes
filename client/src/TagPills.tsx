@@ -7,7 +7,26 @@ import {
   tagLabel,
   type Category,
 } from "@nwsnotes/shared";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import type { IconDefinition } from "@fortawesome/free-solid-svg-icons";
 import { SharingIcons } from "./sharingIcons";
+
+/**
+ * A pill after a note's tags that isn't a tag, each kind in its own colour: "Long Form" (amber), a
+ * child note's parent (purple), and a long-form note's child count (purple, after an icon).
+ */
+export interface ExtraPill {
+  kind: "long-form" | "parent" | "children";
+  text: string;
+  icon?: IconDefinition;
+  /** Shown on hover. */
+  title?: string;
+  /** Makes the pill a button. */
+  onClick?: () => void;
+  disabled?: boolean;
+  /** Its accessible name, when the text alone doesn't say enough (e.g. a bare count). */
+  label?: string;
+}
 
 /** Lifetime tags notes don't show: Active is the usual state, and Waiting, Archived and Bin rows have their own colour. */
 const HIDDEN_ON_NOTES = [LIFETIME_ACTIVE, LIFETIME_WAITING, LIFETIME_ARCHIVED, LIFETIME_BIN];
@@ -17,8 +36,8 @@ interface Props {
   categories: Category[];
   /** Show every Lifetime tag, as tab filters do. Notes only show New. */
   allLifetime?: boolean;
-  /** Extra pills after the tags, in their own colour ("Long Form", or a child note's parent title). */
-  extra?: string[];
+  /** Extra pills after the tags, in their own colours ("Long Form", a child note's parent, a long-form note's children). */
+  extra?: ExtraPill[];
   /** Tags that aren't shown (e.g. a tag the selected tab filters on alone in its category). */
   hideTagIds?: number[];
   /** Makes the "New" pill a button (the notes list's "reset the New tags"). */
@@ -61,11 +80,25 @@ export function TagPills({
           </li>
         ),
       )}
-      {extra.map((text, index) => (
-        <li key={`extra-${index}`} className="special">
-          {text}
-        </li>
-      ))}
+      {extra.map((pill, index) => {
+        const content = (
+          <>
+            {pill.icon && <FontAwesomeIcon icon={pill.icon} className="pill-icon" />}
+            {pill.text}
+          </>
+        );
+        return (
+          <li key={`extra-${index}`} className={`special ${pill.kind}${pill.onClick ? " clickable" : ""}`} title={pill.onClick ? undefined : (pill.title ?? pill.label)}>
+            {pill.onClick ? (
+              <button type="button" title={pill.title} aria-label={pill.label} disabled={pill.disabled} onClick={pill.onClick}>
+                {content}
+              </button>
+            ) : (
+              content
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
