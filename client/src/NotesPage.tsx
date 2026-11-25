@@ -125,6 +125,8 @@ interface Props {
   onBulkChange: (active: boolean) => void;
   /** Whether there's unsaved work on the page (an edit, a long-form note, a title being written), which hides "Reload". */
   onUnsavedChange: (unsaved: boolean) => void;
+  /** Whether the note being edited can't be saved by using another control (no title, or saving). */
+  onEditLockChange: (locked: boolean) => void;
   /** The server can't be reached: bulk tag updates, note ordering and resetting New aren't available. */
   offline: boolean;
   /** Notes with changes still waiting to be sent; they show a clock by their date. */
@@ -170,6 +172,7 @@ export function NotesPage({
   onNoteOrderChanged,
   onBulkChange,
   onUnsavedChange,
+  onEditLockChange,
   offline,
   pendingIds,
   syncNotice,
@@ -586,6 +589,8 @@ export function NotesPage({
     setDueDate(note.dueDateTime);
     setEditSelection(selectionFor(note, userCategories));
     setSaveError(undefined);
+    // A handwritten note's writing is loaded into the canvas, so it starts with ink.
+    setPadInked(note.titleImage !== undefined);
     onEditStart(note);
     if (note.titleText !== undefined) {
       requestAnimationFrame(() => {
@@ -602,6 +607,7 @@ export function NotesPage({
     setDueDate(undefined);
     setEditSelection({});
     setSaveError(undefined);
+    setPadInked(false);
     onEditEnd();
   }
 
@@ -743,16 +749,52 @@ export function NotesPage({
     }
   }
 
+  /**
+   * Saves the note being edited, as Update does, and goes back to adding notes. Returns whether it was
+   * saved: if not, the edit stays open with the error shown.
+   */
+  async function saveEdit(): Promise<boolean> {
+    if (!editingNote || saving) return false;
+    const noteTitle = newTitle();
+    if (!noteTitle) return false;
+    setSaving(true);
+    setSaveError(undefined);
+    try {
+      const tagIds = selectedTagIds(userCategories, editSelection);
+      onNoteUpdated(
+        await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }, editBase.current),
+      );
+      finishEdit();
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return false;
+      }
+      // The typed title or the writing is kept, so it can be saved again.
+      editFailed(error, "The note wasn't saved");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const atTop = addAtTop.current;
     addAtTop.current = false;
     if (saving) return;
+    if (editingNote) {
+      await saveEdit();
+      // Focus after the input is re-enabled (to type the next note, or to fix this one).
+      if (!showCanvas) requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
 
     const noteTitle = newTitle();
     if (!noteTitle) return;
     // The filters' rules only apply to new notes; an edited note can be given any tags.
-    if (!editingNote) {
+    {
       const missing = missingRequiredCategory(userCategories, tagSelection, newNoteConstraints);
       if (missing) {
         setSaveError(`Choose a ${missing.name} tag: this tab only shows notes with one.`);
@@ -768,13 +810,7 @@ export function NotesPage({
     setSaving(true);
     setSaveError(undefined);
     try {
-      if (editingNote) {
-        const tagIds = selectedTagIds(userCategories, editSelection);
-        onNoteUpdated(
-          await offlineApi.updateNote(editingNote.id, { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }) }, editBase.current),
-        );
-        finishEdit();
-      } else {
+      {
         // The dropdowns keep their selections, so the next note gets the same tags unless they're changed.
         const tagIds = selectedTagIds(userCategories, tagSelection, newNoteConstraints);
         // While a long-form note is open, new notes are its children.
@@ -816,8 +852,7 @@ export function NotesPage({
         return;
       }
       // The typed title or the writing is kept, so it can be saved again.
-      if (editingNote) editFailed(error, "The note wasn't saved");
-      else setSaveError(`The note wasn't saved: ${error instanceof Error ? error.message : String(error)}`);
+      setSaveError(`The note wasn't saved: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setSaving(false);
       // Focus after the input is re-enabled.
@@ -825,13 +860,55 @@ export function NotesPage({
     }
   }
 
-  const blocked = editingNote !== undefined;
-
   /** Why list-check can't be turned on now, if it can't. */
   const titleEmpty = showCanvas ? !padInked : title.trim() === "";
+  /**
+   * While a note is being edited, the tabs, cog, filter row, edit-order button and other notes' buttons
+   * save it first (as Update does) and then do what they do. Only when it has no title (typed, or written
+   * on the canvas), or while it's being saved, are they blocked instead.
+   */
+  const blocked = editingNote !== undefined && (titleEmpty || saving);
+  const onEditLockChangeRef = useRef(onEditLockChange);
+  onEditLockChangeRef.current = onEditLockChange;
+  useEffect(() => onEditLockChangeRef.current(blocked), [blocked]);
+  useEffect(() => () => onEditLockChangeRef.current(false), []);
+
+  // Using one of those controls (marked `data-saves-edit`, here and in the header) during an edit: the
+  // click is held back, the note saved, and then the click is made again, once the page has caught up.
+  const saveEditRef = useRef(saveEdit);
+  saveEditRef.current = saveEdit;
+  /** Set while the held-back click is made again, so it isn't held back a second time. */
+  const replayingClick = useRef(false);
+  const editOpen = editingNote !== undefined;
+  useEffect(() => {
+    if (!editOpen) return;
+    const onClick = (event: MouseEvent) => {
+      if (replayingClick.current || !(event.target instanceof Element)) return;
+      const control = event.target.closest<HTMLElement>("button, a, input, label, [role='tab']");
+      if (!control || !control.closest("[data-saves-edit]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void saveEditRef.current().then((saved) => {
+        if (!saved) return;
+        requestAnimationFrame(() => {
+          if (!control.isConnected) return;
+          replayingClick.current = true;
+          try {
+            control.click();
+          } finally {
+            replayingClick.current = false;
+          }
+        });
+      });
+    };
+    // On the document, before the page's own handlers.
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [editOpen]);
+
   const listCheckHint = offline
     ? OFFLINE_HINT
-    : blocked || longForm
+    : editingNote || longForm
       ? "Finish or cancel the edit first"
       : ordering
         ? "Finish ordering first"
@@ -1033,6 +1110,7 @@ export function NotesPage({
             {/* The dropdowns, reset and search wrap together like words; edit-order stays top-right. */}
             <div
               className={rowCollapsed ? "filter-row-main collapsed" : "filter-row-main"}
+              data-saves-edit
               ref={rowMainRef}
               style={rowCollapsed ? { maxHeight: firstLineHeight } : undefined}
             >
@@ -1161,6 +1239,7 @@ export function NotesPage({
                 wide={ordering}
                 primary={ordering}
                 label={ordering ? "Finish ordering" : offline ? OFFLINE_HINT : editBlocked ? rowHint : "Edit order"}
+                savesEdit
                 disabled={!ordering && (editBlocked || offline)}
                 onClick={() => setOrdering(!ordering)}
               />
@@ -1260,7 +1339,7 @@ export function NotesPage({
                       </div>
                       {/* Right-aligned; they don't need to line up between notes. The creation date sits below. */}
                       <div className="note-side">
-                      <div className="note-actions">
+                      <div className="note-actions" data-saves-edit>
                         {ordering ? (
                           // Edit-order mode: instead of the usual buttons, move the note to the top or bottom of the tab.
                           <>
@@ -1282,7 +1361,7 @@ export function NotesPage({
                         <IconButton
                           icon={faPen}
                           label={note.id === editingNote?.id ? "Editing this note" : (hint ?? "Edit note")}
-                          disabled={busy || saving}
+                          disabled={busy || saving || note.id === editingNote?.id}
                           onClick={() => (isLongForm(note) ? openLongForm(note) : startEdit(note))}
                         />
                         {/* New and Active notes can be put on hold; anything else can be reinstated to Active. */}
@@ -1626,6 +1705,7 @@ function IconButton({
   pressed,
   wide,
   primary,
+  savesEdit,
 }: {
   icon: IconDefinition;
   label: string;
@@ -1637,6 +1717,8 @@ function IconButton({
   wide?: boolean;
   /** Styled like the app's main buttons: white on the accent green. */
   primary?: boolean;
+  /** Using it during an edit saves the note first (see `data-saves-edit`). */
+  savesEdit?: boolean;
 }) {
   return (
     <button
@@ -1647,6 +1729,7 @@ function IconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
+      data-saves-edit={savesEdit || undefined}
     >
       <FontAwesomeIcon icon={icon} />
     </button>

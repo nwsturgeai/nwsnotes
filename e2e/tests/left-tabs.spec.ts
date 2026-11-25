@@ -117,8 +117,10 @@ test("tabs set to Left show in the left strip, in order, and can be chosen there
   await expect(name).toHaveCSS("writing-mode", "vertical-rl");
   await expect(name).toHaveCSS("transform", "matrix(-1, 0, 0, -1, 0, 0)");
 
-  // While a note is being edited, the left tabs can't be changed either.
+  // While a note being edited has no title, the left tabs can't be changed either.
   await noteRow(page, "Old invoice").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await page.getByRole("textbox", { name: "Note title" }).fill("");
   await expect(leftTabs(page).filter({ hasText: "On hold" })).toHaveAttribute("aria-disabled", "true");
 });
 

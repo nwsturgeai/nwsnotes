@@ -23,7 +23,10 @@ interface Props {
   /** The selected tab's id, or undefined for the built-in "All" tab. */
   selectedTabId: number | undefined;
   onSelectTab: (id: number | undefined) => void;
-  /** While a note is being edited, the tabs and the Settings cog are blocked. */
+  /**
+   * While a note being edited has no title (or in multi-select), the tabs and the Settings cog are
+   * blocked. With a title, using them saves the note first (see NotesPage's `data-saves-edit`).
+   */
   editing: boolean;
   onNavigate: (page: Page) => void;
   /** Set when a background reload of the notes failed. */
@@ -126,6 +129,7 @@ export function Header({
             <a
               href={pathFor({ name: "users" })}
               className={cogBlocked ? "accounts-waiting blocked" : "accounts-waiting"}
+              data-saves-edit
               aria-label={waitingTitle}
               aria-disabled={cogBlocked || undefined}
               title={offline ? OFFLINE_HINT : editing ? BLOCKED_HINT : waitingTitle}
@@ -144,6 +148,7 @@ export function Header({
             <a
               href="/settings"
               className={cogBlocked ? "cog blocked" : "cog"}
+              data-saves-edit
               aria-label="Settings"
               aria-disabled={cogBlocked || undefined}
               title={offline ? OFFLINE_HINT : editing ? BLOCKED_HINT : "Settings"}
@@ -216,7 +221,7 @@ export function LeftTabStrip({
   editing: boolean;
 }) {
   return (
-    <div className="left-tabs" role="tablist" aria-label="Left tabs" aria-orientation="vertical">
+    <div className="left-tabs" role="tablist" aria-label="Left tabs" aria-orientation="vertical" data-saves-edit>
       {tabs.map((tab) => {
         const selected = tab.id === selectedTabId;
         return (
@@ -341,7 +346,7 @@ function TabStrip({
   const stripClass = ["tab-strip", measuring && "measuring"].filter(Boolean).join(" ");
 
   return (
-    <div className={stripClass} role="tablist" aria-label="Tabs" ref={stripRef}>
+    <div className={stripClass} role="tablist" aria-label="Tabs" ref={stripRef} data-saves-edit>
       {shown.map((tab) => {
         const selected = tab.id === selectedTabId;
         return (

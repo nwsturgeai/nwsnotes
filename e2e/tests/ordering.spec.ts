@@ -78,8 +78,11 @@ test("in edit-order mode, notes have Move to top and Move to bottom instead of t
   await expectTitles(page, ["Old invoice", "Read the quarterly report", "Plan the team meeting"]);
 });
 
-test("edit-order mode isn't available while a note is being edited", async ({ page }) => {
+test("edit-order mode isn't available while a note being edited has no title", async ({ page }) => {
   await noteRow(page, "Old invoice").getByRole("button", { name: "Edit note" }).click();
+  // Once the edit has focused the title (typing before that could be undone by it).
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await page.getByRole("textbox", { name: "Note title" }).fill("  ");
   await expect(filterRow(page).getByRole("button", { name: "Finish or cancel the edit first" }).last()).toBeDisabled();
   await addArea(page).getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(filterRow(page).getByRole("button", { name: "Edit order" })).toBeEnabled();

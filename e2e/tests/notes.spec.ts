@@ -1,4 +1,4 @@
-import { addArea, chooseTag, expect, fingerHoldWithoutClick, noteRow, noteTitles, openNotes, pills, selectTab, test, tickTag } from "./fixtures";
+import { addArea, chooseTag, expect, filterRow, fingerHoldWithoutClick, noteRow, noteTitles, openNotes, pills, selectTab, test, tickTag } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await openNotes(page);
@@ -143,10 +143,11 @@ test("editing a note changes its title and tags", async ({ page }) => {
   const title = page.getByRole("textbox", { name: "Note title" });
   await expect(title).toHaveValue("Plan the team meeting");
   await expect(title).toBeFocused();
-  // While one note is being edited, the others can't be.
+  // While one note is being edited, the others' buttons can still be used (they save it first); its own Edit button can't.
   const otherButtons = noteRow(page, "Buy milk").locator(".note-actions").getByRole("button");
   await expect(otherButtons).toHaveCount(3);
-  for (const button of await otherButtons.all()) await expect(button).toBeDisabled();
+  for (const button of await otherButtons.all()) await expect(button).toBeEnabled();
+  await expect(row.getByRole("button", { name: "Editing this note" })).toBeDisabled();
 
   await title.fill("Plan the away day");
   await chooseTag(page, "Area", "Home");
@@ -160,6 +161,91 @@ test("editing a note changes its title and tags", async ({ page }) => {
   await expect.poll(async () => (await noteTitles(page))[0]).toBe("Plan the away day");
   await page.reload();
   await expect(noteRow(page, "Plan the away day")).toBeVisible();
+});
+
+test("during an edit, another tab, another note's Edit button or the filter row saves the note first, then does what it does", async ({ page }) => {
+  const title = page.getByRole("textbox", { name: "Note title" });
+
+  // Another tab: saved, then that tab is shown.
+  await noteRow(page, "Plan the team meeting").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await title.fill("Plan the away day");
+  await page.getByRole("tab", { name: "Work" }).click();
+  await expect(page.getByRole("tab", { name: "Work" })).toHaveAttribute("aria-selected", "true");
+  await expect(noteRow(page, "Plan the away day")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "New note" })).toHaveValue("");
+
+  // Another note's Edit button: saved, then that note is being edited.
+  await noteRow(page, "Plan the away day").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await title.fill("Plan the away day in May");
+  await noteRow(page, "Old invoice").getByRole("button", { name: "Edit note" }).click();
+  await expect(title).toHaveValue("Old invoice");
+  await expect(noteRow(page, "Plan the away day in May")).toBeVisible();
+
+  // Another note's Archive button: saved, then that note is archived.
+  await expect(title).toBeFocused();
+  await title.fill("Old invoice, paid");
+  await noteRow(page, "Read the quarterly report").getByRole("button", { name: "Archive" }).click();
+  await expect(noteRow(page, "Old invoice, paid")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "New note" })).toBeVisible();
+  await expect(noteRow(page, "Read the quarterly report").getByRole("button", { name: "Reinstate" })).toBeVisible();
+
+  // A filter dropdown: saved, then it opens.
+  await noteRow(page, "Old invoice, paid").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await title.fill("Old invoice, filed");
+  await filterRow(page).getByRole("button", { name: /^Topic: / }).click();
+  await expect(page.getByRole("group", { name: "Topic", exact: true })).toBeVisible();
+  await expect(noteRow(page, "Old invoice, filed")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // Edit order: saved, then edit-order mode.
+  await noteRow(page, "Old invoice, filed").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await title.fill("Old invoice, shredded");
+  await filterRow(page).getByRole("button", { name: "Edit order" }).click();
+  await expect(filterRow(page).getByRole("button", { name: "Finish ordering" })).toBeVisible();
+  await page.reload();
+  await expect(noteRow(page, "Old invoice, shredded")).toBeVisible();
+});
+
+test("during an edit, the Settings cog saves the note first, then opens Settings", async ({ page }) => {
+  await noteRow(page, "Garden ideas").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await page.getByRole("textbox", { name: "Note title" }).fill("Garden ideas for spring");
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  await expect(noteRow(page, "Garden ideas for spring")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "New note" })).toHaveValue("");
+});
+
+test("during an edit with no title, or one that can't be saved, the other controls stay put", async ({ page }) => {
+  const title = page.getByRole("textbox", { name: "Note title" });
+  const work = page.getByRole("tab", { name: "Work" });
+  await noteRow(page, "Buy milk").getByRole("button", { name: "Edit note" }).click();
+  await expect(title).toBeFocused();
+
+  // No title: blocked, as before, until there's one again.
+  await title.fill("   ");
+  await expect(work).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-disabled", "true");
+  await expect(noteRow(page, "Garden ideas").getByRole("button", { name: "Finish or cancel the current edit first" }).first()).toBeDisabled();
+  await expect(filterRow(page).getByRole("button", { name: "Search" })).toHaveCount(0);
+  await work.dispatchEvent("click");
+  await expect(page.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
+  await title.fill("Buy milk");
+  await expect(work).not.toHaveAttribute("aria-disabled", "true");
+
+  // A title that can't be saved (too long): the error shows, the edit stays open, and the tab isn't changed.
+  await title.fill("x".repeat(501));
+  await work.click();
+  await expect(page.locator(".save-error")).toContainText("500");
+  await expect(title).toHaveValue("x".repeat(501));
+  await expect(page.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
+  await addArea(page).getByRole("button", { name: "Cancel" }).click();
+  await expect(noteRow(page, "Buy milk")).toBeVisible();
 });
 
 test("cancelling an edit, with the button or Escape, changes nothing", async ({ page }) => {

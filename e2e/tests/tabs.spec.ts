@@ -210,8 +210,10 @@ test("tabs that don't fit are in the … menu", async ({ page }) => {
   await expectTitles(page, ["Read the quarterly report"]);
 });
 
-test("tabs can't be changed while a note is being edited", async ({ page }) => {
+test("tabs can't be changed while a note being edited has no title", async ({ page }) => {
   await noteRow(page, "Buy milk").getByRole("button", { name: "Edit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
+  await page.getByRole("textbox", { name: "Note title" }).fill("");
   const work = page.getByRole("tab", { name: "Work" });
   await expect(work).toHaveAttribute("aria-disabled", "true");
   // Tapping it does nothing.
