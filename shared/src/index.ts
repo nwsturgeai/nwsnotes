@@ -106,6 +106,8 @@ export interface TagShare {
    * sharing (either way), so they were emailed to ask. Until they accept, they see nothing of it.
    */
   pending?: boolean;
+  /** Only in the answer to PUT /api/tags/:id/shares: this save emailed them to ask. */
+  asked?: boolean;
 }
 
 /** Body of PUT /api/tags/:id/shares: everyone the tag is shared with (a person by login email), replacing the list. */

@@ -510,7 +510,8 @@ export function createApp(
   sharingRouter.put("/tags/:id/shares", ...signedIn, async (req: Request<{ id: string }>, res) => {
     const { shares, changed, toAsk } = await sharing.setSharesOfTag(userOf(res), tagIdOf(req), req.body, shareInvites.asksNewPeople);
     notifyUsers([...changed, userOf(res).id]);
-    res.json(shares);
+    const asked = new Set(shareInvites.asksNewPeople ? toAsk.map((user) => user.id) : []);
+    res.json(shares.map((share) => (asked.has(share.userId) ? { ...share, asked: true } : share)));
     shareInvites.ask(req, userOf(res), toAsk).catch((error: unknown) => console.error("Couldn't ask about sharing:", error));
   });
 

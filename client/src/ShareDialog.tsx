@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 import { SHARE_PERMISSIONS, SHARE_PERMISSION_NAMES, isValidLoginName, type SharePermission, type SharePerson } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
+import { MessageDialog } from "./ConfirmDialog";
 
 interface Props {
   tagId: number;
@@ -36,6 +37,8 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  /** After saving: what to tell the user about the people this save emailed to ask (closing once they've read it). */
+  const [askedMessages, setAskedMessages] = useState<string[]>();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -101,8 +104,18 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
     setSaving(true);
     setError(undefined);
     try {
-      await api.setTagShares(tagId, { shares: rows.map(({ loginName, permission }) => ({ loginName, permission })) });
-      onClose();
+      const saved = await api.setTagShares(tagId, { shares: rows.map(({ loginName, permission }) => ({ loginName, permission })) });
+      const asked = saved.filter((share) => share.asked);
+      if (asked.length === 0) {
+        onClose();
+        return;
+      }
+      setAskedMessages(
+        asked.map(
+          (share) =>
+            `${share.displayName} will get an email that you want to share ${tagName} tagged notes with them. They will see the notes after they click the 'accept' link in the email.`,
+        ),
+      );
     } catch (err) {
       if (err instanceof ApiError && err.isUnauthorized) {
         onSessionExpired();
@@ -112,6 +125,8 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
       setSaving(false);
     }
   }
+
+  if (askedMessages) return <MessageDialog messages={askedMessages} onClose={onClose} />;
 
   return (
     <dialog

@@ -15,7 +15,7 @@ You can share any of your Tags with other people who use nwsnotes. They then see
 
 ### Sharing with someone new
 
-If you haven't shared with someone before, and they haven't shared with you, they're emailed first to ask if they're happy to see notes shared by you. Until they answer:
+If you haven't shared with someone before, and they haven't shared with you, they're emailed first to ask if they're happy to see notes shared by you. When you save, a message tells you they'll get that email. Until they answer:
 
 - They see nothing of the Tag.
 - In Settings, and on the Tag's Category page, the Tag shows an **hourglass** instead of the people icon. In the share dialog, they're marked "Waiting for them to accept".

@@ -59,12 +59,22 @@ test("the owner shares a tag from its category page", async ({ page, browser }) 
   await dialog.getByLabel("What sam@example.com may do").selectOption("edit");
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toHaveCount(0);
+  // Sam has never been linked with the admin, so is emailed to ask first, and the admin is told so.
+  const told = page.getByRole("dialog");
+  await expect(told).toHaveText(
+    "Sam Smith will get an email that you want to share Shopping tagged notes with them. They will see the notes after they click the 'accept' link in the email.OK",
+  );
+  await expect(told.getByRole("button")).toHaveText(["OK"]);
+  await told.getByRole("button", { name: "OK" }).click();
+  await expect(told).toHaveCount(0);
 
   // Opened again, it lists Sam by name, waiting: Sam had never been linked with the admin, so is asked first.
   await page.getByRole("button", { name: "Share Shopping" }).click();
   await expect(dialog.getByLabel("What Sam Smith may do")).toHaveValue("edit");
   await expect(dialog.getByText("Waiting for them to accept")).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  // Saving again doesn't ask again (Sam was already emailed), so there's nothing to tell.
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   // The tag shows an hourglass in place of the sharing icon, here and in Settings; its pills show nothing yet.
   const shoppingRow = page.locator(".tag-row", { has: page.getByRole("button", { name: "Share Shopping" }) });
   const waiting = { name: "Shared by you; waiting for someone to accept" };

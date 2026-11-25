@@ -10,6 +10,36 @@ interface Props {
   onCancel: () => void;
 }
 
+/** The app's own pop-up telling the user something, with just an OK button (Escape works as OK too). */
+export function MessageDialog({ messages, onClose }: { messages: string[]; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+
+  return (
+    <dialog
+      ref={ref}
+      className="confirm-dialog"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      {messages.map((message) => (
+        <p key={message}>{message}</p>
+      ))}
+      <div className="form-buttons">
+        <button type="button" className="button primary" onClick={onClose} autoFocus>
+          OK
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
 /** The app's own confirmation pop-up (a modal <dialog>), used instead of the browser's confirm box. */
 export function ConfirmDialog({ message, confirmLabel, cancelLabel = "Cancel", danger = true, onConfirm, onCancel }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
