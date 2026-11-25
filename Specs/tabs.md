@@ -135,6 +135,7 @@ If any text is typed into the search box, the list of notes shown in the main ar
 ### Properties filter
 - **Dropdown:** after the category dropdowns in the filter row (before "reset filters" and search) is a "Properties" check-list dropdown. It's on every tab, "All" included. Its options are rules about the note itself rather than its tags:
   - **Long-form:** long-form notes.
+  - **Has a parent note:** child notes, i.e. notes added inside a long-form note.
   - **Due date set:** notes with a due date.
   - **Due today:** notes due before the next local midnight (so overdue ones too).
   - **Overdue:** notes whose due date has passed.

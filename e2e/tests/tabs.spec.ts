@@ -222,7 +222,7 @@ test("tabs can't be changed while a note being edited has no title", async ({ pa
   await expectTitles(page, ALL);
 });
 
-test('the filter row\'s "Properties" dropdown filters by long-form and due dates, with counts', async ({ page }) => {
+test('the filter row\'s "Properties" dropdown filters by long-form, parent note and due dates, with counts', async ({ page }) => {
   // A fixed time (midday in London), and the seed with three due dates: one passed, one later today, one tomorrow.
   await page.clock.install({ time: new Date("2026-11-23T12:00:00Z") });
   const data = structuredClone(seed) as { notes: { id: number; dueDateTime?: string }[] };
@@ -232,7 +232,7 @@ test('the filter row\'s "Properties" dropdown filters by long-form and due dates
   await openNotes(page);
 
   const properties = await openFilter(page, "Properties");
-  for (const [rule, count] of [["Long-form", 1], ["Due date set", 3], ["Due today", 2], ["Overdue", 1]] as const) {
+  for (const [rule, count] of [["Long-form", 1], ["Has a parent note", 1], ["Due date set", 3], ["Due today", 2], ["Overdue", 1]] as const) {
     await expect(properties.getByRole("checkbox", { name: new RegExp(`^${rule}`) }).locator("..")).toContainText(`(${count})`);
   }
   await expect(properties).toContainText("TOTAL: 8");
@@ -244,6 +244,12 @@ test('the filter row\'s "Properties" dropdown filters by long-form and due dates
   await properties.getByRole("checkbox", { name: /^Long-form/ }).check();
   await expectTitles(page, ["Plan the team meeting", "Buy milk", "Holiday plans"]);
   await properties.getByRole("checkbox", { name: /^Long-form/ }).uncheck();
+  // "Has a parent note" lists child notes, and comes just after "Long-form".
+  const rules = await properties.getByRole("checkbox").evaluateAll((boxes) => boxes.map((box) => box.getAttribute("aria-label") ?? box.parentElement?.textContent ?? ""));
+  expect(rules.findIndex((rule) => rule.startsWith("Has a parent note"))).toBe(rules.findIndex((rule) => rule.startsWith("Long-form")) + 1);
+  await properties.getByRole("checkbox", { name: /^Has a parent note/ }).check();
+  await expectTitles(page, ["Plan the team meeting", "Buy milk", "Book flights"]);
+  await properties.getByRole("checkbox", { name: /^Has a parent note/ }).uncheck();
   await properties.getByRole("checkbox", { name: /^Overdue/ }).check();
   await properties.getByRole("checkbox", { name: /^Due today/ }).uncheck();
   await expectTitles(page, ["Plan the team meeting"]);
