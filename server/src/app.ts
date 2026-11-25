@@ -21,6 +21,7 @@ import type { Notebooks } from "./notebooks.js";
 import { accountConfirmedEmail } from "./accountEmail.js";
 import { PasswordResets } from "./passwordReset.js";
 import { EmailChanges } from "./emailChange.js";
+import { ShareInvites } from "./shareInvite.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
 import { actingUser } from "./context.js";
@@ -130,6 +131,8 @@ export function createApp(
   app.use("/api/password-reset", passwordResets.router(loginLimiter));
   const emailChanges = new EmailChanges(config, users, live, mailer, (req) => passwordResets.siteAddress(req));
   app.use("/api/email-change", emailChanges.router(loginLimiter));
+  const shareInvites = new ShareInvites(config, users, sharing, live, mailer, (req) => passwordResets.siteAddress(req));
+  app.use("/api/share-invite", shareInvites.router(loginLimiter));
 
   // --- Asking for an account (the public sign-up page) ------------------------
 
@@ -503,11 +506,12 @@ export function createApp(
   });
 
   // Replaces who one of your tags is shared with. Their pages reload to show the change, and so do all
-  // of yours (this one too), for the sharing icons on the tag's pills.
+  // of yours (this one too), for the sharing icons on the tag's pills. Someone new is emailed to ask first.
   sharingRouter.put("/tags/:id/shares", ...signedIn, async (req: Request<{ id: string }>, res) => {
-    const { shares, changed } = await sharing.setSharesOfTag(userOf(res), tagIdOf(req), req.body);
+    const { shares, changed, toAsk } = await sharing.setSharesOfTag(userOf(res), tagIdOf(req), req.body, shareInvites.asksNewPeople);
     notifyUsers([...changed, userOf(res).id]);
     res.json(shares);
+    shareInvites.ask(req, userOf(res), toAsk).catch((error: unknown) => console.error("Couldn't ask about sharing:", error));
   });
 
   // People you're linked with by sharing (either way), for choosing who to share with.
@@ -521,6 +525,14 @@ export function createApp(
     const category = await sharing.setSharedTagLayout(userOf(res).id, req.body);
     notifyChanged(req, res);
     res.json(category ?? null);
+  });
+
+  // Stops seeing a tag shared with you; its owner is emailed. All your pages reload (this one too), and theirs.
+  sharingRouter.delete("/shared-tags/:id", ...signedIn, async (req: Request<{ id: string }>, res) => {
+    const { owner, tagName } = await sharing.leaveSharedTag(userOf(res).id, tagIdOf(req));
+    notifyUsers([userOf(res).id, owner.id]);
+    res.json({ ok: true });
+    shareInvites.tellOwnerLeft(owner, userOf(res), tagName);
   });
 
   app.use("/api", sharingRouter);

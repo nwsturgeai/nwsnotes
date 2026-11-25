@@ -50,6 +50,8 @@ interface ShareRow {
   position: number;
   /** The recipient's own colour for the tag. */
   hue?: number;
+  /** Waiting for the recipient to accept it (see `setSharesOfTag`): it gives them nothing until then. */
+  pending: boolean;
 }
 
 /** A note as the user sees it: their own, or another user's shared with them. */
@@ -110,8 +112,8 @@ export class Sharing {
   private ready(): Promise<void> {
     if (!this.loaded) {
       this.loaded = this.db
-        .query<{ tag_id: number; recipient_id: number; owner_id: number; permission: string; position: number; hue: number | null }>(
-          "SELECT tag_id, recipient_id, owner_id, permission, position, hue FROM nwsnotes.shares",
+        .query<{ tag_id: number; recipient_id: number; owner_id: number; permission: string; position: number; hue: number | null; pending: boolean }>(
+          "SELECT tag_id, recipient_id, owner_id, permission, position, hue, pending FROM nwsnotes.shares",
         )
         .then((rows) => {
           this.rows = rows.map((row) => ({
@@ -121,6 +123,7 @@ export class Sharing {
             permission: SHARE_PERMISSIONS.includes(row.permission as SharePermission) ? (row.permission as SharePermission) : "read",
             position: Number(row.position),
             ...(row.hue !== null && { hue: Number(row.hue) }),
+            pending: row.pending === true,
           }));
         });
       this.loaded.catch(() => (this.loaded = undefined));
@@ -130,7 +133,14 @@ export class Sharing {
 
   /** Everyone an owner's notebook is shared with, in part (for live updates). Empty until the shares are loaded. */
   recipientsOf(ownerId: number): number[] {
-    return [...new Set(this.rows.filter((row) => row.ownerId === ownerId).map((row) => row.recipientId))];
+    return [...new Set(this.rows.filter((row) => row.ownerId === ownerId && !row.pending).map((row) => row.recipientId))];
+  }
+
+  /** Whether two users are linked by sharing: one has a share of the other's that's in use (not waiting to be accepted). */
+  private linked(a: number, b: number): boolean {
+    return this.rows.some(
+      (row) => !row.pending && ((row.ownerId === a && row.recipientId === b) || (row.ownerId === b && row.recipientId === a)),
+    );
   }
 
   // --- What a recipient sees ----------------------------------------------------
@@ -141,7 +151,7 @@ export class Sharing {
    */
   private async sharedWith(userId: number): Promise<{ notebooks: SharedNotebook[]; category: Category | undefined }> {
     await this.ready();
-    const rows = this.rows.filter((row) => row.recipientId === userId).sort((a, b) => a.position - b.position || a.tagId - b.tagId);
+    const rows = this.rows.filter((row) => row.recipientId === userId && !row.pending).sort((a, b) => a.position - b.position || a.tagId - b.tagId);
     const notebooks = new Map<number, SharedNotebook>();
     const tags: Tag[] = [];
     for (const row of rows) {
@@ -188,12 +198,17 @@ export class Sharing {
   async withSharedOut<C extends Category>(ownerId: number, categories: C[]): Promise<C[]> {
     await this.ready();
     const most = new Map<number, SharePermission>();
+    const pending = new Set<number>();
     for (const row of this.rows) {
       if (row.ownerId !== ownerId || !this.users.byId(row.recipientId)) continue;
+      if (row.pending) {
+        pending.add(row.tagId);
+        continue;
+      }
       const before = most.get(row.tagId);
       most.set(row.tagId, before ? higherPermission(before, row.permission) : row.permission);
     }
-    if (most.size === 0) return categories;
+    if (most.size === 0 && pending.size === 0) return categories;
     return categories.map((category) =>
       category.system || category.shared
         ? category
@@ -201,7 +216,9 @@ export class Sharing {
             ...category,
             tags: category.tags.map((tag) => {
               const sharedOut = most.get(tag.id);
-              return sharedOut ? { ...tag, sharedOut } : tag;
+              return sharedOut || pending.has(tag.id)
+                ? { ...tag, ...(sharedOut && { sharedOut }), ...(pending.has(tag.id) && { sharePending: true }) }
+                : tag;
             }),
           },
     );
@@ -509,16 +526,25 @@ export class Sharing {
       .filter((row) => row.tagId === tagId && row.ownerId === ownerId)
       .flatMap((row) => {
         const user = this.users.byId(row.recipientId);
-        return user ? [{ userId: user.id, displayName: user.displayName, loginName: user.loginName, permission: row.permission }] : [];
+        return user
+          ? [{ userId: user.id, displayName: user.displayName, loginName: user.loginName, permission: row.permission, ...(row.pending && { pending: true }) }]
+          : [];
       })
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   /**
    * PUT /api/tags/:id/shares: replaces who one of the owner's tags is shared with, and at what level.
-   * Returns the new list, and every user whose view changed (to tell their pages).
+   * Someone new (not linked with the owner by sharing, either way) must accept first: with `askNewPeople`,
+   * their share waits (`pending`) until they do. Returns the new list, every user whose view changed (to
+   * tell their pages), and the people to email to ask (those with no other share of the owner's waiting).
    */
-  async setSharesOfTag(owner: User, tagId: number, raw: unknown): Promise<{ shares: TagShare[]; changed: number[] }> {
+  async setSharesOfTag(
+    owner: User,
+    tagId: number,
+    raw: unknown,
+    askNewPeople: boolean,
+  ): Promise<{ shares: TagShare[]; changed: number[]; toAsk: User[] }> {
     await this.ready();
     await this.ownTag(owner.id, tagId);
     const list = (raw as { shares?: unknown } | undefined)?.shares;
@@ -542,11 +568,16 @@ export class Sharing {
     const removed = existing.filter((row) => !wanted.has(row.recipientId));
     const added: ShareRow[] = [];
     const updated: ShareRow[] = [];
+    const toAsk: User[] = [];
     for (const [recipientId, permission] of wanted) {
       const row = existing.find((r) => r.recipientId === recipientId);
       if (!row) {
         const last = Math.max(-1, ...this.rows.filter((r) => r.recipientId === recipientId).map((r) => r.position));
-        added.push({ tagId, recipientId, ownerId: owner.id, permission, position: last + 1 });
+        const pending = askNewPeople && !this.linked(owner.id, recipientId);
+        // Asked once: a second tag shared while the first still waits is accepted (or not) along with it.
+        const asked = this.rows.some((r) => r.pending && r.ownerId === owner.id && r.recipientId === recipientId);
+        if (pending && !asked) toAsk.push(this.users.byId(recipientId)!);
+        added.push({ tagId, recipientId, ownerId: owner.id, permission, position: last + 1, pending });
       } else if (row.permission !== permission) {
         updated.push({ ...row, permission });
       }
@@ -557,12 +588,13 @@ export class Sharing {
         await query("UPDATE nwsnotes.shares SET permission = $3 WHERE tag_id = $1 AND recipient_id = $2", [tagId, row.recipientId, row.permission]);
       }
       for (const row of added) {
-        await query("INSERT INTO nwsnotes.shares (tag_id, recipient_id, owner_id, permission, position) VALUES ($1, $2, $3, $4, $5)", [
+        await query("INSERT INTO nwsnotes.shares (tag_id, recipient_id, owner_id, permission, position, pending) VALUES ($1, $2, $3, $4, $5, $6)", [
           row.tagId,
           row.recipientId,
           row.ownerId,
           row.permission,
           row.position,
+          row.pending,
         ]);
       }
     });
@@ -571,8 +603,54 @@ export class Sharing {
       ...updated,
       ...added,
     ];
-    const changed = [...removed, ...updated, ...added].map((row) => row.recipientId);
-    return { shares: await this.sharesOfTag(owner.id, tagId), changed: [...new Set(changed)] };
+    // A waiting share changes nothing the recipient sees.
+    const changed = [...removed, ...updated, ...added].filter((row) => !row.pending).map((row) => row.recipientId);
+    return { shares: await this.sharesOfTag(owner.id, tagId), changed: [...new Set(changed)], toAsk };
+  }
+
+  // --- Asking someone new first ---------------------------------------------------------
+
+  /** The names of the owner's tags waiting for this recipient to accept them (empty if none are). */
+  async waitingTagNames(ownerId: number, recipientId: number): Promise<string[]> {
+    await this.ready();
+    const waiting = this.rows.filter((row) => row.pending && row.ownerId === ownerId && row.recipientId === recipientId);
+    if (waiting.length === 0) return [];
+    const tags = (await this.notebooks.for(ownerId)).getAll().categories.flatMap((category) => category.tags);
+    return waiting.flatMap((row) => tags.find((tag) => tag.id === row.tagId)?.name ?? []);
+  }
+
+  /**
+   * The recipient's answer to an owner's request: accepting puts every share of the owner's waiting for them
+   * into use; turning it down removes them. Returns how many there were (0: nothing was waiting).
+   */
+  async answerInvite(ownerId: number, recipientId: number, accept: boolean): Promise<number> {
+    await this.ready();
+    const waiting = this.rows.filter((row) => row.pending && row.ownerId === ownerId && row.recipientId === recipientId);
+    if (waiting.length === 0) return 0;
+    await this.db.transaction(async (query) => {
+      if (accept) {
+        await query("UPDATE nwsnotes.shares SET pending = false WHERE owner_id = $1 AND recipient_id = $2 AND pending", [ownerId, recipientId]);
+      } else {
+        await query("DELETE FROM nwsnotes.shares WHERE owner_id = $1 AND recipient_id = $2 AND pending", [ownerId, recipientId]);
+      }
+    });
+    if (accept) for (const row of waiting) row.pending = false;
+    else this.rows = this.rows.filter((row) => !waiting.includes(row));
+    return waiting.length;
+  }
+
+  /**
+   * DELETE /api/shared-tags/:id: the recipient stops seeing a tag shared with them. Only its owner can
+   * share it with them again. Returns the owner and the tag's name, to tell the owner.
+   */
+  async leaveSharedTag(userId: number, tagId: number): Promise<{ owner: User; tagName: string }> {
+    const { category } = await this.sharedWith(userId);
+    const tag = category?.tags.find((t) => t.id === tagId);
+    const owner = tag?.ownerId === undefined ? undefined : this.users.byId(tag.ownerId);
+    if (!tag || !owner) throw new RequestError(404, `There is no tag with id ${tagId} shared with you.`);
+    await this.db.query("DELETE FROM nwsnotes.shares WHERE tag_id = $1 AND recipient_id = $2", [tagId, userId]);
+    this.rows = this.rows.filter((row) => !(row.tagId === tagId && row.recipientId === userId));
+    return { owner, tagName: tag.name };
   }
 
   /**
@@ -600,7 +678,8 @@ export class Sharing {
   async people(userId: number): Promise<SharePerson[]> {
     await this.ready();
     const ids = new Set(
-      this.rows.flatMap((row) => (row.ownerId === userId ? [row.recipientId] : row.recipientId === userId ? [row.ownerId] : [])),
+      // Someone whose share you haven't accepted yet isn't linked with you.
+      this.rows.flatMap((row) => (row.ownerId === userId ? [row.recipientId] : row.recipientId === userId && !row.pending ? [row.ownerId] : [])),
     );
     return [...ids]
       .flatMap((id) => {

@@ -16,6 +16,8 @@ interface Row {
   loginName: string;
   displayName?: string;
   permission: SharePermission;
+  /** Asked by email, and hasn't accepted yet. */
+  pending?: boolean;
 }
 
 /** "Choose someone" in the people list: typing an email address instead. */
@@ -45,7 +47,14 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
     Promise.all([api.tagShares(tagId), api.sharePeople()])
       .then(([shares, known]) => {
         if (cancelled) return;
-        setRows(shares.map((share) => ({ loginName: share.loginName, displayName: share.displayName, permission: share.permission })));
+        setRows(
+          shares.map((share) => ({
+            loginName: share.loginName,
+            displayName: share.displayName,
+            permission: share.permission,
+            ...(share.pending && { pending: true }),
+          })),
+        );
         setPeople(known);
         // Someone already linked by sharing is the likeliest choice; otherwise the email box shows.
         const first = known.find((person) => !shares.some((share) => share.loginName === person.loginName));
@@ -117,7 +126,8 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
       <p className="due-date-title">Share “{tagName}”</p>
       <p className="hint">
         The people you share it with see your notes with this tag, but not your other tags. Notes they add with it are yours, and count
-        towards your note limit.
+        towards your note limit. Someone you haven't shared with before, and who hasn't shared with you, is emailed to ask if they're happy
+        to see your notes: it's shared with them once they accept.
       </p>
       {rows === undefined ? (
         !error && <p>Loading…</p>
@@ -132,6 +142,7 @@ export function ShareDialog({ tagId, tagName, onClose, onSessionExpired }: Props
                   <span className="share-person">
                     <span>{row.displayName ?? row.loginName}</span>
                     {row.displayName !== undefined && <span className="share-email">{row.loginName}</span>}
+                    {row.pending && <span className="share-waiting">Waiting for them to accept</span>}
                   </span>
                   <select
                     aria-label={`What ${row.displayName ?? row.loginName} may do`}

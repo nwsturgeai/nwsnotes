@@ -17,6 +17,7 @@ import {
   type NewUserRequest,
   type PasswordChangeRequest,
   type EmailChangeLink,
+  type ShareInviteLink,
   type EmailChangeRequest,
   type NameChangeRequest,
   type PasswordResetConfirmRequest,
@@ -173,6 +174,8 @@ export const api = {
   setTagShares: (tagId: number, body: TagSharesRequest) => request<TagShare[]>("PUT", `/api/tags/${tagId}/shares`, body, changeHeaders()),
   sharePeople: () => request<SharePerson[]>("GET", "/api/shares/people"),
   setSharedTags: (body: SharedTagsRequest) => request<Category | null>("PUT", "/api/shared-tags", body, changeHeaders()),
+  /** Stops seeing a tag shared with you (its owner is emailed). */
+  leaveSharedTag: (tagId: number) => request<{ ok: true }>("DELETE", `/api/shared-tags/${tagId}`, undefined, changeHeaders()),
   reorderCategories: (ids: number[]) => request<Category[]>("PUT", "/api/categories/order", { ids }, changeHeaders()),
   /** The tabs' order (every id, once each). */
   reorderTabs: (ids: number[]) => request<Tab[]>("PUT", "/api/tabs/order", { ids }, changeHeaders()),
@@ -210,6 +213,9 @@ export const api = {
   askToChangeEmail: (body: EmailChangeRequest) => request<{ loginName: string }>("POST", "/api/me/email", body),
   checkEmailLink: (token: string) => request<EmailChangeLink>("POST", "/api/email-change/check", { token }),
   confirmEmailChange: (token: string) => request<{ loginName: string }>("POST", "/api/email-change/confirm", { token }),
+  /** The page a sharing request's emailed link opens. */
+  checkShareInvite: (token: string) => request<ShareInviteLink>("POST", "/api/share-invite/check", { token }),
+  answerShareInvite: (token: string, accept: boolean) => request<{ ok: true }>("POST", `/api/share-invite/${accept ? "accept" : "decline"}`, { token }),
   /** The users page (admin only). */
   users: (changesSince: Date) => request<UserSummary[]>("GET", `/api/users?changesSince=${encodeURIComponent(changesSince.toISOString())}`),
   /** The whole database's size (bytes), from pg_database_size. */

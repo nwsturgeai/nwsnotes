@@ -102,3 +102,64 @@ export function emailChangedEmail(to: { email: string; name: string }, newEmail:
   ]);
   return { to: to.email, toName: to.name, subject: "Your nwsnotes email was changed", ...body };
 }
+
+/** "Shopping", or "Shopping" and "Home", or "Shopping", "Home" and "Work". */
+function quotedList(names: string[]): string {
+  const quoted = names.map((name) => `"${name}"`);
+  return quoted.length <= 1 ? (quoted[0] ?? "") : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1)}`;
+}
+
+/**
+ * The email asking someone if they're happy to see notes shared by someone they aren't linked with by
+ * sharing yet. The link opens a page to accept or turn it down.
+ */
+export function shareInviteEmail(to: { email: string; name: string }, owner: { name: string; email: string }, tagNames: string[], link: string): Email {
+  const tags = quotedList(tagNames);
+  const what = `their notes tagged ${tags}`;
+  const body = emailBody([
+    { text: `Hello ${to.name},`, html: `Hello ${escapeHtml(to.name)},` },
+    {
+      text: `${owner.name} (${owner.email}) would like to share ${what} with you on nwsnotes.`,
+      html: `${escapeHtml(owner.name)} (${escapeHtml(owner.email)}) would like to share ${escapeHtml(what)} with you on nwsnotes.`,
+    },
+    {
+      text: `Are you happy to see notes shared by ${owner.name}? Answer here: ${link}`,
+      html: `Are you happy to see notes shared by ${escapeHtml(owner.name)}? <a href="${escapeHtml(link)}">Accept or turn down the sharing</a>`,
+    },
+    {
+      text: `You won't see any of their notes unless you accept. If you turn it down, ${owner.name} will be told.`,
+      html: `You won't see any of their notes unless you accept. If you turn it down, ${escapeHtml(owner.name)} will be told.`,
+    },
+  ]);
+  return { to: to.email, toName: to.name, subject: `${owner.name} wants to share notes with you on nwsnotes`, ...body };
+}
+
+/** The email telling an owner that the person they asked turned their sharing down. */
+export function shareDeclinedEmail(to: { email: string; name: string }, recipient: { name: string; email: string }, tagNames: string[]): Email {
+  const tags = quotedList(tagNames);
+  const body = emailBody([
+    { text: `Hello ${to.name},`, html: `Hello ${escapeHtml(to.name)},` },
+    {
+      text: `${recipient.name} (${recipient.email}) chose not to accept your request to share ${tags} with them on nwsnotes.`,
+      html: `${escapeHtml(recipient.name)} (${escapeHtml(recipient.email)}) chose not to accept your request to share ${escapeHtml(tags)} with them on nwsnotes.`,
+    },
+    { text: "They can't see any of your notes.", html: "They can't see any of your notes." },
+  ]);
+  return { to: to.email, toName: to.name, subject: `${recipient.name} didn't accept your sharing on nwsnotes`, ...body };
+}
+
+/** The email telling an owner that someone has stopped viewing a tag they shared with them. */
+export function shareLeftEmail(to: { email: string; name: string }, recipient: { name: string; email: string }, tagName: string): Email {
+  const body = emailBody([
+    { text: `Hello ${to.name},`, html: `Hello ${escapeHtml(to.name)},` },
+    {
+      text: `${recipient.name} (${recipient.email}) has stopped viewing your shared tag "${tagName}" on nwsnotes.`,
+      html: `${escapeHtml(recipient.name)} (${escapeHtml(recipient.email)}) has stopped viewing your shared tag "${escapeHtml(tagName)}" on nwsnotes.`,
+    },
+    {
+      text: "They can no longer see your notes with that tag. You can share it with them again from the tag's category in Settings.",
+      html: "They can no longer see your notes with that tag. You can share it with them again from the tag's category in Settings.",
+    },
+  ]);
+  return { to: to.email, toName: to.name, subject: `${recipient.name} stopped viewing "${tagName}" on nwsnotes`, ...body };
+}

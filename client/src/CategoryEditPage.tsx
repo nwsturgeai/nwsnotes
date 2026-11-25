@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faArrowDown, faArrowUp, faShareNodes, faTrashCan } from "@fortawesome/free-solid-svg-icons";
+import { faArrowDown, faArrowUp, faRightFromBracket, faShareNodes, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 import {
   NAME_MAX_LENGTH,
   TAGS_PER_CATEGORY_MAX,
@@ -19,7 +19,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { HuePicker } from "./HuePicker";
 import { DragGrip, draggedStyle, rowsWithGap, useListDrag } from "./listDrag";
 import { ShareDialog } from "./ShareDialog";
-import { SharingIcons } from "./sharingIcons";
+import { SettingsSharingIcon } from "./sharingIcons";
 
 interface Props {
   /** "new" to add a category. */
@@ -100,6 +100,9 @@ function CategoryForm({
   const [pickingHueFor, setPickingHueFor] = useState<TagRow>();
   /** The saved tag whose sharing is being changed. */
   const [sharing, setSharing] = useState<{ id: number; name: string }>();
+  /** "Shared with me": the tag you're asked to confirm you want to stop viewing, and whether that's being sent. */
+  const [leaving, setLeaving] = useState<Tag>();
+  const [leavingBusy, setLeavingBusy] = useState(false);
 
   /** "Create Tab for this Tag": the tag row whose tab is being made, and what happened (by row key). */
   const [makingTabFor, setMakingTabFor] = useState<number>();
@@ -288,6 +291,32 @@ function CategoryForm({
     void send(check.category, tabRowKey);
   }
 
+  /**
+   * "Shared with me": stops seeing one of its tags, straight away. The other rows keep any unsaved changes;
+   * with none left, the category has gone, so it's back to Settings.
+   */
+  async function leave(tag: Tag) {
+    if (leavingBusy) return;
+    setLeavingBusy(true);
+    setError(undefined);
+    try {
+      await api.leaveSharedTag(tag.id);
+      const left = rows.filter((row) => row.id !== tag.id);
+      setRows(left);
+      setLeaving(undefined);
+      if (left.length === 0) onClose();
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setLeaving(undefined);
+      setError(`You're still viewing “${tagLabel(tag)}”: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLeavingBusy(false);
+    }
+  }
+
   /** "Shared with me": saves your order and colours for its tags. */
   async function saveSharedLayout() {
     setSaving(true);
@@ -388,7 +417,7 @@ function CategoryForm({
             const dragging = tagDrag?.id === row.key;
             const tabResult = tabResults.get(row.key);
             const tabLink = offersTab(row);
-            const sharedOut = row.id === undefined ? undefined : existing?.tags.find((tag) => tag.id === row.id)?.sharedOut;
+            const savedTag = row.id === undefined ? undefined : existing?.tags.find((tag) => tag.id === row.id);
             const nameBox = row.shared ? (
                 <span className="shared-tag-name">{tagLabel(row.shared)}</span>
               ) : (
@@ -453,9 +482,9 @@ function CategoryForm({
               ) : (
                 nameBox
               )}
-              {/* "Shared by you", as on the tag's pills: what the most generous of its shares allows. Every row
-                  keeps the room for it, so the name boxes line up. */}
-              <span className="tag-row-sharing">{sharedOut && <SharingIcons permission={sharedOut} />}</span>
+              {/* "Shared by you", as on the tag's pills: what the most generous of its shares allows, or an hourglass
+                  while someone hasn't accepted yet. Every row keeps the room for it, so the name boxes line up. */}
+              <span className="tag-row-sharing">{savedTag && !sharedLayout && <SettingsSharingIcon tag={savedTag} />}</span>
               {/* Up and down change the tag order; like renames and deletes, it's saved with the category. */}
               <button
                 type="button"
@@ -508,6 +537,19 @@ function CategoryForm({
                   </button>
                 </>
               )}
+              {sharedLayout && row.shared && (
+                // Stops seeing the tag straight away (after asking), not when the page is saved.
+                <button
+                  type="button"
+                  className="note-button"
+                  aria-label={`Stop viewing ${tagLabel(row.shared)}`}
+                  title="Stop viewing this shared tag"
+                  disabled={saving || leavingBusy}
+                  onClick={() => setLeaving(row.shared)}
+                >
+                  <FontAwesomeIcon icon={faRightFromBracket} />
+                </button>
+              )}
             </div>
             );
           })}
@@ -549,6 +591,14 @@ function CategoryForm({
       )}
       {sharing && (
         <ShareDialog tagId={sharing.id} tagName={sharing.name} onClose={() => setSharing(undefined)} onSessionExpired={onSessionExpired} />
+      )}
+      {leaving && (
+        <ConfirmDialog
+          message={`Stop viewing “${tagLabel(leaving)}”? You won't see ${leaving.ownerName}'s notes with this tag any more, and ${leaving.ownerName} will be emailed to say so. Only ${leaving.ownerName} can share it with you again.`}
+          confirmLabel={leavingBusy ? "Stopping…" : "Stop viewing"}
+          onConfirm={() => void leave(leaving)}
+          onCancel={() => !leavingBusy && setLeaving(undefined)}
+        />
       )}
       {confirming && (
         <ConfirmDialog

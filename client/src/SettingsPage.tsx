@@ -31,7 +31,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { pathFor, type Page } from "./route";
 import { COLUMN_CHOICES, PEN_WIDTHS, usePenWidth, type ColumnsChoice } from "./stylusMode";
 import { DragGrip, draggedStyle, rowsWithGap, useListDrag } from "./listDrag";
-import { SharingIcons } from "./sharingIcons";
+import { SettingsSharingIcon } from "./sharingIcons";
 import { TagPills } from "./TagPills";
 import { ServerLogSection } from "./ServerLogPage";
 
@@ -531,7 +531,7 @@ export function SettingsPage({
                           <span className="hue-dot" style={{ background: hueColour(tag.hue, "swatch") }} aria-hidden />
                         )}
                         {tagLabel(tag)}
-                        {tag.sharedOut && <SharingIcons permission={tag.sharedOut} />}
+                        <SettingsSharingIcon tag={tag} />
                       </span>
                     ))}
                   </span>

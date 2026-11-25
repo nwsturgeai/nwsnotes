@@ -11,7 +11,16 @@ You can share any of your Tags with other people who use nwsnotes. They then see
    - **Read-only:** they can see the notes, but not change them.
    - **Edit:** they can also change the notes' titles and details, add new notes with the Tag, and use Waiting, Archive and Reinstate.
    - **Edit and delete:** they can also move notes to the Bin.
-5. Tap **Save**. It takes effect straight away.
+5. Tap **Save**. For people you're already linked with (you've shared with them, or they've shared with you), it takes effect straight away.
+
+### Sharing with someone new
+
+If you haven't shared with someone before, and they haven't shared with you, they're emailed first to ask if they're happy to see notes shared by you. Until they answer:
+
+- They see nothing of the Tag.
+- In Settings, and on the Tag's Category page, the Tag shows an **hourglass** instead of the people icon. In the share dialog, they're marked "Waiting for them to accept".
+
+If they accept, the sharing starts. If they turn it down, they're taken off the Tag's sharing, and you get an email saying they chose not to accept.
 
 Open the same dialog to change what someone may do, or tap the **×** beside them to stop sharing with them.
 
@@ -34,6 +43,8 @@ The same icon shows after the Tag's name in most other places it's listed: the C
 
 ## Tags shared with you
 
+The first time someone shares a Tag with you (unless you've already shared with them), you get an email asking if you're happy to see notes shared by them. Open its link to accept or turn it down. You don't need to be logged in.
+
 When someone shares a Tag with you, a Category called **Shared with me** appears, holding every Tag shared with you. Beside each Tag is the name of the person who shared it, for example "Shopping (Pat)".
 
 - You can filter on these Tags, and use them in your own [Tabs](tabs.md).
@@ -41,4 +52,5 @@ When someone shares a Tag with you, a Category called **Shared with me** appears
 - Notes you can only read have an eye where their buttons would be.
 - Tap **Shared with me** in Settings to choose the order and colours of its Tags. These only change how the notes look to you.
 - You can put shared notes in your own order, without changing the owner's order.
+- To stop seeing a Tag someone has shared with you, tap **Shared with me** in Settings, then the **exit** button (an arrow leaving a box) beside it, and confirm. The person who shared it gets an email saying you've stopped viewing it. Only they can share it with you again.
 - [Texting a note](text-messages.md) to a Tab of a Tag shared with you adds it to that Tag, as long as the Tab shows just one shared Tag.

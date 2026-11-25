@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { formatSpokenDue, readSpokenDue } from "../../shared/src/spokenDue";
-import { expect, noteRow, noteTitles, openNotes, selectTab, test } from "./fixtures";
+import { expect, noteRow, noteTitles, openNotes, selectTab, shareTag, test } from "./fixtures";
 
 // The test server's fake Twilio (server/src/config.ts): its auth token and number, and the address it signs.
 const AUTH_TOKEN = "test-twilio-auth-token";
@@ -567,7 +567,7 @@ test('"App due" only counts the user\'s own note from the last 5 minutes, not on
   // Sam, who the admin shares Shopping with, adds a note in the admin's notebook: it isn't the admin's to date.
   const added = await page.request.post("/api/users", { data: { displayName: "Sam", loginName: "sam@example.com" } });
   const { user, password } = (await added.json()) as { user: { id: number }; password: string };
-  expect((await page.request.put("/api/tags/4/shares", { data: { shares: [{ loginName: "sam@example.com", permission: "edit" }] } })).ok()).toBe(true);
+  await shareTag(page.request, 4, [{ loginName: "sam@example.com", permission: "edit" }]);
   const sam = await browser.newContext({ baseURL: test.info().project.use.baseURL, storageState: { cookies: [], origins: [] } });
   try {
     expect((await sam.request.post("/api/login", { data: { loginName: "sam@example.com", password } })).ok()).toBe(true);
