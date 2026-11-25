@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp } from "@fortawesome/free-solid-svg-icons";
 import { formatBytes } from "./sizes";
@@ -162,6 +162,23 @@ export function SettingsPage({
 }: Props) {
   const categoriesRef = useRef<HTMLElement>(null);
   const tabsRef = useRef<HTMLElement>(null);
+  const systemRef = useRef<HTMLElement>(null);
+  const pageRef = useRef<HTMLElement>(null);
+  const spacerRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * A jump link: scrolls the page so that the section is at the top. Near the end of the page there may
+   * not be enough below it to scroll that far, so space is added at the bottom first, just enough.
+   */
+  function jumpTo(section: HTMLElement | null) {
+    const page = pageRef.current;
+    const spacer = spacerRef.current;
+    if (!section || !page || !spacer) return;
+    const wanted = page.scrollTop + section.getBoundingClientRect().top - page.getBoundingClientRect().top;
+    const short = wanted - (page.scrollHeight - page.clientHeight);
+    if (short > 0) spacer.style.height = `${spacer.offsetHeight + Math.ceil(short)}px`;
+    page.scrollTop = wanted;
+  }
   // Back from editing a category or a tab: open at that section, not at the top of the page.
   useLayoutEffect(() => {
     if (!scrollTo) return;
@@ -312,8 +329,24 @@ export function SettingsPage({
   };
 
   return (
-    <main className="settings-page">
-      <h1>Settings</h1>
+    <main className="settings-page" ref={pageRef}>
+      <div className="settings-heading">
+        <h1>Settings</h1>
+        {/* Jump links: each scrolls the page so that its section is at the top. */}
+        <nav className="settings-jump" aria-label="Jump to section">
+          {(
+            [
+              ["Categories", categoriesRef],
+              ["Tabs", tabsRef],
+              ["System", systemRef],
+            ] as const
+          ).map(([label, ref]) => (
+            <button key={label} type="button" onClick={() => jumpTo(ref.current)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
       {/* The help pages are their own pages (not part of the app), so this is a plain link. */}
       <section>
@@ -667,7 +700,7 @@ export function SettingsPage({
         )}
       </section>
 
-      <AppVersion />
+      <AppVersion sectionRef={systemRef} />
 
       <Reminders />
 
@@ -716,6 +749,8 @@ export function SettingsPage({
           />
         )}
       </section>
+      {/* Room for the jump links to bring the last sections to the top (see jumpTo). */}
+      <div ref={spacerRef} aria-hidden />
     </main>
   );
 }
@@ -925,7 +960,8 @@ const buildTimeText = buildTime.toLocaleString("en-GB", {
 });
 
 /** Which version is running (when it was built), and a button to check for a new one straight away. */
-function AppVersion() {
+/** `sectionRef`: the System jump link at the top of the page scrolls to it. */
+function AppVersion({ sectionRef }: { sectionRef: RefObject<HTMLElement | null> }) {
   const updateReady = useUpdateReady();
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{ upToDate: true } | { error: string }>();
@@ -944,7 +980,7 @@ function AppVersion() {
   }
 
   return (
-    <section>
+    <section ref={sectionRef}>
       <h2>App version</h2>
       <p>Version: {buildTimeText}</p>
       <button type="button" className="button" disabled={!updatesAvailable || checking} onClick={() => void check()}>
