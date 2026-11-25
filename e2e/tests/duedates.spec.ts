@@ -97,3 +97,62 @@ test("a due date still to come is in the text colour, bold in its last week, and
   await expect(date).toHaveClass(/\boverdue\b/);
   await expect(date).not.toHaveCSS("color", (await noteRow(page, "Buy milk").locator("time").evaluate((e) => getComputedStyle(e).color)));
 });
+
+test("tapping a note's date in the list sets, changes or clears its due date", async ({ page }) => {
+  await openNotes(page);
+  const row = noteRow(page, "Buy milk");
+  const date = row.locator("time");
+  await expect(date).toHaveText(/^Cr\. /);
+
+  // A created date: tapping it (the "Cr." too) sets a due date.
+  await row.getByText("Cr.").click();
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  // No due date yet, so nothing to clear.
+  await expect(dialog.getByRole("button", { name: "Clear Due Date" })).toHaveCount(0);
+  const due = dayFromNow(12);
+  await dialog.getByLabel("Due date").fill(due.input);
+  await dialog.getByLabel("Due time").fill("10:45");
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(date).toHaveText(`Due ${due.shown} 10:45`);
+  await page.reload();
+  await expect(date).toHaveText(`Due ${due.shown} 10:45`);
+
+  // A due date: the pop-up starts from it, and changes it.
+  await date.click();
+  await expect(dialog.getByLabel("Due time")).toHaveValue("10:45");
+  await dialog.getByLabel("Due time").fill("16:00");
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(date).toHaveText(`Due ${due.shown} 16:00`);
+
+  // Cancel leaves it as it is.
+  await date.click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(date).toHaveText(`Due ${due.shown} 16:00`);
+
+  // Clearing it shows the created date again, and the note keeps its title and tags.
+  const pillsBefore = await row.locator(".pills li").allTextContents();
+  await date.click();
+  await dialog.getByRole("button", { name: "Clear Due Date" }).click();
+  await expect(date).toHaveText(/^Cr\. /);
+  await page.reload();
+  await expect(date).toHaveText(/^Cr\. /);
+  expect(await row.locator(".pills li").allTextContents()).toEqual(pillsBefore);
+});
+
+test("tapping the date of the note being edited changes the due date saved with the edit", async ({ page }) => {
+  await openNotes(page);
+  const row = noteRow(page, "Buy milk");
+  await row.getByRole("button", { name: "Edit note" }).click();
+  await row.locator("time").click();
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  const due = dayFromNow(3);
+  await dialog.getByLabel("Due date").fill(due.input);
+  await dialog.getByLabel("Due time").fill("08:30");
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  // Not saved until Update.
+  await expect(row.locator("time")).toHaveText(/^Cr\. /);
+  await addArea(page).getByRole("button", { name: "Update" }).click();
+  await expect(row.locator("time")).toHaveText(`Due ${due.shown} 08:30`);
+});

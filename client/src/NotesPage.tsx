@@ -687,6 +687,37 @@ export function NotesPage({
     }
   }
 
+  /** The note whose date was tapped in the list: the due-date pop-up is open for it. */
+  const [listDueNote, setListDueNote] = useState<Note>();
+
+  /** Saves a due date (or clears it: undefined) chosen by tapping a note's date in the list. */
+  async function setListDueDate(note: Note, dueDateTime: string | undefined) {
+    setListDueNote(undefined);
+    if (busyNoteId !== undefined || dueDateTime === note.dueDateTime) return;
+    setBusyNoteId(note.id);
+    try {
+      const noteTitle: NoteTitle = note.titleImage !== undefined ? { titleImage: note.titleImage } : { titleText: note.titleText ?? "" };
+      const base = isWaiting(note.id) ? undefined : note.lastModifiedDateTime;
+      onNoteUpdated(
+        await offlineApi.updateNote(note.id, { ...noteTitle, tagIds: note.tagIds, ...(dueDateTime && { dueDateTime }) }, base),
+      );
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setNotice({
+        text:
+          error instanceof ApiError && error.isNoteChanged
+            ? `The due date wasn't changed: ${NOTE_CHANGED_ELSEWHERE}`
+            : `The due date wasn't changed: ${error instanceof Error ? error.message : String(error)}`,
+        error: true,
+      });
+    } finally {
+      setBusyNoteId(undefined);
+    }
+  }
+
   /** The title to save, or undefined (with the error shown) if there isn't a valid one. */
   function newTitle(): NoteTitle | undefined {
     if (showCanvas) {
@@ -1409,17 +1440,37 @@ export function NotesPage({
                         )}
                       </div>
                       {/* The due date if the note has one, otherwise when it was created. */}
-                      <time
-                        className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
-                        dateTime={note.dueDateTime ?? note.createdDateTime}
-                        title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}`}
-                      >
-                        {pendingIds.has(note.id) && (
-                          <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
-                        )}
-                        {note.dueDateTime ? "Due " : "Cr. "}
-                        {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
-                      </time>
+                      {(() => {
+                        const date = (
+                          <time
+                            className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
+                            dateTime={note.dueDateTime ?? note.createdDateTime}
+                            title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}`}
+                          >
+                            {pendingIds.has(note.id) && (
+                              <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
+                            )}
+                            {note.dueDateTime ? "Due " : "Cr. "}
+                            {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
+                          </time>
+                        );
+                        // Tapping it sets, changes or clears the due date. Only a note's owner can, and long-form
+                        // notes can't have one; not while selecting notes or ordering them either.
+                        if (note.shared || isLongForm(note) || bulk || ordering) return date;
+                        return (
+                          <button
+                            type="button"
+                            className="note-date-button"
+                            aria-label={note.dueDateTime ? `Due ${formatNoteDate(note.dueDateTime)}: change due date` : "Set due date"}
+                            // Another note being edited is saved first, as with the note's other buttons.
+                            data-saves-edit={editing ? undefined : true}
+                            disabled={editing ? saving : busy}
+                            onClick={() => (editing ? setChoosingDueDate(true) : setListDueNote(note))}
+                          >
+                            {date}
+                          </button>
+                        );
+                      })()}
                       </div>
                     </li>
                   );
@@ -1455,6 +1506,14 @@ export function NotesPage({
             setChoosingDueDate(false);
           }}
           onCancel={() => setChoosingDueDate(false)}
+        />
+      )}
+
+      {listDueNote && (
+        <DueDateDialog
+          dueDate={listDueNote.dueDateTime}
+          onSet={(value) => void setListDueDate(listDueNote, value)}
+          onCancel={() => setListDueNote(undefined)}
         />
       )}
 
