@@ -110,6 +110,27 @@ test('"select all" ticks every tag in a filter dropdown', async ({ page }) => {
   await expectTitles(page, [...ALL.slice(0, 4), "Broken lamp", ...ALL.slice(4)]);
 });
 
+test('"clear selection" unticks every tag and "(None)" in a filter dropdown', async ({ page }) => {
+  const topic = await openFilter(page, "Topic");
+  const clear = topic.getByRole("button", { name: "clear selection" });
+  // Nothing is ticked yet, so it's greyed out.
+  await expect(clear).toBeDisabled();
+  await topic.getByRole("button", { name: "select all" }).click();
+  await expect(clear).toBeEnabled();
+  await clear.click();
+  for (const box of await topic.locator("label input").all()) await expect(box).not.toBeChecked();
+  await expect(clear).toBeDisabled();
+  await expectTitles(page, ALL);
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
+
+  // It clears "(None)" too.
+  await topic.getByRole("checkbox", { name: /^\(None\)/ }).check();
+  await expect(clear).toBeEnabled();
+  await clear.click();
+  await expect(topic.getByRole("checkbox", { name: /^\(None\)/ })).not.toBeChecked();
+  await expectTitles(page, ALL);
+});
+
 test('"(None)" lists the notes with none of the category\'s tags, and unticks the others', async ({ page }) => {
   const topic = await openFilter(page, "Topic");
   const none = topic.getByRole("checkbox", { name: /^\(None\)/ });

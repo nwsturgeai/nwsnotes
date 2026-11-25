@@ -29,6 +29,24 @@ test.beforeEach(async ({ page }) => {
   await openSettings(page);
 });
 
+test("the jump links beside the heading scroll their sections to the top of the page", async ({ page }) => {
+  const jump = page.getByRole("navigation", { name: "Jump to section" });
+  const scroller = page.locator("main.settings-page");
+  /** How far the section's top is from the top of the scrolling page (a pixel either way is fine). */
+  const offset = (heading: string) =>
+    section(page, heading).evaluate((el) => el.getBoundingClientRect().top - el.closest("main")!.getBoundingClientRect().top);
+  for (const [link, heading] of [
+    ["Categories", "Categories"],
+    ["Tabs", "Tabs"],
+    ["System", "App version"],
+  ] as const) {
+    await jump.getByRole("button", { name: link }).evaluate((el) => el.closest("main")!.scrollTo(0, 0));
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(0);
+    await jump.getByRole("button", { name: link }).click();
+    await expect.poll(async () => Math.abs(await offset(heading))).toBeLessThanOrEqual(1);
+  }
+});
+
 test.describe("categories", () => {
   test("a new category with its tags", async ({ page }) => {
     await section(page, "Categories").getByRole("link", { name: "Add category" }).click();

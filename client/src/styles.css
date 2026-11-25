@@ -844,6 +844,26 @@ body:has(.note-list li.dragging) {
   white-space: nowrap;
 }
 
+/* Tapping a note's date opens the due-date pop-up. The button looks like the plain date. */
+.note-date-button {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+
+.note-date-button:disabled {
+  cursor: default;
+}
+
+.note-date-button:enabled:hover .note-date {
+  text-decoration: underline;
+}
+
 /* A due date still to come is in the text colour, not grey, and bold within the next week; one that has passed is bold and red. */
 .note-date.due-later,
 .note-date.due-soon {
@@ -2010,7 +2030,12 @@ body:has(.note-list li.dragging) {
   color: var(--muted);
 }
 
-/* The filter row's "select all": small text, like a link, at the top of each list. */
+/* The filter row's "select all" and "clear selection": small text, like links, side by side at the top of each list. */
+.tag-dropdown-links {
+  display: flex;
+  flex-wrap: wrap;
+}
+
 .tag-dropdown-select-all {
   display: block;
   margin: 0;
@@ -2051,9 +2076,36 @@ body:has(.note-list li.dragging) {
   padding: 1.5rem max(1.5rem, (100% - 50rem) / 2);
 }
 
-.settings-page h1 {
+/* The page heading, with the jump links beside it. */
+.settings-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.5rem;
   margin: 0 0 1rem;
+}
+
+.settings-page h1 {
+  margin: 0;
   font-size: 1.5rem;
+}
+
+.settings-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+/* Small text, like links. */
+.settings-jump button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .settings-page section {
