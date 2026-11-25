@@ -71,7 +71,7 @@ import { LongFormEditor } from "./LongFormEditor";
 import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
-import { columnCount, useFullTagList, type ColumnsChoice } from "./stylusMode";
+import { columnCount, useFilterRowCollapsed, useFullTagList, type ColumnsChoice } from "./stylusMode";
 
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
 import { INK_SCALE, StylusPad, type StylusPadHandle } from "./StylusPad";
@@ -980,6 +980,40 @@ export function NotesPage({
   const rowBlocked = blocked || bulkActive;
   const rowHint = bulkActive ? "Finish selecting notes first" : "Finish or cancel the edit first";
 
+  // Collapsing the filter row: when its dropdowns and buttons wrap onto more than one line, a chevron
+  // shrinks it to the first line, and back. The choice is one for every tab, remembered on this device.
+  const [rowCollapsedSetting, setRowCollapsed] = useFilterRowCollapsed();
+  const rowMainRef = useRef<HTMLDivElement>(null);
+  /** The height of the row's first line (px) when it wraps onto more, otherwise undefined. */
+  const [firstLineHeight, setFirstLineHeight] = useState<number>();
+  const rowCollapsed = rowCollapsedSetting && firstLineHeight !== undefined;
+  useLayoutEffect(() => {
+    const main = rowMainRef.current;
+    if (!main) return;
+    function measure() {
+      if (!main) return;
+      // The row's items: the dropdowns' own wrapper has no box ("display: contents"), so its children are items.
+      const items = [...main.children].flatMap((child) =>
+        getComputedStyle(child).display === "contents" ? [...child.children] : [child],
+      ) as HTMLElement[];
+      const first = items[0]?.getBoundingClientRect();
+      if (!first) return setFirstLineHeight(undefined);
+      // Items are centred on their line, so one on a later line starts below the bottom of the very first.
+      const rects = items.map((item) => item.getBoundingClientRect());
+      const below = rects.map((rect) => rect.top >= first.bottom);
+      const top = main.getBoundingClientRect().top;
+      const lineBottom = Math.max(...rects.filter((_, index) => !below[index]).map((rect) => rect.bottom));
+      const wraps = below.some(Boolean);
+      setFirstLineHeight(wraps ? Math.ceil(lineBottom - top) : undefined);
+      // While collapsed, what's hidden can't be reached with Tab either.
+      items.forEach((item, index) => (item.inert = rowCollapsedSetting && wraps && below[index]!));
+    }
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    return () => observer.disconnect();
+  });
+
   return (
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
@@ -995,7 +1029,11 @@ export function NotesPage({
             aria-label="More filters for this tab"
           >
             {/* The dropdowns, reset and search wrap together like words; edit-order stays top-right. */}
-            <div className="filter-row-main">
+            <div
+              className={rowCollapsed ? "filter-row-main collapsed" : "filter-row-main"}
+              ref={rowMainRef}
+              style={rowCollapsed ? { maxHeight: firstLineHeight } : undefined}
+            >
             {bulk ? (
               // Multi-select: the filters stay as they are (hidden), and these select every listed note, or none.
               <div className="bulk-select-all" role="group" aria-label="Select notes">
@@ -1107,6 +1145,15 @@ export function NotesPage({
             )}
             </div>
             <div className="filter-row-end">
+              {/* Only while the row takes more than one line (or would, when collapsed). */}
+              {firstLineHeight !== undefined && (
+                <IconButton
+                  icon={rowCollapsed ? faChevronDown : faChevronUp}
+                  label={rowCollapsed ? "Show all filters" : "Collapse filters to one row"}
+                  disabled={false}
+                  onClick={() => setRowCollapsed(!rowCollapsed)}
+                />
+              )}
               <IconButton
                 icon={ordering ? faFinishOrdering : faArrowDownWideShort}
                 wide={ordering}

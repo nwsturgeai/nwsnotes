@@ -381,3 +381,44 @@ test("\"Create Tab for this Tag\" asks first where Save would, and saves only on
   expect(data.categories.find((category) => category.id === places.id)!.multiSelect).toBe(false);
   expect(data.tabs.some((tab) => tab.name === "Paris")).toBe(true);
 });
+
+test("a filter row that wraps onto more lines can be collapsed to its first line, remembered for every tab", async ({ page }) => {
+  const collapse = filterRow(page).getByRole("button", { name: "Collapse filters to one row" });
+  const expand = filterRow(page).getByRole("button", { name: "Show all filters" });
+  const search = filterRow(page).getByRole("button", { name: "Search" });
+  // Everything fits on one line, so there's nothing to collapse.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(search).toBeVisible();
+  await expect(collapse).toHaveCount(0);
+
+  // Narrow enough that the row wraps: the up chevron sits just left of Edit order.
+  await page.setViewportSize({ width: 340, height: 800 });
+  await expect(collapse).toBeVisible();
+  const editOrder = filterRow(page).getByRole("button", { name: "Edit order" });
+  const [chevronBox, editBox] = [await collapse.boundingBox(), await editOrder.boundingBox()];
+  expect(chevronBox!.x + chevronBox!.width).toBeLessThanOrEqual(editBox!.x);
+  expect(Math.abs(chevronBox!.y - editBox!.y)).toBeLessThan(2);
+  const tall = (await filterRow(page).boundingBox())!.height;
+
+  // Collapsed: one line, and what was on the later lines is hidden (and out of the Tab order).
+  await collapse.click();
+  await expect(expand).toBeVisible();
+  const short = (await filterRow(page).boundingBox())!.height;
+  expect(short).toBeLessThan(tall - 10);
+  await expect(filterRow(page).getByRole("button", { name: /^Area: / })).toBeInViewport();
+  await expect(search).not.toBeInViewport({ ratio: 0.5 });
+  expect(await search.evaluate((button) => button.closest("[inert]") !== null)).toBe(true);
+
+  // The same on other tabs, and after a reload.
+  await selectTab(page, "Work");
+  await expect(expand).toBeVisible();
+  await page.reload();
+  await expect(expand).toBeVisible();
+
+  // Expanding shows everything again.
+  await expand.click();
+  await expect(collapse).toBeVisible();
+  await expect(search).toBeInViewport();
+  expect(await search.evaluate((button) => button.closest("[inert]") !== null)).toBe(false);
+  expect((await filterRow(page).boundingBox())!.height).toBeCloseTo(tall, 0);
+});

@@ -575,6 +575,14 @@ a:focus-visible {
   display: contents;
 }
 
+/* Collapsed to its first line (its height is set from NotesPage); the rest is hidden. */
+.filter-row-main.collapsed {
+  overflow: hidden;
+  /* Where supported: a little room so the first line's focus outlines aren't cut off (less than the line gap). */
+  overflow: clip;
+  overflow-clip-margin: 3px;
+}
+
 /*
  * The Columns setting splits the list into balanced columns (column-count is set from NotesPage).
  * Only the list itself and its notes ("> ul", "> ul > li"), not the pill lists inside notes, which

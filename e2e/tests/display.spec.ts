@@ -205,7 +205,8 @@ test("a long tab name is cut short, but its count always shows", async ({ page }
 });
 
 test("when the filter row wraps, search follows the last dropdown and edit-order stays top-right", async ({ page }) => {
-  await page.setViewportSize({ width: 300, height: 800 });
+  // Wide enough for search to fit after the last dropdown, beside the collapse chevron and edit-order.
+  await page.setViewportSize({ width: 340, height: 800 });
   await page.reload();
   const dropdowns = filterRow(page).locator(".tag-dropdown-button");
   const first = (await dropdowns.first().boundingBox())!;

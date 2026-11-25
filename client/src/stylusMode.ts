@@ -58,6 +58,11 @@ export function useFullTagList(): [boolean, (on: boolean) => void] {
   return useDeviceSetting("nwsnotes.fullTagList", (stored) => stored !== "off", onOff);
 }
 
+/** Whether the filter row is collapsed to its first line (when it wraps onto more). One setting for every tab. */
+export function useFilterRowCollapsed(): [boolean, (on: boolean) => void] {
+  return useDeviceSetting("nwsnotes.filterRowCollapsed", (stored) => stored === "on", onOff);
+}
+
 /** The Columns setting: always one column, or as many as fit at least this wide. */
 export type ColumnsChoice = "single" | "wide" | "medium" | "narrow";
 
