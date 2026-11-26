@@ -2,6 +2,7 @@ import {
   allows,
   higherPermission,
   isLifetimeTag,
+  detailsPagesOf,
   isLongForm,
   isValidLoginName,
   lifetimeOf,
@@ -422,7 +423,7 @@ export class Sharing {
     if (resolved.kind === "shared") {
       this.require(resolved, "edit");
       const note = resolved.note;
-      const empty = isLongForm(note) && (note.detailsText ?? note.detailsImage) === "";
+      const empty = isLongForm(note) && (note.detailsText !== undefined ? note.detailsText === "" : detailsPagesOf(note).every((page) => page === ""));
       if (!empty) throw new RequestError(403, `Only ${resolved.owner.displayName} can delete their notes.`);
     }
     await resolved.store.deleteNote(id);

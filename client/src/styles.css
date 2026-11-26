@@ -1490,11 +1490,76 @@ body:has(.note-list li.dragging) {
   pointer-events: none;
 }
 
-/* The editor's bottom row: the eraser and pen thicknesses at the left; Export, Cancel and Finish at the right. */
+/* The editor's bottom row: the eraser, pen thicknesses and pages at the left; Export, Cancel and Finish at the right. */
 .lf-finish {
   display: flex;
   align-items: center;
   gap: 4px;
+  /* So the page buttons can be hidden when the row is too narrow for them (see .lf-page-step). */
+  container-type: inline-size;
+}
+
+/* Handwritten details' pages: every page's canvas, stacked in the same place, only the current one shown. */
+.lf-page {
+  position: absolute;
+  inset: 0;
+}
+
+.lf-page.hidden {
+  visibility: hidden;
+}
+
+/* The pages: "2/5", Previous, Next and the page menu, after the pen thicknesses with the same wider gap. */
+.lf-pages {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+.lf-page-count {
+  min-width: 2.6rem;
+  margin-right: 2px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Previous and Next go when the row is too narrow for everything (they're in the page menu too). */
+@container (max-width: 560px) {
+  .lf-pages .lf-page-step {
+    display: none;
+  }
+}
+
+/* Narrower still (a phone), the wider gaps shrink so Cancel and Finish stay on the screen. */
+@container (max-width: 440px) {
+  .lf-finish .lf-pen-widths,
+  .lf-finish .lf-pages {
+    margin-left: 6px;
+  }
+
+  .lf-finish .lf-export {
+    margin-right: 6px;
+  }
+
+  .lf-finish .lf-page-count {
+    min-width: 0;
+  }
+}
+
+/* The page menu opens above its button. */
+.lf-page-menu-list {
+  min-width: 13rem;
+}
+
+.lf-page-menu-list .tag-option:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.lf-page-menu-list .tag-option:disabled:hover {
+  background: none;
 }
 
 /* A wider gap between the eraser and the pen thicknesses. */

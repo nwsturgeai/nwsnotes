@@ -1,5 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
-import { addArea, expect, openNotes, test } from "./fixtures";
+import { addArea, expect, noteRow, openNotes, test } from "./fixtures";
 
 /** Turns stylus mode on in Settings (it's remembered on this device) and goes back to the notes. */
 async function turnOnStylusMode(page: Page) {
@@ -124,6 +124,17 @@ test("the long-form editor has pen-thickness buttons beside the eraser, sharing 
   expect(Math.round(row.x + row.width - (finish.x + finish.width))).toBe(0);
   expect(cancel.x).toBeLessThan(finish.x);
   expect(finish.width).toBe(40);
+  // The pages come after the pens, with the same wider gap: "1/1", Previous, Next and the page menu.
+  const pages = editor.getByRole("group", { name: "Pages" });
+  const pagesBox = (await pages.boundingBox())!;
+  const lastPen = (await pens.last().boundingBox())!;
+  expect(Math.round(pagesBox.x - (lastPen.x + lastPen.width))).toBe(16);
+  await expect(pages).toHaveText("1/1");
+  const previousBox = (await pages.getByRole("button", { name: "Previous page" }).boundingBox())!;
+  const nextBox = (await pages.getByRole("button", { name: "Next page" }).boundingBox())!;
+  const menuBox = (await pages.getByRole("button", { name: "Page options" }).boundingBox())!;
+  expect(previousBox.x).toBeLessThan(nextBox.x);
+  expect(nextBox.x).toBeLessThan(menuBox.x);
   // Export is over at the right too, a little way before Cancel.
   const exportBox = (await editor.getByRole("button", { name: "Export as image" }).boundingBox())!;
   expect(Math.round(cancel.x - (exportBox.x + exportBox.width))).toBe(24);
@@ -239,3 +250,190 @@ test("handwritten long-form details can be exported as an image, shared or downl
   expect((await download).suggestedFilename()).toBe(`Garden plan ${today}.png`);
 });
 
+
+/** The long-form editor's page counter, e.g. "2/5". */
+const pageCount = (page: Page) => page.getByRole("dialog", { name: "Long-form note" }).locator(".lf-page-count");
+
+/** Opens the page menu and chooses one of its options. */
+async function pageMenu(page: Page, option: string) {
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("button", { name: "Page options" }).click();
+  await page.getByRole("menu", { name: "Page options" }).getByRole("menuitem", { name: option }).click();
+}
+
+/** Starts a new handwritten long-form note with this title, ready to write on. */
+async function newHandwrittenLongForm(page: Page, title: string) {
+  await turnOnStylusMode(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill(title);
+  await editor.getByRole("button", { name: "Accept title" }).click();
+  return editor;
+}
+
+test("handwritten long-form details can have several pages, added, turned and deleted", async ({ page }) => {
+  const editor = await newHandwrittenLongForm(page, "Garden pages");
+  const details = editor.getByRole("img", { name: "Details of the long-form note" });
+  const previous = editor.getByRole("button", { name: "Previous page" });
+  const next = editor.getByRole("button", { name: "Next page" });
+  await expect(pageCount(page)).toHaveText("1/1");
+  await expect(previous).toBeDisabled();
+  await draw(page, details, 0.2, 0.6);
+  const firstInk = await inkPixels(details);
+  expect(firstInk).toBeGreaterThan(0);
+
+  // Next on the last page asks whether to add one: No stays put.
+  await next.click();
+  const ask = page.locator("dialog.confirm-dialog").filter({ hasText: "This is the last page. Add a new page?" });
+  await ask.getByRole("button", { name: "No" }).click();
+  await expect(ask).toBeHidden();
+  await expect(pageCount(page)).toHaveText("1/1");
+
+  // Yes adds a blank page and turns to it.
+  await next.click();
+  await ask.getByRole("button", { name: "Yes" }).click();
+  await expect(pageCount(page)).toHaveText("2/2");
+  await expect(details).toHaveCount(1);
+  expect(await inkPixels(details)).toBe(0);
+  await draw(page, details, 0.3, 0.4);
+  const secondInk = await inkPixels(details);
+  expect(secondInk).toBeGreaterThan(0);
+  expect(secondInk).toBeLessThan(firstInk);
+
+  // Turning back shows the first page as it was.
+  await previous.click();
+  await expect(pageCount(page)).toHaveText("1/2");
+  expect(await inkPixels(details)).toBe(firstInk);
+
+  // The menu: Previous is greyed out on the first page; Next and adding a page in the middle.
+  await editor.getByRole("button", { name: "Page options" }).click();
+  const menu = page.getByRole("menu", { name: "Page options" });
+  await expect(menu.getByRole("menuitem", { name: "Previous page" })).toBeDisabled();
+  await menu.getByRole("menuitem", { name: "Add page after this one" }).click();
+  await expect(menu).toBeHidden();
+  await expect(pageCount(page)).toHaveText("2/3");
+  expect(await inkPixels(details)).toBe(0);
+  await pageMenu(page, "Next page");
+  await expect(pageCount(page)).toHaveText("3/3");
+  expect(await inkPixels(details)).toBe(secondInk);
+
+  // Every page is saved, blank ones included, and comes back when the note is opened again.
+  await editor.getByRole("button", { name: "Finish" }).click();
+  await expect(editor).toBeHidden();
+  const saved = (await (await page.request.get("/api/notes")).json()) as { notes: { titleText?: string; detailsImage?: string; detailsMorePages?: string[] }[] };
+  const note = saved.notes.find((n) => n.titleText === "Garden pages")!;
+  expect(note.detailsImage).toMatch(/^data:image\/png;base64,/);
+  expect(note.detailsMorePages).toHaveLength(2);
+  expect(note.detailsMorePages![0]).toBe("");
+  expect(note.detailsMorePages![1]).toMatch(/^data:image\/png;base64,/);
+
+  await noteRow(page, "Garden pages").getByRole("button", { name: "Edit note" }).click();
+  await expect(pageCount(page)).toHaveText("1/3");
+  await expect.poll(() => inkPixels(details)).toBeGreaterThan(0);
+
+  // Deleting a page asks first, then shows the page before it.
+  await next.click();
+  await next.click();
+  await expect(pageCount(page)).toHaveText("3/3");
+  await pageMenu(page, "Delete this page");
+  const confirm = page.locator("dialog.confirm-dialog").filter({ hasText: "Delete this page?" });
+  await confirm.getByRole("button", { name: "No" }).click();
+  await expect(pageCount(page)).toHaveText("3/3");
+  await pageMenu(page, "Delete this page");
+  await confirm.getByRole("button", { name: "Yes" }).click();
+  await expect(pageCount(page)).toHaveText("2/2");
+  expect(await inkPixels(details)).toBe(0);
+
+  // Deleting the first page shows the new first page; the last page can't be deleted.
+  await previous.click();
+  await pageMenu(page, "Delete this page");
+  await confirm.getByRole("button", { name: "Yes" }).click();
+  await expect(pageCount(page)).toHaveText("1/1");
+  expect(await inkPixels(details)).toBe(0);
+  await editor.getByRole("button", { name: "Page options" }).click();
+  await expect(page.getByRole("menu", { name: "Page options" }).getByRole("menuitem", { name: "Delete this page" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  await editor.getByRole("button", { name: "Finish" }).click();
+  await expect(editor).toBeHidden();
+  const after = (await (await page.request.get("/api/notes")).json()) as { notes: { titleText?: string; detailsImage?: string; detailsMorePages?: string[] }[] };
+  const one = after.notes.find((n) => n.titleText === "Garden pages")!;
+  expect(one.detailsImage).toBe("");
+  expect(one.detailsMorePages).toBeUndefined();
+});
+
+test("handwritten long-form details have at most 10 pages", async ({ page }) => {
+  const editor = await newHandwrittenLongForm(page, "Ten pages");
+  for (let i = 2; i <= 10; i++) {
+    await pageMenu(page, "Add page after this one");
+    await expect(pageCount(page)).toHaveText(`${i}/${i}`);
+  }
+  const next = editor.getByRole("button", { name: "Next page" });
+  await expect(next).toBeDisabled();
+  await expect(next).toHaveAttribute("title", "10 pages is the most a note can have");
+  await editor.getByRole("button", { name: "Page options" }).click();
+  const menu = page.getByRole("menu", { name: "Page options" });
+  await expect(menu.getByRole("menuitem", { name: "Add page after this one" })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Next page" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  // In the middle, Next turns the page, but there's still no adding one.
+  await editor.getByRole("button", { name: "Previous page" }).click();
+  await expect(pageCount(page)).toHaveText("9/10");
+  await expect(next).toBeEnabled();
+  await editor.getByRole("button", { name: "Page options" }).click();
+  await expect(menu.getByRole("menuitem", { name: "Add page after this one" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  // The server refuses an 11th page too.
+  const notes = (await (await page.request.get("/api/notes")).json()) as { notes: { id: number; titleText?: string; tagIds: number[] }[] };
+  const note = notes.notes.find((n) => n.titleText === "Ten pages")!;
+  const response = await page.request.put(`/api/notes/${note.id}`, {
+    data: { titleText: "Ten pages", tagIds: [], detailsImage: "", detailsMorePages: Array(10).fill("") },
+  });
+  expect(response.status()).toBe(400);
+  expect((await response.json()).error).toBe("The handwritten details have 11 pages; the most is 10.");
+});
+
+test("on a narrow screen, the Previous and Next page buttons are hidden, leaving the page menu", async ({ page }) => {
+  const editor = await newHandwrittenLongForm(page, "Narrow");
+  await expect(editor.getByRole("button", { name: "Next page" })).toBeVisible();
+  await page.setViewportSize({ width: 420, height: 800 });
+  await expect(editor.getByRole("button", { name: "Next page" })).toBeHidden();
+  await expect(editor.getByRole("button", { name: "Previous page" })).toBeHidden();
+  await expect(editor.getByRole("button", { name: "Page options" })).toBeVisible();
+  await expect(pageCount(page)).toHaveText("1/1");
+  // Everything still fits: Finish is on the screen.
+  const finish = (await editor.getByRole("button", { name: "Finish" }).boundingBox())!;
+  expect(finish.x + finish.width).toBeLessThanOrEqual(420);
+});
+
+test("exporting several pages gives one long image, with blank pages left out", async ({ page }) => {
+  const editor = await newHandwrittenLongForm(page, "Long export");
+  const details = editor.getByRole("img", { name: "Details of the long-form note" });
+  await page.evaluate(() => {
+    const win = window as unknown as { heights: number[] };
+    win.heights = [];
+    navigator.canShare = () => true;
+    navigator.share = async (data?: ShareData) => {
+      const image = await createImageBitmap(data!.files![0]!);
+      win.heights.push(image.height);
+    };
+  });
+  const heights = () => page.evaluate(() => (window as unknown as { heights: number[] }).heights);
+  await draw(page, details, 0.2, 0.6);
+  await editor.getByRole("button", { name: "Export as image" }).click();
+  await expect.poll(heights).toHaveLength(1);
+  const [one] = await heights();
+
+  // A blank page adds nothing; a second written page goes underneath the first.
+  await pageMenu(page, "Add page after this one");
+  await editor.getByRole("button", { name: "Export as image" }).click();
+  await expect.poll(heights).toHaveLength(2);
+  expect((await heights())[1]).toBe(one);
+  await pageMenu(page, "Add page after this one");
+  await draw(page, details, 0.2, 0.6);
+  await editor.getByRole("button", { name: "Export as image" }).click();
+  await expect.poll(heights).toHaveLength(3);
+  expect((await heights())[2]).toBe(one! * 2 + 32);
+});

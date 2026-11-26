@@ -2,6 +2,7 @@ import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CLIENT_ID_MAX_LENGTH,
+  detailsPagesOf,
   isAncestor,
   isLifetimeTag,
   isLongForm,
@@ -617,6 +618,7 @@ export class NoteStore {
         note.titleImage === existing.titleImage &&
         note.detailsText === existing.detailsText &&
         note.detailsImage === existing.detailsImage &&
+        detailsPagesOf(note).join() === detailsPagesOf(existing).join() &&
         note.dueDateTime === existing.dueDateTime &&
         sameTags(note.tagIds, existing.tagIds);
       const summary =
