@@ -258,21 +258,46 @@ test('the filter row\'s "Properties" dropdown filters by long-form, parent note 
   }
   await expect(properties).toContainText("TOTAL: 8");
 
+  /** Clicks a rule's box once: empty, then ticked, then crossed, then empty again. */
+  const tap = (list: typeof properties, rule: string) => list.locator("label").filter({ hasText: new RegExp(`^(Not )?${rule}`) }).locator("input").click();
+  const button = filterRow(page).getByRole("button", { name: /^Properties: / });
   await properties.getByRole("checkbox", { name: /^Due today/ }).check();
   await expectTitles(page, ["Plan the team meeting", "Buy milk"]);
   await expect(filterRow(page)).toHaveClass(/\bfiltered\b/);
   // Like the tag dropdowns, any ticked rule will do.
   await properties.getByRole("checkbox", { name: /^Long-form/ }).check();
   await expectTitles(page, ["Plan the team meeting", "Buy milk", "Holiday plans"]);
-  await properties.getByRole("checkbox", { name: /^Long-form/ }).uncheck();
+  // A second click crosses the box: notes without it, here those due today that aren't long-form. Its
+  // count is of the notes without it.
+  await tap(properties, "Long-form");
+  await expect(properties.getByRole("checkbox", { name: /^Not Long-form/ })).toBeChecked();
+  await expect(properties.locator(".tri-state-box")).toHaveCount(1);
+  await expect(properties.getByRole("checkbox", { name: /^Not Long-form/ }).locator("../..")).toContainText("(7)");
+  await expect(button).toHaveText("not Long-form, Due today");
+  await expectTitles(page, ["Plan the team meeting", "Buy milk"]);
+  // Crossed rules leave out every note either matches.
+  await tap(properties, "Due today");
+  await expectTitles(page, ALL.filter((title) => !["Plan the team meeting", "Buy milk", "Holiday plans"].includes(title)));
+  // A third click clears the box.
+  await tap(properties, "Due today");
+  await expect(properties.getByRole("checkbox", { name: /^Due today/ })).not.toBeChecked();
+  await expectTitles(page, ALL.filter((title) => title !== "Holiday plans"));
+  await tap(properties, "Long-form");
+  await expect(properties.getByRole("checkbox", { name: /^Long-form/ })).not.toBeChecked();
+  await expect(properties.locator(".tri-state-box")).toHaveCount(0);
+  await expectTitles(page, ALL);
+  await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);
+  await tap(properties, "Due today");
   // "Has a parent note" lists child notes, and comes just after "Long-form".
   const rules = await properties.getByRole("checkbox").evaluateAll((boxes) => boxes.map((box) => box.getAttribute("aria-label") ?? box.parentElement?.textContent ?? ""));
   expect(rules.findIndex((rule) => rule.startsWith("Has a parent note"))).toBe(rules.findIndex((rule) => rule.startsWith("Long-form")) + 1);
   await properties.getByRole("checkbox", { name: /^Has a parent note/ }).check();
   await expectTitles(page, ["Plan the team meeting", "Buy milk", "Book flights"]);
-  await properties.getByRole("checkbox", { name: /^Has a parent note/ }).uncheck();
+  await tap(properties, "Has a parent note");
+  await tap(properties, "Has a parent note");
   await properties.getByRole("checkbox", { name: /^Overdue/ }).check();
-  await properties.getByRole("checkbox", { name: /^Due today/ }).uncheck();
+  await tap(properties, "Due today");
+  await tap(properties, "Due today");
   await expectTitles(page, ["Plan the team meeting"]);
   await page.keyboard.press("Escape");
 
@@ -285,7 +310,8 @@ test('the filter row\'s "Properties" dropdown filters by long-form, parent note 
   await expect(page.locator(".note-list")).toContainText("No notes match the Properties filter.");
   const again = await openFilter(page, "Properties");
   await expect(again.getByRole("checkbox", { name: /^Due date set/ }).locator("..")).toContainText("(2)");
-  await again.getByRole("checkbox", { name: /^Overdue/ }).uncheck();
+  await tap(again, "Overdue");
+  await tap(again, "Overdue");
   await again.getByRole("checkbox", { name: /^Due today/ }).check();
   await expectTitles(page, ["Buy milk"]);
 
@@ -293,9 +319,14 @@ test('the filter row\'s "Properties" dropdown filters by long-form, parent note 
   await page.clock.fastForward(13 * 60 * 60 * 1000);
   await expectTitles(page, ["Buy milk", "Garden ideas"]);
 
-  // Remembered with the tab's other filters, and cleared by Reset filters.
+  // Remembered with the tab's other filters, crossed boxes too, and cleared by Reset filters.
+  const garden = await openFilter(page, "Properties");
+  await tap(garden, "Long-form");
+  await tap(garden, "Long-form");
+  await page.keyboard.press("Escape");
   await page.reload();
   await expectTitles(page, ["Buy milk", "Garden ideas"]);
+  await expect(button).toHaveText("not Long-form, Due today");
   await filterRow(page).getByRole("button", { name: "Reset filters" }).click();
   await expectTitles(page, ALL);
   await expect(filterRow(page)).not.toHaveClass(/\bfiltered\b/);

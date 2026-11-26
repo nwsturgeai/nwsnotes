@@ -455,8 +455,10 @@ export function NotesPage({
     // Properties' rules aren't tags, so they have their own map (their ids would clash with tag ids).
     const byProperty = new Map<number, number>();
     const tagged = searched.filter((note) => noteMatchesFilters(note, allFilters) && hasNoTagIn(note, noneFilters));
+    // A crossed rule's count (under its negative id) is of the notes it doesn't match.
     for (const rule of PROPERTIES_CATEGORY.tags) {
       byProperty.set(rule.id, tagged.filter((note) => noteMatchesProperties(note, [rule.id], now)).length);
+      byProperty.set(-rule.id, tagged.filter((note) => noteMatchesProperties(note, [-rule.id], now)).length);
     }
     // The Long-form dropdown's: the notes listed if that long-form note were the only one ticked.
     const byLongForm = new Map<number, number>();
@@ -1362,13 +1364,14 @@ export function NotesPage({
                     }}
                   />
                 )}
-                {/* Rules about the notes themselves (long-form, due dates), after the category dropdowns. */}
+                {/* Rules about the notes themselves (long-form, due dates), after the category dropdowns: each box ticks, then crosses (notes without it), then clears. */}
                 <TagPickers
                   categories={[PROPERTIES_CATEGORY]}
                   selection={{ [PROPERTIES_CATEGORY_ID]: properties }}
                   onChange={(selection) => setExtraSelection({ ...extraSelection, [PROPERTIES_CATEGORY_ID]: selection[PROPERTIES_CATEGORY_ID] ?? [] })}
                   disabled={rowBlocked}
                   checkLists
+                  triState
                   counts={{ byTag: filterCounts.byProperty, total: filterCounts.total }}
                 />
                 {/* Only while a tag or property is ticked; otherwise it takes no space. */}

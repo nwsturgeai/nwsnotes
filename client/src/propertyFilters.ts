@@ -52,12 +52,22 @@ export function noteHasProperty(note: Note, property: number, now: number): bool
   }
 }
 
-/** Like the tag dropdowns: with nothing ticked every note passes; otherwise any ticked rule will do. */
+/**
+ * Each rule's box goes empty, ticked, crossed, then empty again. A ticked rule's id is stored as it is,
+ * a crossed one's as its negative (-1 for "not long-form").
+ *
+ * With nothing ticked every note passes; otherwise any ticked rule will do, like the tag dropdowns. A
+ * crossed rule then leaves out every note it matches.
+ */
 export function noteMatchesProperties(note: Note, properties: number[], now: number): boolean {
-  return properties.length === 0 || properties.some((property) => noteHasProperty(note, property, now));
+  const ticked = properties.filter((id) => id > 0);
+  return (
+    (ticked.length === 0 || ticked.some((property) => noteHasProperty(note, property, now))) &&
+    !properties.some((id) => id < 0 && noteHasProperty(note, -id, now))
+  );
 }
 
-/** The ticked rules that still exist, in the dropdown's order. */
+/** The ticked and crossed rules that still exist, in the dropdown's order (a rule is never both). */
 export function validProperties(chosen: number[] | undefined): number[] {
-  return PROPERTIES_CATEGORY.tags.map((tag) => tag.id).filter((id) => (chosen ?? []).includes(id));
+  return PROPERTIES_CATEGORY.tags.flatMap((tag) => (chosen?.includes(tag.id) ? [tag.id] : chosen?.includes(-tag.id) ? [-tag.id] : []));
 }

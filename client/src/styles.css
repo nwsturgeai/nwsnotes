@@ -2379,6 +2379,49 @@ button.parent-dialog-caret:hover {
   background: var(--bg);
 }
 
+/*
+ * A Properties rule that's crossed (notes without it): a box the same size as a check box, drawn by the
+ * app so it can hold a red cross. The real check box is inside it, invisible, so it still takes clicks.
+ */
+.tri-state-box {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  margin: 3px 3px 3px 4px;
+  border: 1.5px solid var(--error);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--error);
+  font-size: 10px;
+}
+
+.tri-state-box input {
+  position: absolute;
+  inset: -3px;
+  width: auto;
+  height: auto;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.tri-state-box svg {
+  pointer-events: none;
+}
+
+/* Read by screen readers, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .tag-option-tick {
   width: 1rem;
   color: var(--accent);
