@@ -269,3 +269,127 @@ test("emptying the Bin takes the notes inside a deleted note out of it, and goin
   expect((await page.request.post("/api/history/revert", { data: { toChangeId: before.id } })).ok()).toBe(true);
   expect((await savedNote(page.request, "Book flights"))?.parentId).toBe(HOLIDAY_PLANS);
 });
+
+test("the Parent pop-up sorts in note order or alphabetically, with child notes under their parent, and remembers which", async ({ page }) => {
+  await addNote(page.request, "Zebra trip", { long: true });
+  await addNote(page.request, "Seats", { long: true, parentId: HOLIDAY_PLANS });
+  await addNote(page.request, "airlines", { long: true, parentId: HOLIDAY_PLANS });
+  await addNote(page.request, "Apple picking", { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  const titles = () => parentDialog(page).locator(".parent-dialog-list label");
+
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(parentDialog(page).getByRole("radio", { name: "Note order" })).toBeChecked();
+  await expect(titles()).toHaveText(["Holiday plans", "Seats", "airlines", "Zebra trip", "Apple picking"]);
+
+  // Alphabetical (ignoring case): the top-level notes by title, and each one's children by title under it.
+  await parentDialog(page).getByRole("radio", { name: "Alphabetical" }).check();
+  await expect(titles()).toHaveText(["Apple picking", "Holiday plans", "airlines", "Seats", "Zebra trip"]);
+  await parentDialog(page).getByRole("button", { name: "Cancel" }).click();
+
+  // Remembered on this device.
+  await page.reload();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(parentDialog(page).getByRole("radio", { name: "Alphabetical" })).toBeChecked();
+  await expect(titles()).toHaveText(["Apple picking", "Holiday plans", "airlines", "Seats", "Zebra trip"]);
+});
+
+test("the Parent pop-up filters by tag in a section that folds away, keeping matches in their place in the tree", async ({ page }) => {
+  const offsite = await addNote(page.request, "Team offsite", { long: true, tagIds: [WORK] });
+  await addNote(page.request, "Agenda", { long: true, tagIds: [WORK, 5], parentId: offsite.id });
+  await addNote(page.request, "Garden plan", { long: true, tagIds: [HOME, 3] });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  const dialog = parentDialog(page);
+  const titles = () => dialog.locator(".parent-dialog-list label");
+  const toggle = dialog.getByRole("button", { name: /^Filter by tag/ });
+  const topic = dialog.getByRole("group", { name: "Topic", exact: true });
+
+  // Folded at first, with every long-form note listed.
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(topic).toHaveCount(0);
+  await expect(titles()).toHaveText(["Holiday plans", "Team offsite", "Agenda", "Garden plan"]);
+
+  // The add area's tag controls: ticking Reading lists Agenda, under Team offsite, which can't be chosen.
+  await toggle.click();
+  await topic.getByRole("button", { name: "Reading", exact: true }).click();
+  await expect(titles()).toHaveText(["Team offsite", "Agenda"]);
+  await expect(dialog.getByRole("checkbox", { name: "Team offsite" })).toBeDisabled();
+  await expect(dialog.getByRole("checkbox", { name: "Agenda" })).toBeEnabled();
+  // Folded, the header still says a tag is ticked; "clear tags" lists everything again.
+  await toggle.click();
+  await expect(toggle).toHaveText(/\(1 ticked\)/);
+  await dialog.getByRole("button", { name: "clear tags" }).click();
+  await expect(titles()).toHaveCount(4);
+  await toggle.click();
+
+  // A category can be a dropdown there too; Escape closes its list, not the pop-up.
+  await dialog.getByRole("button", { name: "Show Area as a dropdown" }).click();
+  await dialog.getByRole("button", { name: /^Area: / }).click();
+  await dialog.locator(".tag-dropdown-list").getByRole("button", { name: "Home", exact: true }).click();
+  await expect(titles()).toHaveText(["Holiday plans", "Garden plan"]);
+  await dialog.getByRole("button", { name: /^Area: / }).click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Opened again (after a reload too): the ticks start empty, but the section and the dropdown are remembered,
+  // separately from the add area, whose Area is still pills.
+  await page.reload();
+  await expect(addArea(page).getByRole("group", { name: "Area", exact: true })).toBeVisible();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(dialog.getByRole("button", { name: "Area: no tag" })).toBeVisible();
+  await expect(titles()).toHaveCount(4);
+});
+
+test("the Parent pop-up marks Waiting and Archived long-form notes", async ({ page }) => {
+  const waiting = await addNote(page.request, "On hold plans", { long: true });
+  const archived = await addNote(page.request, "Old project", { long: true });
+  await page.request.put(`/api/notes/${waiting.id}/lifetime`, { data: { lifetime: "Waiting" } });
+  await page.request.put(`/api/notes/${archived.id}/lifetime`, { data: { lifetime: "Archived" } });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const row = (title: string) => parentDialog(page).locator(".parent-dialog-list label").filter({ hasText: title });
+  await expect(row("On hold plans").locator(".parent-status-pill")).toHaveText("Waiting");
+  await expect(row("Old project").locator(".parent-status-pill")).toHaveText("Archived");
+  await expect(row("Old project").locator(".parent-status-pill")).toHaveAttribute("title", "This note is Archived");
+  // Active (and New) notes have none, and the pill isn't part of the checkbox's name.
+  await expect(row("Holiday plans").locator(".parent-status-pill")).toHaveCount(0);
+  await parentDialog(page).getByRole("checkbox", { name: /^Old project/ }).check();
+});
+
+test("the Parent pop-up folds away the notes inside a long-form note, at every depth", async ({ page }) => {
+  const flights = await addNote(page.request, "Flight options", { long: true, parentId: HOLIDAY_PLANS });
+  await addNote(page.request, "Airlines", { long: true, parentId: flights.id });
+  await addNote(page.request, "Garden plan", { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const dialog = parentDialog(page);
+  const titles = () => dialog.locator(".parent-dialog-list label");
+  await expect(titles()).toHaveText(["Holiday plans", "Flight options", "Airlines", "Garden plan"]);
+  // Only notes with notes inside them have the caret.
+  await expect(dialog.locator("button.parent-dialog-caret")).toHaveCount(2);
+
+  // Folding Holiday plans hides everything inside it; the caret points right, and the box isn't ticked.
+  const holidayCaret = dialog.getByRole("button", { name: "Hide the notes inside Holiday plans" });
+  await expect(holidayCaret).toHaveAttribute("aria-expanded", "true");
+  await holidayCaret.click();
+  await expect(titles()).toHaveText(["Holiday plans", "Garden plan"]);
+  await expect(dialog.getByRole("button", { name: "Show the notes inside Holiday plans" })).toHaveAttribute("aria-expanded", "false");
+  await expect(dialog.getByRole("checkbox", { name: "Holiday plans" })).not.toBeChecked();
+
+  // Unfolding it shows them again; folding Flight options hides only Airlines.
+  await dialog.getByRole("button", { name: "Show the notes inside Holiday plans" }).click();
+  await dialog.getByRole("button", { name: "Hide the notes inside Flight options" }).click();
+  await expect(titles()).toHaveText(["Holiday plans", "Flight options", "Garden plan"]);
+
+  // Not remembered: opened again, everything is unfolded.
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(titles()).toHaveCount(4);
+});

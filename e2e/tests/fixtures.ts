@@ -116,17 +116,26 @@ export function addArea(page: Page): Locator {
   return page.locator(".new-note");
 }
 
-/** Chooses a tag in one of the add area's single-select dropdowns (e.g. Area: Work). */
-export async function chooseTag(page: Page, category: string, tag: string) {
-  await addArea(page).getByRole("button", { name: new RegExp(`^${category}: `) }).click();
-  await page.getByRole("group", { name: category }).getByRole("button", { name: tag, exact: true }).click();
+/** One of the add area's categories shown as a line of pills (every category starts that way). */
+export function addAreaPills(page: Page, category: string): Locator {
+  return addArea(page).getByRole("group", { name: category, exact: true });
 }
 
-/** Ticks a tag in one of the add area's multi-select dropdowns, then closes the list. */
+/** Chooses a tag in one of the add area's categories, shown as pills (e.g. Area: Work); already chosen, it stays chosen. */
+export async function chooseTag(page: Page, category: string, tag: string) {
+  const pill = addAreaPills(page, category).getByRole("button", { name: tag, exact: true });
+  if ((await pill.getAttribute("aria-pressed")) !== "true") await pill.click();
+  await expect(pill).toHaveAttribute("aria-pressed", "true");
+}
+
+/** Ticks a tag in one of the add area's multi-select categories (the same as choosing one, with pills). */
 export async function tickTag(page: Page, category: string, tag: string) {
-  await addArea(page).getByRole("button", { name: new RegExp(`^${category}: `) }).click();
-  await page.getByRole("group", { name: category }).getByLabel(tag, { exact: true }).check();
-  await page.keyboard.press("Escape");
+  await chooseTag(page, category, tag);
+}
+
+/** Shows one of the add area's categories as a dropdown rather than pills (remembered for the tab on this device). */
+export async function collapseCategory(page: Page, category: string) {
+  await addArea(page).getByRole("button", { name: `Show ${category} as a dropdown` }).click();
 }
 
 /** The filter row above the note list. */
@@ -136,7 +145,7 @@ export function filterRow(page: Page): Locator {
 
 /** Opens one of the filter row's dropdowns, returning its list of tags (check boxes). */
 export async function openFilter(page: Page, category: string): Promise<Locator> {
-  const list = page.getByRole("group", { name: category, exact: true });
+  const list = filterRow(page).getByRole("group", { name: category, exact: true });
   if (!(await list.isVisible())) await filterRow(page).getByRole("button", { name: new RegExp(`^${category}: `) }).click();
   await expect(list).toBeVisible();
   return list;

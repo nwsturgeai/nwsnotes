@@ -66,7 +66,7 @@ import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
-import { useExtraFilters } from "./extraFilters";
+import { useCollapsedCategories, useExtraFilters } from "./extraFilters";
 import { PROPERTIES_CATEGORY, PROPERTIES_CATEGORY_ID, noteMatchesProperties, validProperties } from "./propertyFilters";
 import {
   childNotes,
@@ -95,7 +95,7 @@ import {
   selectedTagIds,
   selectionToFilters,
   TagPickers,
-  TagPillPicker,
+  MixedTagPicker,
   hasNoTagIn,
   noneCategories,
   type BulkTagChanges,
@@ -318,8 +318,8 @@ export function NotesPage({
   const handwrittenLongForm = longForm !== undefined && (longForm.note ? longForm.note.detailsImage !== undefined : stylusMode);
   /** Whether the add/edit area is expanded (full-tag-list mode) just now. */
   const fullTagList = fullTagListSetting && !handwrittenLongForm;
-  /** The tag choosers in the add/edit area: dropdowns, or pills in full-tag-list mode. */
-  const TagChooser = fullTagList ? TagPillPicker : TagPickers;
+  /** The add/edit area's categories shown as dropdowns rather than pills, for this tab (remembered on this device). */
+  const [collapsedCategories, setCollapsedCategories] = useCollapsedCategories(selectedTab?.id);
 
   /**
    * The canvas is shown in stylus mode, and when editing a handwritten note whatever the mode. Neither
@@ -1171,7 +1171,9 @@ export function NotesPage({
         />
       ) : editingNote ? (
         // A note shared with you keeps its tags: only its owner changes them.
-        <TagChooser
+        <MixedTagPicker
+          collapsed={collapsedCategories}
+          onCollapsedChange={setCollapsedCategories}
           categories={userCategories}
           selection={editSelection}
           onChange={setEditSelection}
@@ -1180,7 +1182,9 @@ export function NotesPage({
           lastRow={parentRow}
         />
       ) : (
-        <TagChooser
+        <MixedTagPicker
+          collapsed={collapsedCategories}
+          onCollapsedChange={setCollapsedCategories}
           categories={userCategories}
           selection={tagSelection}
           onChange={onTagSelectionChange}
@@ -1661,6 +1665,7 @@ export function NotesPage({
       {choosingParent && (
         <ParentDialog
           notes={notes}
+          categories={userCategories}
           noteOrder={noteOrder}
           parentId={editingNote ? editParent : newParent}
           childId={editingNote?.id}

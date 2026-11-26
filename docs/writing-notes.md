@@ -4,12 +4,15 @@
 
 Type a title in the box at the bottom of the screen and press Enter, or tap the **+** button. The note goes to the bottom of the list, tagged with whatever Tags you've picked below the box.
 
-The area at the bottom can be **expanded** or **collapsed** with the small round arrow button on the line above it:
+Each Category shows its Tags either as **pills** you can tap, or as a **dropdown**, which takes less room:
 
-- **Expanded** (the usual), every Tag shows as a pill you can tap.
-- **Collapsed**, the area is smaller and each Category has a dropdown instead, leaving more room for your notes.
+- Tap the **minus in a circle** after a Category's name (or the name itself) to turn it into a dropdown.
+- Tap the **plus in a circle** beside a dropdown to show its pills again.
+- The dropdowns sit in one row above the lines of pills. Every Category starts as pills.
 
-The app remembers which you prefer on each device.
+Each tab remembers its own choices on each device, so you can keep pills for the Categories you use most and dropdowns for the rest.
+
+The area at the bottom can also be **expanded** or **collapsed** with the small round arrow button on the line above it. Expanded (the usual), it's taller, with more buttons beside the box, such as creating a long-form note or setting a due date. Collapsed, it's smaller, leaving more room for your notes. The app remembers which you prefer on each device.
 
 ## Adding a note at the top
 

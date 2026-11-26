@@ -654,6 +654,7 @@ export function LongFormEditor({
       {choosingParent && (
         <ParentDialog
           notes={notes}
+          categories={categories}
           noteOrder={noteOrder}
           parentId={parentId}
           childId={noteId}

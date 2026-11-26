@@ -42,3 +42,49 @@ export function useExtraFilters(tabId: number | undefined): [TagSelection, (sele
 
   return [state.tabId === tabId ? state.selection : load(tabId), set];
 }
+
+/**
+ * Where a set of category choosers is: a tab's add area (its id, or undefined for "All"), or the Parent
+ * pop-up's tag filter, which has one for the device wherever it's opened from.
+ */
+export type ChooserPlace = number | undefined | "parent-dialog";
+
+/** Local-storage key for which categories a tab's add area (or the Parent pop-up) shows as dropdowns ("all" for the built-in tab). */
+function collapsedKey(tabId: ChooserPlace): string {
+  return `nwsnotes.collapsedCategories.${tabId ?? "all"}`;
+}
+
+function loadCollapsed(tabId: ChooserPlace): number[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(collapsedKey(tabId)) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((id): id is number => Number.isInteger(id)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The categories the add/edit area shows as a dropdown rather than pills, for the selected tab (or in the
+ * Parent pop-up's tag filter). Every category starts as pills (new ones too). Each tab keeps its own, and
+ * the pop-up one of its own, remembered on this device.
+ */
+export function useCollapsedCategories(tabId: ChooserPlace): [number[], (categoryIds: number[]) => void] {
+  const [state, setState] = useState(() => ({ tabId, collapsed: loadCollapsed(tabId) }));
+  useEffect(() => {
+    if (state.tabId !== tabId) setState({ tabId, collapsed: loadCollapsed(tabId) });
+  }, [tabId, state.tabId]);
+
+  const set = useCallback(
+    (collapsed: number[]) => {
+      setState({ tabId, collapsed });
+      try {
+        window.localStorage.setItem(collapsedKey(tabId), JSON.stringify(collapsed));
+      } catch {
+        // Storage can be unavailable; the choice then lasts until reload.
+      }
+    },
+    [tabId],
+  );
+
+  return [state.tabId === tabId ? state.collapsed : loadCollapsed(tabId), set];
+}

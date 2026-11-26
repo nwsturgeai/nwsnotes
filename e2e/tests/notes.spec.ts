@@ -196,7 +196,7 @@ test("during an edit, another tab, another note's Edit button or the filter row 
   await expect(page.getByRole("textbox", { name: "Note title" })).toBeFocused();
   await title.fill("Old invoice, filed");
   await filterRow(page).getByRole("button", { name: /^Topic: / }).click();
-  await expect(page.getByRole("group", { name: "Topic", exact: true })).toBeVisible();
+  await expect(filterRow(page).getByRole("group", { name: "Topic", exact: true })).toBeVisible();
   await expect(noteRow(page, "Old invoice, filed")).toBeVisible();
   await page.keyboard.press("Escape");
 
@@ -278,4 +278,43 @@ test("each note shows when it was created", async ({ page }) => {
     month: "2-digit",
   }).format(new Date());
   await expect(noteRow(page, "Made just now").locator("time")).toHaveText(new RegExp(`^Cr\\. ${now} \\d{2}:\\d{2}$`));
+});
+
+test("each category in the add area can be pills or a dropdown, remembered for each tab", async ({ page }) => {
+  await openNotes(page);
+  const area = addArea(page);
+  const areaPills = area.getByRole("group", { name: "Area", exact: true });
+  // Every category starts as pills.
+  await expect(areaPills.getByRole("button", { name: "Work", exact: true })).toBeVisible();
+  await expect(area.getByRole("group", { name: "Topic", exact: true }).getByRole("button", { name: "Ideas", exact: true })).toBeVisible();
+
+  // The minus after the name collapses it to a dropdown, which comes before the pill lines; the plus expands it again.
+  await area.getByRole("button", { name: "Show Area as a dropdown" }).click();
+  await expect(areaPills).toHaveCount(0);
+  const dropdown = area.getByRole("button", { name: /^Area: / });
+  await expect(dropdown).toBeVisible();
+  const top = async (locator: typeof dropdown) => (await locator.boundingBox())!.y;
+  expect(await top(dropdown)).toBeLessThan(await top(area.getByRole("group", { name: "Topic", exact: true })));
+  await area.getByRole("button", { name: "Show Area as pills" }).click();
+  await expect(areaPills).toBeVisible();
+
+  // Tapping the category's name does the same as its minus.
+  await areaPills.locator(".tag-pill-category").click();
+  await expect(dropdown).toBeVisible();
+  // Choosing in the dropdown works as before.
+  await dropdown.click();
+  await page.getByRole("group", { name: "Area" }).getByRole("button", { name: "Work", exact: true }).click();
+  const box = page.getByRole("textbox", { name: "New note" });
+  await box.fill("From the dropdown");
+  await box.press("Enter");
+  await expect(pills(noteRow(page, "From the dropdown"))).toHaveText(["Work", "New"]);
+
+  // Each tab has its own: under Home, Area is still pills; back on All, it's still a dropdown, even after a reload.
+  await selectTab(page, "Home");
+  await expect(area.getByRole("group", { name: "Area", exact: true })).toBeVisible();
+  await selectTab(page, "All");
+  await expect(dropdown).toBeVisible();
+  await page.reload();
+  await expect(area.getByRole("button", { name: /^Area: / })).toBeVisible();
+  await expect(area.getByRole("button", { name: "Show Area as pills" })).toBeVisible();
 });

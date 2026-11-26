@@ -202,16 +202,29 @@ Archived tags should have background using the selected hue and: Value 55%, Satu
 - **How the buttons stack:** in the collapsed area, two high (Clear under Add), with a third starting a second column. In the expanded area, up to five high in one column, as there's room for five (208px of about 230px). Five is the most there can be: stylus mode adds Clear to Add, long-form, list-check and due date, and editing a handwritten note shows Update, Cancel, Clear, Convert to long-form note and due date.
 - Changing tab resets every dropdown (see "Tabs on the notes page" in [tabs.md](tabs.md)); adding a note still keeps the selections.
 
+### Pills or a dropdown, per category
+Each category in the add/edit-note area can be toggled between pill mode (every tag as a pill, as described below) and dropdown mode. The dropdowns always appear above the pill lists.
+- **Collapse:** in pill mode, an outline circle-minus button just after the category's name shows it as a dropdown. Tapping the name does the same: the name and the icon are one button ("Show Area as a dropdown").
+- **Expand:** in dropdown mode, an outline circle-plus button just right of the dropdown shows it as pills again ("Show Area as pills").
+  - Font Awesome's outline circle-plus and circle-minus are Pro icons, so the app draws its own (`client/src/icons.ts`): the free outline circle with a plus or minus of rounded bars, in the same style.
+  - Each icon is 20px in a 24px button, with a visible gap of 3px after the name or the dropdown.
+- **Starting state:** every category starts as pills, new categories too. What's stored is the categories shown as dropdowns.
+- **Remembered per tab on this device:** in local storage under `nwsnotes.collapsedCategories.<tab id>` ("all" for All), like the filter row's choices.
+- **The same for adding and editing a note, in both area heights.** Both modes share the same choices, so switching keeps the chosen tags. The tab's rules apply either way.
+- **Not changed:** multi-select still shows every category as pills (it needs the "some notes have it" state), the long-form editor's tags band keeps its dropdowns, and the Parent line stays the last line, shown only in the expanded area. In stylus mode, finger taps on the plus and minus buttons are ignored while the canvas is showing, like the other add/edit controls.
+
 ### Full-tag-list mode
+The expanded area. It no longer decides between pills and dropdowns (see above): it makes the area taller and adds its buttons (long-form, list-check, convert, due date) and the Parent line.
 - **Toggle:** a 24px round button centred on the divider between the note list and the add/edit area, with a chevron pointing up (expand) or down (collapse). It responds to touch as normal. The mode is remembered on this device in local storage, like stylus mode. **Expanded by default:** a device that has never used the toggle shows the expanded area (the tag pills), so new users see their tags straight away; one that chose to collapse it stays collapsed.
 - **Size:** in full-tag-list mode the add/edit area is 250px high instead of 150px, and the list shrinks to match.
 - **Scrolling:** the area itself never scrolls. The text box or canvas, any message under it, and the buttons stay put. If the pills don't fit, only the pills scroll up and down, in the space under the text box and beside the buttons.
   - The pills' space reaches right down to the bottom of the page, with no padding under it. A little space under the last pills is part of what scrolls, so it's only seen once they're scrolled to the end.
-  - The collapsed 150px area is unchanged: if it overflows, the whole area scrolls. This is because the dropdowns' lists open below them and would be cut off in a separately scrolling strip.
-- **Layout:** the text box or canvas stays at the top, with the buttons in their column to its right; under the text box or canvas, instead of dropdowns, every user category gets its own line: its name in small grey text, then all its tags as pills. Lifetime isn't shown.
+  - The dropdowns scroll with the pills; their lists are placed on the window, so the scrolling strip doesn't cut them off.
+  - The collapsed 150px area is unchanged: if it overflows, the whole area scrolls.
+- **Layout:** the text box or canvas stays at the top, with the buttons in their column to its right; under the text box or canvas, the dropdowns' row (if any), then each category in pill mode gets its own line: its name in small grey text, then all its tags as pills. Lifetime isn't shown.
 - **Pills:** a chosen tag is dark (accent green, white text); an unchosen tag is light (the usual pill colour). Tapping toggles it. In a single-select category, choosing a tag unchooses the others, and tapping the chosen one clears it.
 - **Tab rules:** a tag the tab's filters lock in shows dark with a padlock and can't be turned off. In a single-select category where the filters require one of several tags, the other tags are greyed out and can't be chosen. Add shows the same "Choose a … tag" message if a required tag is missing. While editing a note there are no restrictions, as with the dropdowns.
-- Both modes share the same choices, so switching mode keeps the chosen tags. It works the same when adding and when editing a note.
+- It works the same when adding and when editing a note.
 - **Stylus mode:** finger taps on the pills are ignored whenever the canvas is showing, like the other add/edit controls.
 
 ### Multi-select (bulk tag editing)

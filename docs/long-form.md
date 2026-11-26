@@ -32,7 +32,7 @@ There are three ways to put a note inside a long-form note:
 - **The Parent line:** with the area at the bottom expanded, the last line under the Tags is **Parent**. Tap its pill to choose a parent for the note you're adding or editing, or to take it out of one. Notes you add keep the same parent until you change it.
 - **In the long-form editor,** the band of Tags has the same **Parent** pill, for the long-form note itself.
 
-The pop-up lists every long-form note that isn't in the Bin, each with the long-form notes inside it indented below. Tick one, or none, and tap **Set Parent**. A note can't go inside itself or inside a note that's inside it, and a note can only go inside a long-form note belonging to the same person.
+The pop-up lists every long-form note that isn't in the Bin, each with the long-form notes inside it indented below. The buttons at the top sort them in **Note order** (as in your list) or **Alphabetical**; notes inside another stay under it either way. Tap the small triangle left of a note to hide the notes inside it, and again to show them. Long-form notes that are Waiting or Archived say so in a small grey pill after their title. To find one quickly, open **Filter by tag** and pick Tags, with pills or dropdowns as in the area at the bottom. Only long-form notes with those Tags can be ticked; the notes they're inside are shown greyed, so you can see where they are. Tick one, or none, and tap **Set Parent**. A note can't go inside itself or inside a note that's inside it, and a note can only go inside a long-form note belonging to the same person.
 
 If a parent note is deleted by emptying the Bin, the notes that were inside it no longer have a parent. Going back to before that in the History puts them back inside it.
 
