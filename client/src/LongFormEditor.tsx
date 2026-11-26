@@ -4,6 +4,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type RefObject,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -76,6 +77,11 @@ interface Props {
   /** The selected tab's name, for the button's hint. */
   tabName?: string;
   onSessionExpired: () => void;
+  /**
+   * Set to the editor's Finish, for finishing it from outside (starting another long-form note). It
+   * resolves to whether the editor closed: it stays open after a refused save, for the user to choose.
+   */
+  finishRef?: RefObject<(() => Promise<boolean>) | undefined>;
 }
 
 const PAGE_LIMIT_HINT = `${MAX_DETAILS_PAGES} pages is the most a note can have`;
@@ -127,6 +133,7 @@ export function LongFormEditor({
   tabTags,
   tabName,
   onSessionExpired,
+  finishRef,
 }: Props) {
   const [noteId, setNoteId] = useState(note?.id);
   const [title, setTitle] = useState(note?.titleText ?? "");
@@ -377,14 +384,15 @@ export function LongFormEditor({
     if (!busy) void finish();
   }
 
-  async function finish() {
+  /** Saves everything and closes the editor; resolves to false if it stays open (a refused save). */
+  async function finish(): Promise<boolean> {
     setBusy(true);
     await flush();
     // The note changed elsewhere: the editor stays open until the user chooses which version to keep.
     if (conflictRef.current) {
       finishAfterConflict.current = true;
       setBusy(false);
-      return;
+      return false;
     }
     // A changed title that hasn't been accepted yet is saved too, rather than lost.
     const check = validateTitle(title);
@@ -395,11 +403,13 @@ export function LongFormEditor({
         failed(err, "The title wasn't saved");
         if (conflictRef.current) finishAfterConflict.current = true;
         setBusy(false);
-        return;
+        return false;
       }
     }
     onFinish();
+    return true;
   }
+  if (finishRef) finishRef.current = busy ? undefined : finish;
 
   /** After a refused save: this editor's version replaces the one saved elsewhere. */
   function keepMine() {

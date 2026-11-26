@@ -601,6 +601,15 @@ a:focus-visible {
 }
 
 /*
+ * A filter dropdown with something chosen: a thick black border, so the ones narrowing the list stand
+ * out. The padding gives back the border's extra width, so its size doesn't change.
+ */
+.filter-row .tag-dropdown-button:not(.unset) {
+  padding: calc(0.2rem - 1px) calc(0.35rem - 1px);
+  border: 2px solid #000000;
+}
+
+/*
  * Left part: the dropdowns (their own wrapper's box is dropped, so each is an item here), "reset
  * filters" and search wrap together like words, so search follows the last dropdown.
  */
@@ -1153,12 +1162,21 @@ body:has(.note-list li.dragging) {
   font-size: 0.75rem;
 }
 
-/* The add/edit area: a category's dropdown with its expand button just right of it (the icon 3px from the
-   dropdown: this 1px, plus the 2px either side of the 20px icon in its 24px button). */
+/* The add/edit area: a category's dropdown with its expand button just right of it, the icon 1px from the
+   dropdown (its button is only 1px wider than the icon each side, though as tall as the others). */
 .tag-dropdown-toggle {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 0;
+}
+
+.tag-dropdown-toggle .category-toggle {
+  width: 18px;
+}
+
+/* Dropdowns with expand buttons sit closer together than the filter row's. */
+.tag-mixed-picker .tag-pickers {
+  column-gap: 0.5rem;
 }
 
 /* Expand (outline circle-plus, after a dropdown) and collapse (outline circle-minus, after a pill line's name). */
@@ -2134,18 +2152,54 @@ body:has(.note-list li.dragging) {
   margin-top: 0.3rem;
 }
 
-/* The Parent pop-up: the long-form notes as a tree, scrolling when there are many. */
+/*
+ * The Parent pop-up: a fixed size, so it never grows, shrinks or moves when the tag filter opens or closes
+ * or tags are ticked. The title, Sort line and tag filter sit at the top and Set Parent and Cancel at the
+ * bottom, always in view; the long-form notes (a tree) fill the room between them and scroll.
+ */
 .parent-dialog {
   width: min(28rem, calc(100vw - 2rem));
   max-width: none;
+  height: min(36rem, 85vh);
+  max-height: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.parent-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.parent-dialog > * {
+  flex: none;
+}
+
+/* The open tag filter takes at most 40% of the pop-up, scrolling on its own, so some notes stay in view. */
+.parent-dialog > .parent-dialog-tags {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.parent-dialog > .parent-dialog-list,
+.parent-dialog > .parent-dialog-empty {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .parent-dialog-list {
   display: flex;
   flex-direction: column;
-  max-height: min(24rem, 55vh);
-  margin-bottom: 1rem;
   overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+/* With no notes to list, the message sits in a box the same size as the list's. */
+.parent-dialog-empty {
+  padding: 0.5rem 0.6rem;
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -2165,7 +2219,8 @@ body:has(.note-list li.dragging) {
   flex: none;
   place-items: center;
   width: 1.25rem;
-  height: 2rem;
+  /* As tall as a one-line row, so the caret lines up with the title. */
+  height: 1.8rem;
   margin-left: 0.2rem;
   padding: 0;
   border: none;
@@ -2188,7 +2243,8 @@ button.parent-dialog-caret:hover {
   min-width: 0;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 0.35rem 0.5rem 0.35rem 0.15rem;
+  /* Close together: a little room above and below each title. */
+  padding: 0.15rem 0.5rem 0.15rem 0.15rem;
   cursor: pointer;
   overflow-wrap: anywhere;
 }
@@ -2237,7 +2293,6 @@ button.parent-dialog-caret:hover {
 }
 
 .parent-dialog-empty {
-  margin-bottom: 1rem !important;
   color: var(--muted) !important;
 }
 
@@ -2256,9 +2311,9 @@ button.parent-dialog-caret:hover {
 
 .tag-dropdown-button {
   overflow: hidden;
-  min-width: 6rem;
-  max-width: 16rem;
-  padding: 0.3rem 0.5rem;
+  min-width: 4.5rem;
+  max-width: 9rem;
+  padding: 0.2rem 0.35rem;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
@@ -2340,6 +2395,49 @@ button.parent-dialog-caret:hover {
 .tag-dropdown-list label:hover,
 .tag-option:hover {
   background: var(--bg);
+}
+
+/*
+ * A Properties rule that's crossed (notes without it): a box the same size as a check box, drawn by the
+ * app so it can hold a red cross. The real check box is inside it, invisible, so it still takes clicks.
+ */
+.tri-state-box {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  margin: 3px 3px 3px 4px;
+  border: 1.5px solid var(--error);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--error);
+  font-size: 10px;
+}
+
+.tri-state-box input {
+  position: absolute;
+  inset: -3px;
+  width: auto;
+  height: auto;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.tri-state-box svg {
+  pointer-events: none;
+}
+
+/* Read by screen readers, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .tag-option-tick {

@@ -19,6 +19,8 @@ The details can use the same formatting as titles: `*bold*`, `_underline_` and `
 
 In the list, a long-form note shows its title and an amber "Long Form" pill. Tap its pen to open it again.
 
+Opening a long-form note is like opening a new page. The browser's **Back** button (or your phone's back button) saves and closes it, as Finish does, and **Forward** opens it again. Reloading the page keeps it open. If the note has since been deleted or put in the Bin, it doesn't open: you'll see "That note has been deleted" instead. A new note you deleted with Cancel is simply skipped.
+
 ## Notes that belong to it
 
 Any note can belong to a long-form note, its **parent**, and that includes other long-form notes, so you can build a tree: "Holiday plans", with "Flight options" inside it, and notes inside that.
@@ -26,9 +28,10 @@ Any note can belong to a long-form note, its **parent**, and that includes other
 - A note that belongs to a long-form note has a purple pill with the parent's title.
 - A long-form note with notes inside it has a purple pill showing a small diagram and how many. If the tab you're on hides some of them, it says so, for example "2 of 3". Tap it to list just that note and everything inside it.
 
-There are three ways to put a note inside a long-form note:
+There are four ways to put a note inside a long-form note:
 
 - **While a long-form note is open**, any notes you add in the area at the bottom belong to it. It's a handy way to jot down the actions from a meeting while writing up the minutes.
+- **To start a long-form note inside the one that's open**, tap the long-form note button in the area at the bottom. The open note is saved and closed, as if you'd tapped Finish, and the new one opens, inside it.
 - **The Parent line:** with the area at the bottom expanded, the last line under the Tags is **Parent**. Tap its pill to choose a parent for the note you're adding or editing, or to take it out of one. Notes you add keep the same parent until you change it.
 - **In the long-form editor,** the band of Tags has the same **Parent** pill, for the long-form note itself.
 

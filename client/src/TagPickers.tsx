@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCaretDown, faCaretRight, faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
+import { faCaretDown, faCaretRight, faCheck, faLock, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { LIFETIME_CATEGORY_ID, tagLabel, type Category, type Note, type TabFilter, type Tag } from "@nwsnotes/shared";
 import { faCircleMinusOutline, faCirclePlusOutline } from "./icons";
 import { SharingIcons } from "./sharingIcons";
@@ -134,6 +134,11 @@ interface Props {
   foldable?: boolean;
   /** Full-tag-list mode: a last line after the categories (the note's parent), scrolling with them. */
   lastRow?: ReactNode;
+  /**
+   * Check-lists (the filter row's Properties): each box goes empty, ticked, crossed, then empty again. A
+   * crossed option is chosen as its negative id, and its count is looked up under that id too.
+   */
+  triState?: boolean;
 }
 
 /** The sharing icon after a tag's name in a picker, if it's one of yours that you've shared. */
@@ -157,6 +162,7 @@ export function TagPickers({
   indents,
   implied,
   foldable,
+  triState,
 }: Props) {
   if (categories.length === 0) return null;
 
@@ -166,7 +172,12 @@ export function TagPickers({
         <TagDropdown
           key={category.id}
           category={category}
-          chosen={shownChoice(category, effectiveChosen(category, selection[category.id] ?? [], constraints?.get(category.id)), checkLists)}
+          // Crossed options' negative ids aren't tags, so tri-state lists' choices are used as they are.
+          chosen={
+            triState
+              ? (selection[category.id] ?? [])
+              : shownChoice(category, effectiveChosen(category, selection[category.id] ?? [], constraints?.get(category.id)), checkLists)
+          }
           tabTagIds={constraints?.get(category.id)}
           tabName={tabName}
           checkList={checkLists || category.multiSelect}
@@ -180,6 +191,7 @@ export function TagPickers({
           indents={indents}
           implied={implied}
           foldable={foldable}
+          triState={triState && (checkLists || category.multiSelect)}
         />
       ))}
     </div>
@@ -197,6 +209,7 @@ interface DropdownProps {
   indents?: Props["indents"];
   implied?: Props["implied"];
   foldable?: boolean;
+  triState?: boolean;
   selectAll?: boolean;
   showSharing?: boolean;
   /** The list ends with a "(None)" check-box (filter row only). */
@@ -242,6 +255,7 @@ function TagDropdown({
   indents,
   implied,
   foldable,
+  triState,
 }: DropdownProps) {
   /** Where the open list sits. It is positioned on the window, so a scrolling area can't clip it. */
   const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; room: number }>();
@@ -251,7 +265,10 @@ function TagDropdown({
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const withNone = checkList && noneOption === true;
-  const names = withNone && noneChosen ? ["(None)"] : category.tags.filter((tag) => chosen.includes(tag.id)).map(tagLabel);
+  const names =
+    withNone && noneChosen
+      ? ["(None)"]
+      : category.tags.flatMap((tag) => (chosen.includes(tag.id) ? [tagLabel(tag)] : triState && chosen.includes(-tag.id) ? [`not ${tagLabel(tag)}`] : []));
   const listId = `tag-dropdown-${category.id}`;
 
   /** A one-tag tab filter fixes this tag. */
@@ -327,6 +344,12 @@ function TagDropdown({
   /** Ticking a tag unticks "(None)" (it's never in `chosen`, which only holds tags). */
   function toggle(tagId: number, checked: boolean) {
     onChange(checked ? [...chosen, tagId] : chosen.filter((id) => id !== tagId));
+  }
+
+  /** Tri-state lists: empty, then ticked, then crossed (chosen as its negative id), then empty again. */
+  function cycle(tagId: number) {
+    const rest = chosen.filter((id) => id !== tagId && id !== -tagId);
+    onChange(chosen.includes(tagId) ? [...rest, -tagId] : chosen.includes(-tagId) ? rest : [...rest, tagId]);
   }
 
   /**
@@ -406,6 +429,7 @@ function TagDropdown({
           {checkList ? (
             checkRows.map(({ tag, indent, hasChildren }) => {
               const locked = tag.id === lockedTagId || implied?.ids.has(tag.id) === true;
+              const crossed = triState === true && chosen.includes(-tag.id);
               const isFolded = folded.has(tag.id);
               const label = (
                 <label
@@ -414,15 +438,24 @@ function TagDropdown({
                   title={tag.id === lockedTagId ? lockHint : locked ? implied?.hint : undefined}
                   style={!foldable && indent > 0 ? { paddingLeft: `${0.75 + indent * 1.25}rem` } : undefined}
                 >
-                  <input
-                    type="checkbox"
-                    checked={chosen.includes(tag.id) || locked}
-                    disabled={locked}
-                    onChange={(event) => toggle(tag.id, event.target.checked)}
-                  />
+                  {crossed ? (
+                    // A box the app draws, so it can hold a cross; checked to a screen reader, whose name starts "Not".
+                    <span className="tri-state-box">
+                      <input type="checkbox" checked onChange={() => cycle(tag.id)} />
+                      <FontAwesomeIcon icon={faXmark} aria-hidden />
+                    </span>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={chosen.includes(tag.id) || locked}
+                      disabled={locked}
+                      onChange={(event) => (triState ? cycle(tag.id) : toggle(tag.id, event.target.checked))}
+                    />
+                  )}
+                  {crossed && <span className="visually-hidden">Not </span>}
                   {tagLabel(tag)}
                   <TagSharing tag={tag} show={showSharing} />
-                  <TagCount count={counts?.byTag.get(tag.id)} />
+                  <TagCount count={counts?.byTag.get(crossed ? -tag.id : tag.id)} />
                   {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
                 </label>
               );

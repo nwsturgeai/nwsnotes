@@ -237,7 +237,10 @@ export type SmsCommand =
   | { command: "add"; rest: string }
   /** "New <title>": a note with no tags. */
   | { command: "new"; title: string }
-  /** "Due <when>" (or "Due date <when>"): `when` is what follows, empty when nothing does. */
+  /**
+   * "Due <when>" (or "Due date <when>"; "Do you" counts as "Due", as dictation may hear it that way):
+   * `when` is what follows, empty when nothing does.
+   */
   | { command: "due"; when: string }
   /** "Reset New": the user's New notes become Active. */
   | { command: "reset-new" }
@@ -248,8 +251,8 @@ export type SmsCommand =
 
 /**
  * Reads the command word a text starts with (any case, any punctuation): Add, New, Due, Reset New or
- * Email tab ("e-mail" and "e mail" count as "email", as dictation may write them either way). Anything
- * else is no command. The words after the command are returned as written, without the punctuation between.
+ * Email tab ("e-mail" and "e mail" count as "email", and "do you" as "due", as dictation may write them
+ * either way). Anything else is no command. The words after the command are returned as written, without the punctuation between.
  */
 export function readSmsCommand(text: string): SmsCommand {
   const trimmed = text.trim();
@@ -264,6 +267,9 @@ export function readSmsCommand(text: string): SmsCommand {
       return { command: "new", title: capitalised(after(1)) };
     case "due":
       return { command: "due", when: after(word(1) === "date" ? 2 : 1) };
+    case "do":
+      if (word(1) === "you") return { command: "due", when: after(word(2) === "date" ? 3 : 2) };
+      break;
     case "reset":
       // Only "Reset New" on its own: "Reset the boiler timer" is a note.
       return word(1) === "new" && words.length === 2 ? { command: "reset-new" } : { command: "none" };

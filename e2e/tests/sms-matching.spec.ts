@@ -137,6 +137,10 @@ test("every text starts with a command word: Add, New, Due, Reset New or Email t
   expect(readSmsCommand("Due tomorrow 3pm")).toEqual({ command: "due", when: "tomorrow 3pm" });
   expect(readSmsCommand("due date: Friday")).toEqual({ command: "due", when: "Friday" });
   expect(readSmsCommand("Due.")).toEqual({ command: "due", when: "" });
+  // Dictation may hear "Due" as "Do you".
+  expect(readSmsCommand("Do you tomorrow 3pm")).toEqual({ command: "due", when: "tomorrow 3pm" });
+  expect(readSmsCommand("do you, date Friday")).toEqual({ command: "due", when: "Friday" });
+  expect(readSmsCommand("Do you")).toEqual({ command: "due", when: "" });
   expect(readSmsCommand("Reset New")).toEqual({ command: "reset-new" });
   expect(readSmsCommand("reset, new.")).toEqual({ command: "reset-new" });
   expect(readSmsCommand("Email tab Shopping")).toEqual({ command: "email-tab", named: "Shopping" });
@@ -156,6 +160,8 @@ test("every text starts with a command word: Add, New, Due, Reset New or Email t
     "Reset the clocks",
     "Email the plumber",
     "Duet practice",
+    "Do the washing",
+    "Doyou tomorrow",
   ]) {
     expect(readSmsCommand(text)).toEqual({ command: "none" });
   }

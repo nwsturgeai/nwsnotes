@@ -23,7 +23,7 @@ import {
   withPending,
 } from "./offline";
 import { registerReminders, turnOffReminders } from "./reminders";
-import { usePage } from "./route";
+import { usePage, type Page } from "./route";
 import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
 import { NamePage } from "./NamePage";
@@ -45,17 +45,35 @@ type State =
 /** The longest logging out waits for this device's reminders to be turned off. */
 const LOGOUT_REMINDERS_WAIT_MS = 3000;
 
+/** No new-note tags chosen (one object, so it stays the same between renders). */
+const NO_TAGS: TagSelection = {};
+
 export function App() {
   const [state, setState] = useState<State>({ screen: "loading" });
-  const [page, navigate] = usePage();
+  /** Back and Forward do nothing while a note is being edited or notes selected (set below, once that's known). */
+  const historyBlocked = useRef<boolean>(false);
+  /** History entries to pass over (set by the notes page: long-form notes its Cancel deleted). */
+  const historySkip = useRef<(page: Page) => boolean>(undefined);
+  const [page, navigate] = usePage(historyBlocked, historySkip);
   const [stylusMode, setStylusMode] = useStylusMode();
   const [columns, setColumns] = useColumns();
   const [showTabCounts, setShowTabCounts] = useTabCounts();
   const [refreshError, setRefreshError] = useState<string>();
-  /** The new-note tag dropdowns' selections; kept until the page is reloaded or the tab changes. */
-  const [tagSelection, setTagSelection] = useState<TagSelection>({});
-  /** The selected tab's id, or undefined for "All" (selected when the page opens). */
-  const [selectedTabId, setSelectedTabId] = useState<number>();
+  /**
+   * The selected tab's id, or undefined for "All": the notes page's address says which ("/?tab=3"), so
+   * each tab change is a history entry. On other pages (Settings) it's the tab the notes were last on.
+   */
+  const lastNotes = useRef<Page & { name: "notes" }>({ name: "notes" });
+  if (page.name === "notes") lastNotes.current = page;
+  const selectedTabId = lastNotes.current.tab;
+  /** The new-note tag dropdowns' selections, for the tab they were made on; kept until the page is reloaded or the tab changes. */
+  const [tagState, setTagState] = useState<{ tabId: number | undefined; selection: TagSelection }>({ tabId: undefined, selection: {} });
+  const tagSelection = tagState.tabId === selectedTabId ? tagState.selection : NO_TAGS;
+  const setTagSelection = useCallback((selection: TagSelection) => setTagState({ tabId: selectedTabId, selection }), [selectedTabId]);
+  // Changing tab (by Back too) resets them (the tab's locked tags are applied on top).
+  useEffect(() => {
+    setTagState((prev) => (prev.tabId === selectedTabId ? prev : { tabId: selectedTabId, selection: {} }));
+  }, [selectedTabId]);
   /**
    * The note being edited, as it was when editing started (live updates don't change an open edit).
    * While set, the tabs, the Settings cog and the other notes' edit icons are blocked.
@@ -69,6 +87,9 @@ export function App() {
   const [editLocked, setEditLocked] = useState(false);
   /** The tabs and cog are blocked: while an edit can't be saved by using them (see NotesPage), or in multi-select. */
   const tabsBlocked = (editingNote !== undefined && editLocked) || bulkActive;
+  // While a note is being edited (whose tabs save it first) or notes are being selected, Back and Forward
+  // do nothing, rather than change tab under the edit or the selection.
+  historyBlocked.current = page.name === "notes" && (editingNote !== undefined || bulkActive);
   const updateReady = useUpdateReady();
   /** Numbers each background reload, so only the newest one's result is used. */
   const latestRefresh = useRef(0);
@@ -256,11 +277,14 @@ export function App() {
 
   const endEdit = useCallback(() => setEditingNote(undefined), []);
 
-  /** Changing tab resets the new-note dropdowns (the tab's locked tags are applied on top). */
-  const selectTab = useCallback((id: number | undefined) => {
-    setSelectedTabId(id);
-    setTagSelection({});
-  }, []);
+  /** Changing tab opens it as a new page in the browser's history, so Back goes to the tab before. */
+  const selectTab = useCallback(
+    (id: number | undefined) => {
+      // An open long-form note stays open.
+      if (id !== selectedTabId) navigate({ name: "notes", tab: id, note: lastNotes.current.note }, { newEntry: true });
+    },
+    [selectedTabId, navigate],
+  );
 
   const tabs = state.screen === "notes" ? state.data.tabs : [];
   /** Whether the built-in "All" tab is in the left strip (data saved offline before this existed counts as top). */
@@ -277,10 +301,12 @@ export function App() {
     return counts;
   }, [showTabCounts, notes, tabs]);
   const selectedTab = tabs.find((tab) => tab.id === selectedTabId);
-  // If the selected tab is deleted (here or on another page), go back to "All".
+  // If the selected tab is deleted (here or on another page), or the address names one that isn't there, go back to "All".
   useEffect(() => {
-    if (selectedTabId !== undefined && state.screen === "notes" && !selectedTab) selectTab(undefined);
-  }, [selectedTabId, selectedTab, state.screen, selectTab]);
+    if (selectedTabId === undefined || state.screen !== "notes" || selectedTab) return;
+    if (page.name === "notes") navigate({ name: "notes", note: page.note }, { replace: true });
+    else lastNotes.current = { name: "notes", note: lastNotes.current.note };
+  }, [selectedTabId, selectedTab, state.screen, page.name, navigate]);
 
   const logout = useCallback(async () => {
     try {
@@ -329,6 +355,7 @@ export function App() {
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
             editing={tabsBlocked}
+            notesPage={lastNotes.current}
             onNavigate={navigate}
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
@@ -347,7 +374,7 @@ export function App() {
                 className="button"
                 onClick={(event) => {
                   event.preventDefault();
-                  navigate({ name: "notes" });
+                  navigate(lastNotes.current);
                 }}
               >
                 ← Notes
@@ -467,6 +494,9 @@ export function App() {
               ]}
               onSelectTab={selectTab}
               tabsBlocked={tabsBlocked}
+              openNote={page.name === "notes" ? page.note : undefined}
+              onOpenNoteChange={(note, options) => navigate({ name: "notes", tab: selectedTab?.id, note }, options)}
+              historySkip={historySkip}
               onEditLockChange={setEditLocked}
               stylusMode={stylusMode}
               columns={columns}

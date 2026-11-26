@@ -266,7 +266,8 @@ export function ParentDialog({ notes, categories, noteOrder, parentId, childId, 
                     onChange={(event) => setChosen(event.target.checked ? note.id : undefined)}
                   />
                   <span className="parent-dialog-title">
-                    {title}
+                    {/* Long titles are cut to 50 characters (the full title is in the hover text). */}
+                    {shortTitle(note, 50)}
                     {note.shared && <span className="parent-dialog-owner"> ({note.shared.ownerName})</span>}
                     <LifetimePill note={note} />
                   </span>

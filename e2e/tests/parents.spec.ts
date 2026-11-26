@@ -384,6 +384,45 @@ test("the Parent pop-up filters by tag in a section that folds away, keeping mat
   await expect(titles()).toHaveCount(4);
 });
 
+test("the Parent pop-up keeps its size as the tag filter opens and tags are ticked, with its buttons always in view", async ({ page }) => {
+  await addNote(page.request, "Team offsite", { long: true, tagIds: [WORK] });
+  for (let i = 1; i <= 30; i++) await addNote(page.request, `Long-form ${i}`, { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const dialog = parentDialog(page);
+  const toggle = dialog.getByRole("button", { name: /^Filter by tag/ });
+  const box = async () => (await dialog.boundingBox())!;
+  const start = await box();
+  const sameSize = async () => expect(await box()).toEqual(start);
+  /** Set Parent and Cancel are inside the pop-up, not scrolled out of it. */
+  const buttonsInView = async () => {
+    const dialogBox = await box();
+    for (const name of ["Set Parent", "Cancel"]) {
+      const button = (await dialog.getByRole("button", { name }).boundingBox())!;
+      expect(button.y).toBeGreaterThanOrEqual(dialogBox.y);
+      expect(button.y + button.height).toBeLessThanOrEqual(dialogBox.y + dialogBox.height);
+    }
+  };
+  await buttonsInView();
+  // Opening the filter, ticking a tag (one note left), a tag no note has (none left), and folding it away.
+  await toggle.click();
+  await sameSize();
+  await buttonsInView();
+  await dialog.getByRole("group", { name: "Area", exact: true }).getByRole("button", { name: "Work", exact: true }).click();
+  await expect(dialog.locator(".parent-dialog-list label")).toHaveText(["Team offsite"]);
+  await sameSize();
+  await dialog.getByRole("group", { name: "Topic", exact: true }).getByRole("button", { name: "Reading", exact: true }).click();
+  await expect(dialog.getByText("No long-form notes have the ticked tags.")).toBeVisible();
+  await sameSize();
+  await buttonsInView();
+  await toggle.click();
+  await sameSize();
+  await dialog.getByRole("button", { name: "clear tags" }).click();
+  await sameSize();
+  await buttonsInView();
+});
+
 test("the Parent pop-up marks Waiting and Archived long-form notes", async ({ page }) => {
   const waiting = await addNote(page.request, "On hold plans", { long: true });
   const archived = await addNote(page.request, "Old project", { long: true });
@@ -399,6 +438,19 @@ test("the Parent pop-up marks Waiting and Archived long-form notes", async ({ pa
   // Active (and New) notes have none, and the pill isn't part of the checkbox's name.
   await expect(row("Holiday plans").locator(".parent-status-pill")).toHaveCount(0);
   await parentDialog(page).getByRole("checkbox", { name: /^Old project/ }).check();
+});
+
+test("the Parent pop-up cuts long titles to 50 characters, with the full title on hover", async ({ page }) => {
+  const long = "A very long long-form note title that goes on and on past fifty characters";
+  await addNote(page.request, long, { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const label = parentDialog(page).locator(".parent-dialog-list label").filter({ hasText: long.slice(0, 49) });
+  await expect(label.locator(".parent-dialog-title")).toHaveText(`${long.slice(0, 49)}…`);
+  await expect(label).toHaveAttribute("title", long);
+  // Short titles are shown whole.
+  await expect(parentDialog(page).locator(".parent-dialog-title").filter({ hasText: /^Holiday plans$/ })).toHaveCount(1);
 });
 
 test("the Parent pop-up folds away the notes inside a long-form note, at every depth", async ({ page }) => {

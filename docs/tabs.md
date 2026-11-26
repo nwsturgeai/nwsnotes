@@ -2,6 +2,8 @@
 
 A tab is a saved filter: a quick way to see just one group of notes, such as "Work" or "Shopping". Tabs are along the top of the screen; tap one to switch to it. The first tab, **All**, always shows every note (apart from those in the Bin).
 
+Each tab you switch to is like opening a new page: the browser's **Back** button (or your phone's back button) goes to the tab you were on before, and reloading the page keeps you on the same tab. While you're editing a note or selecting notes, Back does nothing until you've finished.
+
 ## Making a tab
 
 In **Settings**, under **Tabs**, tap **Add tab**:

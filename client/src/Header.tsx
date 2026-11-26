@@ -22,6 +22,8 @@ interface Props {
   tabCounts?: Map<number | "all", number>;
   /** The selected tab's id, or undefined for the built-in "All" tab. */
   selectedTabId: number | undefined;
+  /** Where "← Notes" goes: the notes as they were left (the tab, and any long-form note open). */
+  notesPage?: Page;
   onSelectTab: (id: number | undefined) => void;
   /**
    * While a note being edited has no title (or in multi-select), the tabs and the Settings cog are
@@ -58,6 +60,7 @@ export function Header({
   selectedTabId,
   onSelectTab,
   editing,
+  notesPage,
   onNavigate,
   refreshError,
   onRetryRefresh,
@@ -78,7 +81,7 @@ export function Header({
 
   const back: { page: Page; label: string } | undefined =
     page.name === "settings"
-      ? { page: { name: "notes" }, label: "← Notes" }
+      ? { page: notesPage ?? { name: "notes", tab: selectedTabId }, label: "← Notes" }
       : page.name === "category" || page.name === "tab" || page.name === "history" || page.name === "password" || page.name === "users" || page.name === "serverLog"
         ? { page: { name: "settings" }, label: "← Settings" }
         : undefined;

@@ -22,6 +22,8 @@ Then comes a **Properties** dropdown, for narrowing the list by the notes themse
 
 As with the Tags, ticking several shows notes that match any of them, and each shows its count in brackets.
 
+Click a box once to tick it, a second time to change the tick to a red cross, and a third time to clear it. A cross does the opposite: crossing **Long-form** shows only notes that aren't long-form. A crossed rule leaves its notes out whatever else is ticked, so ticking **Due today** and crossing **Long-form** shows the notes due today that aren't long-form. The count next to a crossed rule is of the notes without it.
+
 Your ticks are remembered for each tab on each device.
 
 While the list is filtered, new notes you add automatically get the Tags that keep them in the list.
