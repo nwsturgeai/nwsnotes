@@ -130,3 +130,8 @@ const asStored = (sort: ParentSort) => sort;
 export function useParentSort(): [ParentSort, (sort: ParentSort) => void] {
   return useDeviceSetting<ParentSort>("nwsnotes.parentSort", (stored) => (stored === "alphabetical" ? "alphabetical" : "order"), asStored);
 }
+
+/** Whether the Parent pop-up's "Filter by tag" section is open (default closed), remembered on this device. */
+export function useParentTagsOpen(): [boolean, (on: boolean) => void] {
+  return useDeviceSetting("nwsnotes.parentTagsOpen", (stored) => stored === "on", onOff);
+}

@@ -1665,6 +1665,7 @@ export function NotesPage({
       {choosingParent && (
         <ParentDialog
           notes={notes}
+          categories={userCategories}
           noteOrder={noteOrder}
           parentId={editingNote ? editParent : newParent}
           childId={editingNote?.id}

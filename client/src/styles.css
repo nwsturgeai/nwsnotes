@@ -2030,6 +2030,48 @@ body:has(.note-list li.dragging) {
   cursor: pointer;
 }
 
+/* The Parent pop-up's tag filter: a header that opens and closes it, then the add area's tag controls. */
+.parent-dialog-tags {
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.parent-dialog-tags-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.parent-dialog-tags-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.parent-dialog-tags-chevron {
+  width: 0.8rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.parent-dialog-tags-count {
+  color: var(--muted);
+}
+
+/* The tag controls' first row sits close under the header. */
+.parent-dialog-tags .tag-mixed-picker > :first-child {
+  margin-top: 0.3rem;
+}
+
 /* The Parent pop-up: the long-form notes as a tree, scrolling when there are many. */
 .parent-dialog {
   width: min(28rem, calc(100vw - 2rem));
