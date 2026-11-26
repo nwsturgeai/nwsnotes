@@ -395,12 +395,22 @@ test("handwritten long-form details have at most 10 pages", async ({ page }) => 
   expect((await response.json()).error).toBe("The handwritten details have 11 pages; the most is 10.");
 });
 
-test("on a narrow screen, the Previous and Next page buttons are hidden, leaving the page menu", async ({ page }) => {
+test("on a narrow screen, the Previous and Next page buttons are hidden, then the pen thicknesses", async ({ page }) => {
   const editor = await newHandwrittenLongForm(page, "Narrow");
   await expect(editor.getByRole("button", { name: "Next page" })).toBeVisible();
-  await page.setViewportSize({ width: 420, height: 800 });
+  const pens = editor.getByRole("radiogroup", { name: "Pen thickness" });
+  // A little narrower: Previous and Next go, and the pens stay.
+  await page.setViewportSize({ width: 520, height: 800 });
   await expect(editor.getByRole("button", { name: "Next page" })).toBeHidden();
   await expect(editor.getByRole("button", { name: "Previous page" })).toBeHidden();
+  await expect(editor.getByRole("button", { name: "Page options" })).toBeVisible();
+  await expect(pens).toBeVisible();
+  const finishWide = (await editor.getByRole("button", { name: "Finish" }).boundingBox())!;
+  expect(finishWide.x + finishWide.width).toBeLessThanOrEqual(520);
+  // Narrower still (a phone): the pens go too.
+  await page.setViewportSize({ width: 420, height: 800 });
+  await expect(pens).toBeHidden();
+  await expect(editor.getByRole("button", { name: "Eraser" })).toBeVisible();
   await expect(editor.getByRole("button", { name: "Page options" })).toBeVisible();
   await expect(pageCount(page)).toHaveText("1/1");
   // Everything still fits: Finish is on the screen.

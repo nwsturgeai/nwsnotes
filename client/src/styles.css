@@ -1532,19 +1532,10 @@ body:has(.note-list li.dragging) {
   }
 }
 
-/* Narrower still (a phone), the wider gaps shrink so Cancel and Finish stay on the screen. */
+/* Narrower still (a phone), the pen-thickness buttons go too (Settings has them), so Cancel and Finish stay on the screen. */
 @container (max-width: 440px) {
-  .lf-finish .lf-pen-widths,
-  .lf-finish .lf-pages {
-    margin-left: 6px;
-  }
-
-  .lf-finish .lf-export {
-    margin-right: 6px;
-  }
-
-  .lf-finish .lf-page-count {
-    min-width: 0;
+  .lf-finish .lf-pen-widths {
+    display: none;
   }
 }
 
