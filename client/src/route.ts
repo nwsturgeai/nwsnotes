@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
 /** The website's pages, each with its own address so the back button works. */
 export type Page =
-  | { name: "notes" }
+  /** The notes, on a tab (undefined for "All"): each tab change is a new history entry, so Back goes to the tab before. */
+  | { name: "notes"; tab?: number }
   | { name: "settings" }
   /** The history of changes, where earlier states can be gone back to. */
   | { name: "history" }
@@ -24,7 +25,7 @@ export type Page =
 export function pathFor(page: Page): string {
   switch (page.name) {
     case "notes":
-      return "/";
+      return page.tab === undefined ? "/" : `/?tab=${page.tab}`;
     case "settings":
       return "/settings";
     case "history":
@@ -46,7 +47,8 @@ export function pathFor(page: Page): string {
   }
 }
 
-function pageFromPath(pathname: string): Page {
+/** The page at an address (its path and query, e.g. "/?tab=3"). */
+function pageFromAddress(pathname: string, search: string): Page {
   if (pathname === "/settings") return { name: "settings" };
   if (pathname === "/history") return { name: "history" };
   if (pathname === "/settings/password") return { name: "password" };
@@ -61,36 +63,79 @@ function pageFromPath(pathname: string): Page {
     const id = match[2] === "new" ? "new" : Number(match[2]);
     return match[1] === "tabs" ? { name: "tab", id } : { name: "category", id };
   }
-  return { name: "notes" };
+  const tab = new URLSearchParams(search).get("tab");
+  return tab !== null && /^\d+$/.test(tab) ? { name: "notes", tab: Number(tab) } : { name: "notes" };
 }
 
-/** Each history entry we add remembers the address it was opened from. */
+function currentPage(): Page {
+  return pageFromAddress(window.location.pathname, window.location.search);
+}
+
+function currentAddress(): string {
+  return window.location.pathname + window.location.search;
+}
+
+/**
+ * Each history entry we add remembers the address it was opened from, and its place in the history (0
+ * for the first, counting up), so going back or forward can be undone while it's blocked.
+ */
 interface HistoryState {
   from?: string;
+  index?: number;
 }
 
-/** The current page, and a function to go to another one. */
-export function usePage(): [Page, (page: Page, options?: { replace?: boolean }) => void] {
-  const [page, setPage] = useState<Page>(() => pageFromPath(window.location.pathname));
+function historyState(): HistoryState {
+  return (window.history.state as HistoryState | null) ?? {};
+}
+
+/**
+ * The current page, and a function to go to another one. While `blocked` holds true (a note is being
+ * edited, or notes are being selected, so the tabs can't be used), Back and Forward are undone: the page
+ * stays as it is.
+ */
+export function usePage(
+  blocked?: RefObject<boolean>,
+): [Page, (page: Page, options?: { replace?: boolean; newEntry?: boolean }) => void] {
+  const [page, setPage] = useState<Page>(currentPage);
+  /** The current entry's place in the history. */
+  const index = useRef(historyState().index ?? 0);
+  /** Set while going back to where we were after a blocked Back or Forward. */
+  const restoring = useRef(false);
 
   useEffect(() => {
-    const onPopState = () => setPage(pageFromPath(window.location.pathname));
+    // The entry the page opened on gets its place, so later ones count on from it.
+    window.history.replaceState({ ...historyState(), index: index.current }, "");
+    const onPopState = () => {
+      const now = historyState().index ?? 0;
+      if (restoring.current) {
+        restoring.current = false;
+        index.current = now;
+        return;
+      }
+      if (blocked?.current && now !== index.current) {
+        restoring.current = true;
+        window.history.go(index.current - now);
+        return;
+      }
+      index.current = now;
+      setPage(currentPage());
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [blocked]);
 
-  const navigate = useCallback((next: Page, options?: { replace?: boolean }) => {
+  /** `newEntry`: always a new history entry (changing tab), never going back to the page this one came from. */
+  const navigate = useCallback((next: Page, options?: { replace?: boolean; newEntry?: boolean }) => {
     const path = pathFor(next);
-    const state = window.history.state as HistoryState | null;
     if (options?.replace) {
-      window.history.replaceState(null, "", path);
-    } else if (state?.from === path) {
+      window.history.replaceState({ index: index.current } satisfies HistoryState, "", path);
+    } else if (!options?.newEntry && historyState().from === path) {
       // Going back to the page this one was opened from: go back, as Android's back button would.
       window.history.back();
       return;
-    } else if (window.location.pathname !== path) {
-      const newState: HistoryState = { from: window.location.pathname };
-      window.history.pushState(newState, "", path);
+    } else if (currentAddress() !== path) {
+      index.current += 1;
+      window.history.pushState({ from: currentAddress(), index: index.current } satisfies HistoryState, "", path);
     }
     setPage(next);
   }, []);

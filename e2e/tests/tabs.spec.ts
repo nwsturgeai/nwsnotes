@@ -243,6 +243,63 @@ test("tabs can't be changed while a note being edited has no title", async ({ pa
   await expectTitles(page, ALL);
 });
 
+test("each tab change is a page in the browser's history: Back and Forward go between tabs, and the address keeps the tab", async ({ page }) => {
+  const WORK = ["Plan the team meeting", "Read the quarterly report", "Old invoice"];
+  const HOME = ["Buy milk", "", "Holiday plans", "Book flights", "Garden ideas"];
+  const selected = (name: string) => expect(page.getByRole("tab", { name, exact: true })).toHaveAttribute("aria-selected", "true");
+  await selectTab(page, "Work");
+  await expect(page).toHaveURL(/\/\?tab=\d+$/);
+  await selectTab(page, "Home");
+  // Going back to a tab is a new page too, and choosing the tab already open adds none.
+  await selectTab(page, "Work");
+  await selectTab(page, "Work");
+  await expectTitles(page, WORK);
+
+  await page.goBack();
+  await selected("Home");
+  await expectTitles(page, HOME);
+  await page.goBack();
+  await selected("Work");
+  await page.goBack();
+  await selected("All");
+  await expect(page).toHaveURL(/\/$/);
+  await expectTitles(page, ALL);
+  await page.goForward();
+  await selected("Work");
+  await expectTitles(page, WORK);
+
+  // Reloading keeps the tab, and Settings goes back to it.
+  await page.reload();
+  await selected("Work");
+  await expectTitles(page, WORK);
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await page.getByRole("link", { name: "← Notes" }).click();
+  await selected("Work");
+  await page.goBack();
+  await selected("All");
+
+  // While a note is being edited, Back and Forward do nothing.
+  await page.goForward();
+  await selected("Work");
+  await noteRow(page, "Old invoice").getByRole("button", { name: "Edit note" }).click();
+  await page.goBack();
+  await page.waitForTimeout(300);
+  await selected("Work");
+  await expect(page).toHaveURL(/\/\?tab=\d+$/);
+  await expect(page.getByRole("button", { name: "Update" })).toBeVisible();
+  await page.getByRole("button", { name: "Update" }).click();
+  await expect(page.getByRole("button", { name: "Update" })).toHaveCount(0);
+  // Once it's saved, Back works again.
+  await page.goBack();
+  await selected("All");
+
+  // A tab that isn't there (deleted, say) opens All instead.
+  await page.goto("/?tab=999");
+  await selected("All");
+  await expect(page).toHaveURL(/\/$/);
+});
+
 test('the filter row\'s "Properties" dropdown filters by long-form, parent note and due dates, with counts', async ({ page }) => {
   // A fixed time (midday in London), and the seed with three due dates: one passed, one later today, one tomorrow.
   await page.clock.install({ time: new Date("2026-11-23T12:00:00Z") });
@@ -473,6 +530,9 @@ test("a filter row that wraps onto more lines can be collapsed to its first line
   await selectTab(page, "Work");
   await expect(expand).toBeVisible();
   await page.reload();
+  await expect(expand).toBeVisible();
+  // (The reload stays on Work; back on All, whose row was measured.)
+  await selectTab(page, "All");
   await expect(expand).toBeVisible();
 
   // Expanding shows everything again.
