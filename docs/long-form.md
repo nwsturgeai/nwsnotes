@@ -19,6 +19,8 @@ The details can use the same formatting as titles: `*bold*`, `_underline_` and `
 
 In the list, a long-form note shows its title and an amber "Long Form" pill. Tap its pen to open it again.
 
+Opening a long-form note is like opening a new page. The browser's **Back** button (or your phone's back button) saves and closes it, as Finish does, and **Forward** opens it again. Reloading the page keeps it open. If the note has since been deleted or put in the Bin, it doesn't open: you'll see "That note has been deleted" instead. A new note you deleted with Cancel is simply skipped.
+
 ## Notes that belong to it
 
 Any note can belong to a long-form note, its **parent**, and that includes other long-form notes, so you can build a tree: "Holiday plans", with "Flight options" inside it, and notes inside that.

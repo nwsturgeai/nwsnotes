@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
   type MouseEvent as ReactMouseEvent,
+  type RefObject,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faAlarmClock, faCircle, faEye, faFileLines } from "@fortawesome/free-regular-svg-icons";
@@ -82,6 +83,7 @@ import {
 import { ParentDialog, ParentPill } from "./ParentDialog";
 import type { ExtraPill } from "./TagPills";
 import { LongFormEditor } from "./LongFormEditor";
+import type { Page } from "./route";
 import { LeftTabStrip, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
@@ -148,6 +150,15 @@ interface Props {
   /** A message from syncing offline changes, shown like the page's own notices. */
   syncNotice?: { text: string; error?: boolean; key: number };
   onSessionExpired: () => void;
+  /** The long-form note the address says is open ("new" for one with no accepted title yet), or none. */
+  openNote: number | "new" | undefined;
+  /**
+   * Changes the open long-form note in the address: `newEntry` when one is opened (so Back leaves it),
+   * `replace` when a new one gets its id; otherwise as a page left (back to where it was opened from).
+   */
+  onOpenNoteChange: (note: number | "new" | undefined, options?: { replace?: boolean; newEntry?: boolean }) => void;
+  /** Set here to say which history entries Back and Forward pass over: long-form notes Cancel deleted. */
+  historySkip: RefObject<((page: Page) => boolean) | undefined>;
 }
 
 const OFFLINE_HINT = "Not available offline";
@@ -191,6 +202,9 @@ export function NotesPage({
   pendingIds,
   syncNotice,
   onSessionExpired,
+  openNote,
+  onOpenNoteChange,
+  historySkip,
 }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   /** The note list's width, for how many columns fit (worked out again whenever it changes). */
@@ -291,13 +305,23 @@ export function NotesPage({
   /** The new-note dropdowns as they were when the long-form editor opened (and on which tab), to put back when it closes. */
   const selectionBeforeLongForm = useRef<{ tabId: number | undefined; selection: TagSelection }>(undefined);
 
-  /** Opens the long-form editor; `converted` when the note has just become long-form (its details get the focus). */
+  /** Opens the long-form editor (a new history entry); `converted` when the note has just become long-form (its details get the focus). */
   function openLongForm(note: Note | undefined, converted = false) {
+    showLongForm(note, { converted });
+    onOpenNoteChange(note?.id ?? "new", { newEntry: true });
+  }
+
+  /**
+   * Shows the long-form editor for `note` (or a new one, inside `parentId`), from the add area as it is
+   * or, when one was already open, as it was before that.
+   */
+  function showLongForm(note: Note | undefined, options: { converted?: boolean; parentId?: number } = {}) {
     setOrdering(false);
-    setLongForm({ note, key: Date.now(), converted });
+    setLongForm({ note, key: Date.now(), ...options });
     setLongFormId(note?.id);
-    selectionBeforeLongForm.current = { tabId: selectedTab?.id, selection: tagSelection };
-    startChildTags(tagSelection);
+    if (!selectionBeforeLongForm.current) selectionBeforeLongForm.current = { tabId: selectedTab?.id, selection: tagSelection };
+    const before = selectionBeforeLongForm.current;
+    startChildTags(before.tabId === selectedTab?.id ? before.selection : {});
   }
 
   /** Child notes can have any tags: the dropdowns start on the tab's tags (from `selection`), then are no longer locked. */
@@ -310,32 +334,68 @@ export function NotesPage({
 
   /** The open long-form editor's Finish (set by the editor). */
   const finishLongForm = useRef<() => Promise<boolean>>(undefined);
-  /** Set while the open long-form note is being finished to start another: the new one's parent (the finished note, if it was saved). */
-  const nextLongForm = useRef<{ parentId: number | undefined }>(undefined);
+  /**
+   * Set while the open long-form note is being finished for something else: then a new one opens inside
+   * `parentId` (the finished note, if it was saved), or `note` opens (Back or Forward to it).
+   */
+  const nextLongForm = useRef<{ parentId?: number; note?: Note }>(undefined);
+  /** Set while the open long-form note is being finished because Back or Forward left it: the address has already changed. */
+  const leftByHistory = useRef(false);
+  /** Long-form notes deleted by Cancel: Back and Forward pass over them. */
+  const cancelledNotes = useRef(new Set<number>());
+  /** What the editor shows, as the address puts it. */
+  const editorNote: number | "new" | undefined = longForm ? (longFormId ?? "new") : undefined;
+  const editorNoteRef = useRef(editorNote);
+  editorNoteRef.current = editorNote;
+  historySkip.current = (page) =>
+    page.name === "notes" &&
+    ((typeof page.note === "number" && cancelledNotes.current.has(page.note)) || (page.note === "new" && editorNoteRef.current !== "new"));
+
+  /**
+   * Finishes the open long-form note (as Finish does) for something else, set up in `nextLongForm` and
+   * `leftByHistory`. If it can't be finished (a refused save) it stays open, nothing else happens, and the
+   * address goes back to it.
+   */
+  async function finishFor(next: { parentId?: number; note?: Note } | undefined, byHistory: boolean): Promise<boolean> {
+    const finish = finishLongForm.current;
+    const was = editorNoteRef.current;
+    if (!finish) {
+      if (byHistory && was !== undefined) onOpenNoteChange(was, { newEntry: true });
+      return false;
+    }
+    nextLongForm.current = next;
+    leftByHistory.current = byHistory;
+    if (await finish()) return true;
+    nextLongForm.current = undefined;
+    leftByHistory.current = false;
+    if (byHistory && was !== undefined) onOpenNoteChange(was, { newEntry: true });
+    return false;
+  }
 
   /**
    * "Create long-form note" while one is open: it's finished (as Finish does), then a new one opens,
    * inside it. If it can't be finished (a refused save), it stays open and nothing new starts.
    */
-  async function startAnotherLongForm() {
-    const finish = finishLongForm.current;
-    if (!finish) return;
-    nextLongForm.current = { parentId: longFormId };
-    if (!(await finish())) nextLongForm.current = undefined;
+  function startAnotherLongForm() {
+    void finishFor({ parentId: longFormId }, false);
   }
 
   /** The long-form editor closed: back to the add area, or straight on to the next long-form note. */
-  function longFormFinished() {
+  function longFormFinished(deleted: boolean | undefined) {
+    if (deleted && longFormId !== undefined) cancelledNotes.current.add(longFormId);
     const next = nextLongForm.current;
+    const byHistory = leftByHistory.current;
     nextLongForm.current = undefined;
-    if (!next) {
+    leftByHistory.current = false;
+    if (next?.note) {
+      showLongForm(next.note);
+    } else if (next) {
+      showLongForm(undefined, { parentId: next.parentId });
+      onOpenNoteChange("new", { newEntry: true });
+    } else {
       closeLongForm();
-      return;
+      if (!byHistory) onOpenNoteChange(undefined);
     }
-    setLongForm({ note: undefined, key: Date.now(), parentId: next.parentId });
-    setLongFormId(undefined);
-    const before = selectionBeforeLongForm.current;
-    startChildTags(before && before.tabId === selectedTab?.id ? before.selection : {});
   }
 
   function closeLongForm() {
@@ -345,6 +405,30 @@ export function NotesPage({
     selectionBeforeLongForm.current = undefined;
     onTagSelectionChange(before && before.tabId === selectedTab?.id ? before.selection : {});
   }
+
+  /**
+   * Back, Forward, a reload or a link changed which long-form note the address says is open: the editor
+   * follows, finishing the open one first (as Finish does). A note that's gone, or in the Bin, can't open:
+   * it's left out of the address, with a notice.
+   */
+  const followOpenNote = useRef<(target: number | "new" | undefined) => void>(undefined);
+  followOpenNote.current = (target) => {
+    if (target === editorNoteRef.current) return;
+    if (target === undefined) {
+      void finishFor(undefined, true);
+      return;
+    }
+    const note = target === "new" ? undefined : notes.find((n) => n.id === target);
+    if (!note || !isLongForm(note) || lifetimeOf(note) === LIFETIME_BIN) {
+      if (editorNoteRef.current !== undefined) void finishFor(undefined, true);
+      onOpenNoteChange(undefined, { replace: true });
+      if (target !== "new" && (!note || lifetimeOf(note) === LIFETIME_BIN)) setNotice({ text: "That note has been deleted." });
+      return;
+    }
+    if (editorNoteRef.current === undefined) showLongForm(note);
+    else void finishFor({ note }, true);
+  };
+  useEffect(() => followOpenNote.current?.(openNote), [openNote]);
 
   /** The kind of pointer that last touched the new-note controls, for browsers whose clicks don't say. */
   const lastPointerType = useRef("");
@@ -1755,9 +1839,11 @@ export function NotesPage({
               onNoteUpdated(note);
             }
             setLongFormId(note.id);
+            // A new note's address gets its id once its title is accepted.
+            if (created) onOpenNoteChange(note.id, { replace: true });
           }}
           onFinish={(deleted) => {
-            longFormFinished();
+            longFormFinished(deleted);
             if (deleted) onNotesChanged();
           }}
           finishRef={finishLongForm}
@@ -1915,7 +2001,7 @@ export function NotesPage({
                   aria-label="Create long-form note"
                   title={longForm ? "Create long-form note (finishes this one, and the new one goes inside it)" : "Create long-form note"}
                   disabled={saving}
-                  onClick={() => (longForm ? void startAnotherLongForm() : openLongForm(undefined))}
+                  onClick={() => (longForm ? startAnotherLongForm() : openLongForm(undefined))}
                 >
                   <FontAwesomeIcon icon={faFileLines} />
                 </button>

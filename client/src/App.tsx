@@ -23,7 +23,7 @@ import {
   withPending,
 } from "./offline";
 import { registerReminders, turnOffReminders } from "./reminders";
-import { usePage } from "./route";
+import { usePage, type Page } from "./route";
 import { HistoryPage } from "./HistoryPage";
 import { PasswordPage } from "./PasswordPage";
 import { NamePage } from "./NamePage";
@@ -52,7 +52,9 @@ export function App() {
   const [state, setState] = useState<State>({ screen: "loading" });
   /** Back and Forward do nothing while a note is being edited or notes selected (set below, once that's known). */
   const historyBlocked = useRef<boolean>(false);
-  const [page, navigate] = usePage(historyBlocked);
+  /** History entries to pass over (set by the notes page: long-form notes its Cancel deleted). */
+  const historySkip = useRef<(page: Page) => boolean>(undefined);
+  const [page, navigate] = usePage(historyBlocked, historySkip);
   const [stylusMode, setStylusMode] = useStylusMode();
   const [columns, setColumns] = useColumns();
   const [showTabCounts, setShowTabCounts] = useTabCounts();
@@ -61,9 +63,9 @@ export function App() {
    * The selected tab's id, or undefined for "All": the notes page's address says which ("/?tab=3"), so
    * each tab change is a history entry. On other pages (Settings) it's the tab the notes were last on.
    */
-  const lastTab = useRef<number | undefined>(undefined);
-  if (page.name === "notes") lastTab.current = page.tab;
-  const selectedTabId = page.name === "notes" ? page.tab : lastTab.current;
+  const lastNotes = useRef<Page & { name: "notes" }>({ name: "notes" });
+  if (page.name === "notes") lastNotes.current = page;
+  const selectedTabId = lastNotes.current.tab;
   /** The new-note tag dropdowns' selections, for the tab they were made on; kept until the page is reloaded or the tab changes. */
   const [tagState, setTagState] = useState<{ tabId: number | undefined; selection: TagSelection }>({ tabId: undefined, selection: {} });
   const tagSelection = tagState.tabId === selectedTabId ? tagState.selection : NO_TAGS;
@@ -278,7 +280,8 @@ export function App() {
   /** Changing tab opens it as a new page in the browser's history, so Back goes to the tab before. */
   const selectTab = useCallback(
     (id: number | undefined) => {
-      if (id !== selectedTabId) navigate({ name: "notes", tab: id }, { newEntry: true });
+      // An open long-form note stays open.
+      if (id !== selectedTabId) navigate({ name: "notes", tab: id, note: lastNotes.current.note }, { newEntry: true });
     },
     [selectedTabId, navigate],
   );
@@ -301,8 +304,8 @@ export function App() {
   // If the selected tab is deleted (here or on another page), or the address names one that isn't there, go back to "All".
   useEffect(() => {
     if (selectedTabId === undefined || state.screen !== "notes" || selectedTab) return;
-    if (page.name === "notes") navigate({ name: "notes" }, { replace: true });
-    else lastTab.current = undefined;
+    if (page.name === "notes") navigate({ name: "notes", note: page.note }, { replace: true });
+    else lastNotes.current = { name: "notes", note: lastNotes.current.note };
   }, [selectedTabId, selectedTab, state.screen, page.name, navigate]);
 
   const logout = useCallback(async () => {
@@ -352,6 +355,7 @@ export function App() {
             selectedTabId={selectedTab?.id}
             onSelectTab={selectTab}
             editing={tabsBlocked}
+            notesPage={lastNotes.current}
             onNavigate={navigate}
             refreshError={refreshError}
             onRetryRefresh={() => void refreshNotes()}
@@ -370,7 +374,7 @@ export function App() {
                 className="button"
                 onClick={(event) => {
                   event.preventDefault();
-                  navigate({ name: "notes", tab: selectedTab?.id });
+                  navigate(lastNotes.current);
                 }}
               >
                 ← Notes
@@ -490,6 +494,9 @@ export function App() {
               ]}
               onSelectTab={selectTab}
               tabsBlocked={tabsBlocked}
+              openNote={page.name === "notes" ? page.note : undefined}
+              onOpenNoteChange={(note, options) => navigate({ name: "notes", tab: selectedTab?.id, note }, options)}
+              historySkip={historySkip}
               onEditLockChange={setEditLocked}
               stylusMode={stylusMode}
               columns={columns}

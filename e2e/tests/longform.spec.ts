@@ -83,6 +83,70 @@ test.describe("with the page loaded", () => {
     await expect.poll(async () => (await savedNote(page, "Packing list"))?.parentId).toBe(summer?.id);
   });
 
+  test("opening a long-form note is a page in the browser's history: Back saves and closes it, Forward and reloading open it again", async ({ page }) => {
+    const titleBox = editor(page).getByRole("textbox", { name: "Long-form note title" });
+    const details = editor(page).getByRole("textbox", { name: "Details" });
+    await noteRow(page, /^Holiday plans/).getByRole("button", { name: "Edit note" }).click();
+    await expect(page).toHaveURL(/[?&]note=7$/);
+    await details.fill("Flights\nHotel\nVisa");
+    // Back saves it, as Finish does.
+    await page.goBack();
+    await expect(editor(page)).toHaveCount(0);
+    await expect(page).toHaveURL(/\/$/);
+    await expect.poll(async () => (await savedNote(page, "Holiday plans"))?.detailsText).toBe("Flights\nHotel\nVisa");
+    await page.goForward();
+    await expect(details).toHaveValue("Flights\nHotel\nVisa");
+    await page.reload();
+    await expect(details).toHaveValue("Flights\nHotel\nVisa");
+
+    // A long-form note started from it is a page too: its address gets the note's id once it has a title,
+    // and Back goes to the one it was started from.
+    await page.getByRole("button", { name: "Show all tags" }).click();
+    await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+    await expect(titleBox).toHaveValue("");
+    await expect(page).toHaveURL(/[?&]note=new$/);
+    await titleBox.fill("Visa forms");
+    await titleBox.press("Enter");
+    const visa = await savedNote(page, "Visa forms");
+    await expect(page).toHaveURL(new RegExp(`[?&]note=${visa?.id}$`));
+    await page.goBack();
+    await expect(titleBox).toHaveValue("Holiday plans");
+    await page.goForward();
+    await expect(titleBox).toHaveValue("Visa forms");
+    // Finish goes back to the list, and the address without the note.
+    await editor(page).getByRole("button", { name: "Finish" }).click();
+    await expect(editor(page)).toHaveCount(0);
+    await expect(page).not.toHaveURL(/note=/);
+  });
+
+  test("Back or Forward to a long-form note that's been deleted, or is in the Bin, says so; one deleted by Cancel is passed over", async ({ page }) => {
+    await noteRow(page, /^Holiday plans/).getByRole("button", { name: "Edit note" }).click();
+    await editor(page).getByRole("button", { name: "Finish" }).click();
+    await expect(editor(page)).toHaveCount(0);
+    // Put in the Bin (on another device, say).
+    expect((await page.request.put("/api/notes/7/lifetime", { data: { lifetime: "Bin" } })).ok()).toBe(true);
+    await expect(noteRow(page, /^Holiday plans/)).toHaveCount(0);
+    await page.goForward();
+    await expect(page.getByText("That note has been deleted.")).toBeVisible();
+    await expect(editor(page)).toHaveCount(0);
+    await expect(page).not.toHaveURL(/note=/);
+    // A link to a note that isn't there.
+    await page.goto("/?note=999");
+    await expect(page.getByText("That note has been deleted.")).toBeVisible();
+    await expect(page).not.toHaveURL(/note=/);
+
+    // Cancel deletes a new note: Forward doesn't go back to it.
+    await startLongForm(page, "Scratch");
+    await editor(page).getByRole("button", { name: "Cancel" }).click();
+    await expect(editor(page)).toHaveCount(0);
+    await expect(page).not.toHaveURL(/note=/);
+    await page.goForward();
+    await page.waitForTimeout(800);
+    await expect(editor(page)).toHaveCount(0);
+    await expect(page).not.toHaveURL(/note=/);
+    await expect(page.getByText("That note has been deleted.")).toHaveCount(0);
+  });
+
   test("Cancel deletes a new note, asking first if it has details", async ({ page }) => {
     await startLongForm(page, "Nothing yet");
     await editor(page).getByRole("button", { name: "Cancel" }).click();
