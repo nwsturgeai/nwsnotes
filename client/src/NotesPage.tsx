@@ -66,6 +66,7 @@ import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
+import { flashIgnoredTap } from "./ignoredTap";
 import { useCollapsedCategories, useExtraFilters } from "./extraFilters";
 import { PROPERTIES_CATEGORY, PROPERTIES_CATEGORY_ID, noteMatchesProperties, validProperties } from "./propertyFilters";
 import {
@@ -341,6 +342,7 @@ export function NotesPage({
     if (pointerType === "touch") {
       event.preventDefault();
       event.stopPropagation();
+      flashIgnoredTap(event.target);
     }
   }
 

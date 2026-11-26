@@ -65,6 +65,36 @@ test("in stylus mode, a handwritten note is drawn and added", async ({ page, isM
   await expect(handwritten(page)).toHaveCount(2);
 });
 
+test("in stylus mode, a button a finger tap is ignored on flashes red for half a second", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "Finger taps need the touchscreen");
+  await turnOnStylusMode(page);
+  const pad = addArea(page).getByRole("img", { name: "Writing area for a new note" });
+  await draw(page, pad);
+  const notes = await handwritten(page).count();
+
+  // A finger tap on Add does nothing but flash it red.
+  const add = addArea(page).getByRole("button", { name: "Add" });
+  await add.tap();
+  await expect(add).toHaveClass(/ignored-tap/);
+  await expect(add).toHaveCSS("background-color", "rgb(217, 48, 37)");
+  await expect(add).not.toHaveClass(/ignored-tap/, { timeout: 2000 });
+  await expect(add).not.toHaveCSS("background-color", "rgb(217, 48, 37)");
+  await expect(handwritten(page)).toHaveCount(notes);
+  expect(await inkPixels(pad)).toBeGreaterThan(0);
+
+  // In the long-form editor too.
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Sketch");
+  await editor.getByRole("button", { name: "Accept title" }).click();
+  const eraser = editor.getByRole("button", { name: "Eraser" });
+  await eraser.tap();
+  await expect(eraser).toHaveClass(/ignored-tap/);
+  await expect(eraser).toHaveAttribute("aria-pressed", "false");
+  await expect(eraser).not.toHaveClass(/ignored-tap/, { timeout: 2000 });
+});
+
 test("in stylus mode, the expanded add area's five buttons are in one column", async ({ page }) => {
   await turnOnStylusMode(page);
   await page.getByRole("button", { name: "Show all tags" }).click();

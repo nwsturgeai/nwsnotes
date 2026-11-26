@@ -3170,3 +3170,14 @@ body:has(.dragging) {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/*
+ * In stylus mode, a button a finger tap was ignored on flashes red for half a second (see ignoredTap.ts).
+ * It wins over every button's own colours, hover and selected states included.
+ */
+button.ignored-tap,
+[role="menuitem"].ignored-tap {
+  background: #d93025 !important;
+  color: #ffffff !important;
+  transition: none !important;
+}
