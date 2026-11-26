@@ -11,13 +11,13 @@ import {
   faChevronLeft,
   faChevronRight,
   faCircleCheck,
-  faCopy,
   faEraser,
   faPen,
   faShareFromSquare,
   faTags,
   faX,
 } from "@fortawesome/free-solid-svg-icons";
+import { faCopy } from "@fortawesome/free-regular-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   detailsPagesOf,

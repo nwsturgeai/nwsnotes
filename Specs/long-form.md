@@ -19,7 +19,7 @@ A "Finish" icon button at the right-hand end of the strip below the textarea/can
 When creating or editing a long-form note whose details are handwritten, there is an export button in the bottom strip. It exports the handwriting (not the title) as an image, using the device's share options (so it can be saved or sent to another app).
 
 ### Pages of handwritten details
-Handwritten details can have several pages (at most 10), each its own image. In the bottom strip, between the pen-thickness buttons and the export button: the page number and count (e.g. "2/5", always shown, "1/1" for a single page), Previous page and Next page buttons (hidden when the screen is too narrow for them), and a page-options button (`fa-copy`) that opens a menu: Previous page, Next page, Add page after this one, Delete this page.
+Handwritten details can have several pages (at most 10), each its own image. In the bottom strip, between the pen-thickness buttons and the export button: the page number and count (e.g. "2/5", always shown, "1/1" for a single page), Previous page and Next page buttons (hidden when the screen is too narrow for them), and a page-options button (`fa-copy`, outline style) that opens a menu: Previous page, Next page, Add page after this one, Delete this page.
 Next page on the last page asks "This is the last page. Add a new page?"; Yes adds a page and moves to it. Deleting a page asks first. Export joins all the pages into one long image.
 
 ### Eraser
@@ -161,7 +161,7 @@ Changing the parent isn't offered when bulk-editing tags.
   - **Saving:** erasing counts as a change and is autosaved like drawing. When each erase stroke ends, the remaining ink is re-measured, so the saved image is cropped tightly again. A fully erased canvas counts as empty, so Cancel closes without asking.
 - **Pages:**
   - **Data:** `detailsImage` is the first page; `detailsMorePages` (only with `detailsImage`) lists the pages after it in order, each a PNG data URL or `""` for a blank page. It's left out when there's only one page, and has at most 9 entries (10 pages in all). The server refuses (400) more pages, `detailsMorePages` without `detailsImage`, or a page that isn't a PNG within the 2 MB limit. A `PUT` sets exactly the pages it sends: leaving `detailsMorePages` out means a single page. A note shared with you can be deleted by someone it's shared with only when every page is blank.
-  - **Where:** in the bottom row after the pen-thickness buttons, with the same 16px gap: the page counter, Previous page (`fa-chevron-left`), Next page (`fa-chevron-right`) and the page-options button (`fa-copy`), 4px apart; all 40px buttons like the others. They show whenever the details are a canvas, like the eraser.
+  - **Where:** in the bottom row after the pen-thickness buttons, with the same 16px gap: the page counter, Previous page (`fa-chevron-left`), Next page (`fa-chevron-right`) and the page-options button (`fa-copy`, the outline ("regular") version), 4px apart; all 40px buttons like the others. They show whenever the details are a canvas, like the eraser.
   - **Counter:** "2/5" (this page / pages), always shown, "1/1" for a single page. Plain text to the left of the buttons, not a button; its tooltip is "Page 2 of 5".
   - **Narrow screens:** when the bottom row is narrower than 560px, Previous and Next are hidden (they're in the menu too). Below 440px the wider gaps in the row shrink, so everything still fits on a phone.
   - **Previous page:** greyed out on the first page.
