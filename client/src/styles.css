@@ -601,13 +601,12 @@ a:focus-visible {
 }
 
 /*
- * A filter dropdown with something chosen: a thick black border and a light pink background, so the ones
- * narrowing the list stand out. The padding gives back the border's extra width, so its size doesn't change.
+ * A filter dropdown with something chosen: a thick black border, so the ones narrowing the list stand
+ * out. The padding gives back the border's extra width, so its size doesn't change.
  */
 .filter-row .tag-dropdown-button:not(.unset) {
   padding: calc(0.3rem - 1px) calc(0.5rem - 1px);
   border: 2px solid #000000;
-  background: #ffdce6;
 }
 
 /*
