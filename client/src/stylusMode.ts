@@ -120,3 +120,13 @@ export function usePenWidth(): [number, (width: number) => void] {
     String,
   );
 }
+
+/** How the Parent pop-up lists the long-form notes: in the notes' own order, or by title. */
+export type ParentSort = "order" | "alphabetical";
+
+const asStored = (sort: ParentSort) => sort;
+
+/** The Parent pop-up's sort order (default: the notes' order), remembered on this device. */
+export function useParentSort(): [ParentSort, (sort: ParentSort) => void] {
+  return useDeviceSetting<ParentSort>("nwsnotes.parentSort", (stored) => (stored === "alphabetical" ? "alphabetical" : "order"), asStored);
+}

@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { descendantIds, withoutMarkers, type Note } from "@nwsnotes/shared";
 import { longFormTree, possibleParents, shortTitle } from "./parents";
+import { useParentSort } from "./stylusMode";
+
+/** Titles in alphabetical order, ignoring case and formatting markers, with numbers in number order ("2" before "10"). */
+const byTitle = (a: Note, b: Note) =>
+  withoutMarkers(a.titleText ?? "").localeCompare(withoutMarkers(b.titleText ?? ""), undefined, { sensitivity: "base", numeric: true });
 
 interface PillProps {
   /** Every note the user can see, to find the parent's title. */
@@ -63,7 +68,12 @@ export function ParentDialog({ notes, noteOrder, parentId, childId, owner, onSet
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
-  const tree = useMemo(() => longFormTree(possibleParents(notes), noteOrder), [notes, noteOrder]);
+  const [sort, setSort] = useParentSort();
+  // Alphabetical: the notes go in by title with no order of their own, so each note's children are by title too.
+  const tree = useMemo(
+    () => (sort === "alphabetical" ? longFormTree(possibleParents(notes).sort(byTitle), []) : longFormTree(possibleParents(notes), noteOrder)),
+    [notes, noteOrder, sort],
+  );
   /** The note itself and everything under it: choosing one of them would make a loop. */
   const inside = useMemo(() => (childId === undefined ? new Set<number>() : new Set([childId, ...descendantIds(notes, childId)])), [notes, childId]);
 
@@ -93,6 +103,18 @@ export function ParentDialog({ notes, noteOrder, parentId, childId, owner, onSet
       <p id="parent-dialog-title" className="due-date-title">
         Parent note
       </p>
+      {/* How the list is sorted; child notes are always under their parent, sorted the same way among themselves. */}
+      <div className="parent-dialog-sort" role="radiogroup" aria-label="Sort">
+        <span className="parent-dialog-sort-label">Sort:</span>
+        <label>
+          <input type="radio" name="parent-sort" checked={sort === "order"} onChange={() => setSort("order")} />
+          Note order
+        </label>
+        <label>
+          <input type="radio" name="parent-sort" checked={sort === "alphabetical"} onChange={() => setSort("alphabetical")} />
+          Alphabetical
+        </label>
+      </div>
       {tree.length === 0 ? (
         <p className="parent-dialog-empty">There are no long-form notes to choose from.</p>
       ) : (

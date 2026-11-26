@@ -269,3 +269,28 @@ test("emptying the Bin takes the notes inside a deleted note out of it, and goin
   expect((await page.request.post("/api/history/revert", { data: { toChangeId: before.id } })).ok()).toBe(true);
   expect((await savedNote(page.request, "Book flights"))?.parentId).toBe(HOLIDAY_PLANS);
 });
+
+test("the Parent pop-up sorts in note order or alphabetically, with child notes under their parent, and remembers which", async ({ page }) => {
+  await addNote(page.request, "Zebra trip", { long: true });
+  await addNote(page.request, "Seats", { long: true, parentId: HOLIDAY_PLANS });
+  await addNote(page.request, "airlines", { long: true, parentId: HOLIDAY_PLANS });
+  await addNote(page.request, "Apple picking", { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  const titles = () => parentDialog(page).locator(".parent-dialog-list label");
+
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(parentDialog(page).getByRole("radio", { name: "Note order" })).toBeChecked();
+  await expect(titles()).toHaveText(["Holiday plans", "Seats", "airlines", "Zebra trip", "Apple picking"]);
+
+  // Alphabetical (ignoring case): the top-level notes by title, and each one's children by title under it.
+  await parentDialog(page).getByRole("radio", { name: "Alphabetical" }).check();
+  await expect(titles()).toHaveText(["Apple picking", "Holiday plans", "airlines", "Seats", "Zebra trip"]);
+  await parentDialog(page).getByRole("button", { name: "Cancel" }).click();
+
+  // Remembered on this device.
+  await page.reload();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(parentDialog(page).getByRole("radio", { name: "Alphabetical" })).toBeChecked();
+  await expect(titles()).toHaveText(["Apple picking", "Holiday plans", "airlines", "Seats", "Zebra trip"]);
+});
