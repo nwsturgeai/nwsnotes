@@ -27,7 +27,13 @@ export interface Note {
    * (a PNG data URL); having one is what makes a note long-form. Both start empty ("").
    */
   detailsText?: string;
+  /** Handwritten details: the first page. Any further pages are in detailsMorePages. */
   detailsImage?: string;
+  /**
+   * Handwritten details' pages after the first, in order, each a PNG data URL or "" (a blank page).
+   * Only with detailsImage, and left out when there's just the one page; at most MAX_DETAILS_PAGES - 1.
+   */
+  detailsMorePages?: string[];
   /**
    * For a child note: its parent's id, a long-form note in the same notebook. Any note can have one,
    * long-form notes included, so long-form notes can form a tree (never a loop).
@@ -349,7 +355,9 @@ export function mergeNoteOrders(orders: number[][]): number[] {
 export type NoteTitle = { titleText: string; titleImage?: never } | { titleImage: string; titleText?: never };
 
 /** A long-form note's details: typed text or a drawing (either may be empty). */
-export type NoteDetails = { detailsText: string; detailsImage?: never } | { detailsImage: string; detailsText?: never };
+export type NoteDetails =
+  | { detailsText: string; detailsImage?: never; detailsMorePages?: never }
+  | { detailsImage: string; detailsMorePages?: string[]; detailsText?: never };
 
 /**
  * Body of POST /api/notes and PUT /api/notes/:id. Details make it a long-form note;
@@ -372,7 +380,7 @@ export type NewNoteRequest = NoteTitle & {
    * after a refusal), the edit replaces whatever is there.
    */
   baseModifiedDateTime?: string;
-} & (NoteDetails | { detailsText?: never; detailsImage?: never });
+} & (NoteDetails | { detailsText?: never; detailsImage?: never; detailsMorePages?: never });
 
 /** Body of PUT /api/notes/:id/lifetime. tagsChangedDateTime: when it was changed offline (used if valid and not in the future). */
 export interface LifetimeRequest {
@@ -578,6 +586,11 @@ export function isStylusNote(note: Pick<Note, "titleImage" | "detailsImage">): b
   return note.titleImage !== undefined || note.detailsImage !== undefined;
 }
 
+/** Handwritten details' pages, in order (each a PNG data URL, or "" for a blank page); empty for other notes. */
+export function detailsPagesOf(note: Pick<Note, "detailsImage" | "detailsMorePages">): string[] {
+  return note.detailsImage === undefined ? [] : [note.detailsImage, ...(note.detailsMorePages ?? [])];
+}
+
 /** GET /api/me/stats: the logged-in user's number of notes, and the space they take in the database (bytes). */
 export interface NoteStats {
   noteCount: number;
@@ -696,6 +709,8 @@ export const TITLE_IMAGE_MAX_LENGTH = 200 * 1024;
 
 /** Maximum length of a long-form note's details drawing (data URL), in characters. */
 export const DETAILS_IMAGE_MAX_LENGTH = 2 * 1024 * 1024;
+/** The most pages handwritten details can have. Each page is one image, of up to DETAILS_IMAGE_MAX_LENGTH. */
+export const MAX_DETAILS_PAGES = 10;
 export const DETAILS_TEXT_MAX_LENGTH = 10_000;
 
 /** Checks a handwritten image: a PNG data URL within the size limit. `what` is e.g. "The handwritten note". */
@@ -716,12 +731,16 @@ export function validateTitleImage(raw: unknown, maxLength = TITLE_IMAGE_MAX_LEN
 
 /**
  * Checks a long-form note's details, if any: exactly one of detailsText or detailsImage, either of
- * which may be empty. Returns undefined details for a regular note.
+ * which may be empty. Handwritten details may also have detailsMorePages (more pages, each an image or
+ * empty). Returns undefined details for a regular note.
  */
 export function validateNoteDetails(body: unknown): { ok: true; details?: NoteDetails } | { ok: false; error: string } {
-  const { detailsText, detailsImage } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  const { detailsText, detailsImage, detailsMorePages } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
   if (detailsText !== undefined && detailsImage !== undefined) {
     return { ok: false, error: "A long-form note has typed or handwritten details, not both." };
+  }
+  if (detailsMorePages !== undefined && detailsImage === undefined) {
+    return { ok: false, error: "Only handwritten details can have more than one page." };
   }
   if (detailsText !== undefined) {
     if (typeof detailsText !== "string") return { ok: false, error: "The details must be text." };
@@ -734,11 +753,27 @@ export function validateNoteDetails(body: unknown): { ok: true; details?: NoteDe
     return { ok: true, details: { detailsText } };
   }
   if (detailsImage !== undefined) {
-    if (detailsImage === "") return { ok: true, details: { detailsImage: "" } };
-    const image = validateTitleImage(detailsImage, DETAILS_IMAGE_MAX_LENGTH, "The handwritten details");
-    return image.ok ? { ok: true, details: { detailsImage: image.value } } : image;
+    const first = checkDetailsPage(detailsImage, "The handwritten details");
+    if (!first.ok) return first;
+    if (detailsMorePages === undefined) return { ok: true, details: { detailsImage: first.value } };
+    if (!Array.isArray(detailsMorePages)) return { ok: false, error: "The handwritten details' pages must be a list." };
+    if (detailsMorePages.length > MAX_DETAILS_PAGES - 1) {
+      return { ok: false, error: `The handwritten details have ${detailsMorePages.length + 1} pages; the most is ${MAX_DETAILS_PAGES}.` };
+    }
+    const more: string[] = [];
+    for (const [index, page] of detailsMorePages.entries()) {
+      const check = checkDetailsPage(page, `Page ${index + 2} of the handwritten details`);
+      if (!check.ok) return check;
+      more.push(check.value);
+    }
+    return { ok: true, details: more.length > 0 ? { detailsImage: first.value, detailsMorePages: more } : { detailsImage: first.value } };
   }
   return { ok: true };
+}
+
+/** One page of handwritten details: empty, or a PNG data URL within the size limit. */
+function checkDetailsPage(raw: unknown, what: string): Check<string> {
+  return raw === "" ? { ok: true, value: "" } : validateTitleImage(raw, DETAILS_IMAGE_MAX_LENGTH, what);
 }
 
 /** Checks a note's due date, if any: a valid date-time, returned as ISO 8601 UTC. */

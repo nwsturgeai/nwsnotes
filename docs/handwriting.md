@@ -22,7 +22,8 @@ In stylus mode, a new [long-form note](long-form.md) has a whole page to write o
 
 - the **eraser** button: while it's on, the pen rubs out instead of writing (the end of the pen may work as an eraser too);
 - the **pen thickness** buttons;
-- the **share** button, which saves the page as a picture, or sends it to another app.
+- the **pages**: which page you're on (such as **2/5**), the **‹** and **›** buttons to turn back and forward, and the **pages** button, with a menu to add a page after this one or delete this page. Tapping **›** on the last page asks whether to add a new page. A note can have up to 10 pages. (On a narrow screen the ‹ and › buttons are hidden; use the menu. On a phone the pen thickness buttons are hidden too; use Settings.)
+- the **share** button, which saves all the pages as one long picture, or sends it to another app.
 
 ## Editing handwritten notes
 

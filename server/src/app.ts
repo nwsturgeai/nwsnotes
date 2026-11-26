@@ -76,8 +76,8 @@ export function createApp(
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(redirectToSiteHost(config));
-  // Large enough for a long-form note's handwritten details (at most 2 MB).
-  app.use(express.json({ limit: "3mb" }));
+  // Large enough for a long-form note's handwritten details: up to 10 pages of up to 2 MB each.
+  app.use(express.json({ limit: "24mb" }));
 
   const cookieOptions = {
     httpOnly: true,

@@ -22,6 +22,8 @@ export interface StylusPadHandle {
    * background, or on `background` (e.g. white, for exporting).
    */
   toImage(background?: string): string;
+  /** The same cropped writing as a canvas (for joining several pads' writing into one image). */
+  toCanvas(background?: string): HTMLCanvasElement;
   clear(): void;
 }
 
@@ -122,26 +124,30 @@ export function StylusPad({ ref, disabled, onInk, onInkChange, erasing, initialI
     image.src = dataUrl;
   }
 
+  /** The writing, cropped to what was written plus a margin, on `background` if given. */
+  function croppedCanvas(background?: string): HTMLCanvasElement {
+    const canvas = canvasRef.current!;
+    const b = bounds.current!;
+    const left = Math.max(0, Math.floor((b.minX - CROP_MARGIN) * INK_SCALE));
+    const top = Math.max(0, Math.floor((b.minY - CROP_MARGIN) * INK_SCALE));
+    const right = Math.min(canvas.width, Math.ceil((b.maxX + CROP_MARGIN) * INK_SCALE));
+    const bottom = Math.min(canvas.height, Math.ceil((b.maxY + CROP_MARGIN) * INK_SCALE));
+    const cropped = document.createElement("canvas");
+    cropped.width = right - left;
+    cropped.height = bottom - top;
+    const context = cropped.getContext("2d")!;
+    if (background) {
+      context.fillStyle = background;
+      context.fillRect(0, 0, cropped.width, cropped.height);
+    }
+    context.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
+    return cropped;
+  }
+
   useImperativeHandle(ref, () => ({
     hasInk: () => bounds.current !== undefined,
-    toImage: (background?: string) => {
-      const canvas = canvasRef.current!;
-      const b = bounds.current!;
-      const left = Math.max(0, Math.floor((b.minX - CROP_MARGIN) * INK_SCALE));
-      const top = Math.max(0, Math.floor((b.minY - CROP_MARGIN) * INK_SCALE));
-      const right = Math.min(canvas.width, Math.ceil((b.maxX + CROP_MARGIN) * INK_SCALE));
-      const bottom = Math.min(canvas.height, Math.ceil((b.maxY + CROP_MARGIN) * INK_SCALE));
-      const cropped = document.createElement("canvas");
-      cropped.width = right - left;
-      cropped.height = bottom - top;
-      const context = cropped.getContext("2d")!;
-      if (background) {
-        context.fillStyle = background;
-        context.fillRect(0, 0, cropped.width, cropped.height);
-      }
-      context.drawImage(canvas, left, top, cropped.width, cropped.height, 0, 0, cropped.width, cropped.height);
-      return cropped.toDataURL("image/png");
-    },
+    toImage: (background?: string) => croppedCanvas(background).toDataURL("image/png"),
+    toCanvas: croppedCanvas,
     clear,
   }));
 

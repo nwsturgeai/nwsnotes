@@ -6,9 +6,22 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faCircleCheck, faEraser, faPen, faShareFromSquare, faTags, faX } from "@fortawesome/free-solid-svg-icons";
+import {
+  faCheck,
+  faChevronLeft,
+  faChevronRight,
+  faCircleCheck,
+  faEraser,
+  faPen,
+  faShareFromSquare,
+  faTags,
+  faX,
+} from "@fortawesome/free-solid-svg-icons";
+import { faCopy } from "@fortawesome/free-regular-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
+  detailsPagesOf,
+  MAX_DETAILS_PAGES,
   NOTE_CHANGED_ELSEWHERE,
   TITLE_MAX_LENGTH,
   validateTitle,
@@ -64,6 +77,24 @@ interface Props {
   onSessionExpired: () => void;
 }
 
+const PAGE_LIMIT_HINT = `${MAX_DETAILS_PAGES} pages is the most a note can have`;
+
+/** Space between the pages in an exported image, in canvas pixels, with a thin grey line across its middle. */
+const EXPORT_PAGE_GAP = 32;
+
+/** In stylus mode, finger and palm taps on the editor's bottom-row buttons are ignored (a stylus or mouse works). */
+function ignoredTap(stylusMode: boolean, event: ReactMouseEvent): boolean {
+  return stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch";
+}
+
+/** One page of handwritten details: a key for its canvas, and the saved image it starts from (if any). */
+interface DetailsPage {
+  key: number;
+  image?: string;
+}
+
+let nextPageKey = 1;
+
 /** The note's tags as dropdown selections. */
 function selectionFor(note: Note | undefined, categories: Category[]): TagSelection {
   if (!note) return {};
@@ -108,7 +139,6 @@ export function LongFormEditor({
     note ? (note.detailsImage !== undefined ? "image" : "text") : stylusMode ? "image" : "text",
   );
   const [detailsText, setDetailsText] = useState(note?.detailsText ?? "");
-  const padRef = useRef<StylusPadHandle>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const detailsRef = useRef<HTMLTextAreaElement>(null);
   /** The formatted copy of the typed details, under the text box; it scrolls with it. */
@@ -125,8 +155,31 @@ export function LongFormEditor({
   const [erasing, setErasing] = useState(false);
   /** The device's pen thickness, also chosen with the buttons beside the eraser. */
   const [penWidth, setPenWidth] = usePenWidth();
-  /** Whether the details canvas has any ink, for the export button. */
-  const [padHasInk, setPadHasInk] = useState(false);
+  /**
+   * Handwritten details' pages. Each has its own canvas; they're all kept (stacked, only the current
+   * one shown), so turning the page never redraws or moves what's written.
+   */
+  const [pages, setPages] = useState<DetailsPage[]>(() => {
+    const images = note ? detailsPagesOf(note) : [];
+    return (images.length > 0 ? images : [""]).map((image) => ({ key: nextPageKey++, ...(image && { image }) }));
+  });
+  const [pageIndex, setPageIndex] = useState(0);
+  /** Each page's canvas, by its key. */
+  const pads = useRef(new Map<number, StylusPadHandle>());
+  /** Which pages' canvases have any ink (by key), for the export button. */
+  const [inkedPages, setInkedPages] = useState<ReadonlySet<number>>(new Set());
+  const padHasInk = pages.some((page) => inkedPages.has(page.key));
+  /** Where the open page menu sits on the window (above its button), if it's open. */
+  const [pageMenu, setPageMenu] = useState<{ bottom: number; left: number }>();
+  const pageMenuRef = useRef<HTMLDivElement>(null);
+  const pageMenuButton = useRef<HTMLButtonElement>(null);
+  /** "Next page" on the last page asks whether to add one. */
+  const [confirmingAddPage, setConfirmingAddPage] = useState(false);
+  const [confirmingDeletePage, setConfirmingDeletePage] = useState(false);
+
+  /** The pages as they are now, for saves that run from a timer. */
+  const pagesRef = useRef(pages);
+  pagesRef.current = pages;
 
   // The latest values, for saves that run from a timer.
   const latest = useRef({ selection, detailsText, parentId });
@@ -155,11 +208,18 @@ export function LongFormEditor({
   }
 
   const detailsEditable = titleLocked && noteId !== undefined;
+  /** As many pages as handwritten details can have: no more can be added. */
+  const atPageLimit = pages.length >= MAX_DETAILS_PAGES;
+
+  /** Each page's canvas, in page order. */
+  function pagePads(): (StylusPadHandle | undefined)[] {
+    return pagesRef.current.map((page) => pads.current.get(page.key));
+  }
 
   function currentDetails(): NoteDetails {
     if (kind === "text") return { detailsText: latest.current.detailsText };
-    const pad = padRef.current;
-    return { detailsImage: pad?.hasInk() ? pad.toImage() : "" };
+    const [first = "", ...more] = pagePads().map((pad) => (pad?.hasInk() ? pad.toImage() : ""));
+    return { detailsImage: first, detailsMorePages: more };
   }
 
   /** The note as it is now. An update says the parent either way (null for none); a new note only has one if chosen. */
@@ -301,7 +361,7 @@ export function LongFormEditor({
 
   /** In stylus mode, Finish ignores finger and palm taps (a stylus or mouse works). */
   function onFinishClick(event: ReactMouseEvent) {
-    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    if (ignoredTap(stylusMode, event)) return;
     void finish();
   }
 
@@ -358,26 +418,131 @@ export function LongFormEditor({
 
   /** In stylus mode, finger and palm taps on the eraser button are ignored, like Finish. */
   function onEraserClick(event: ReactMouseEvent) {
-    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    if (ignoredTap(stylusMode, event)) return;
     setErasing(!erasing);
   }
 
   /** A pen-thickness button: chooses it (for every canvas on this device) and turns the eraser off. */
   function onPenWidthClick(event: ReactMouseEvent, width: number) {
-    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
+    if (ignoredTap(stylusMode, event)) return;
     setPenWidth(width);
     setErasing(false);
   }
 
+  /** Turns to another page (the menu closes). */
+  function goToPage(index: number) {
+    setPageMenu(undefined);
+    setPageIndex(Math.max(0, Math.min(pagesRef.current.length - 1, index)));
+  }
+
+  function onPreviousPage(event: ReactMouseEvent) {
+    if (ignoredTap(stylusMode, event)) return;
+    goToPage(pageIndex - 1);
+  }
+
+  /** Next page; on the last page, asks whether to add one (unless there are already as many as there can be). */
+  function onNextPage(event: ReactMouseEvent) {
+    if (ignoredTap(stylusMode, event)) return;
+    if (pageIndex < pages.length - 1) goToPage(pageIndex + 1);
+    else if (pages.length < MAX_DETAILS_PAGES) {
+      setPageMenu(undefined);
+      setConfirmingAddPage(true);
+    }
+  }
+
+  /** Adds a blank page after the current one, and turns to it. Saved like any other change. */
+  function addPage() {
+    setConfirmingAddPage(false);
+    setPageMenu(undefined);
+    if (pagesRef.current.length >= MAX_DETAILS_PAGES) return;
+    const next = [...pagesRef.current];
+    next.splice(pageIndex + 1, 0, { key: nextPageKey++ });
+    pagesRef.current = next;
+    setPages(next);
+    setPageIndex(pageIndex + 1);
+    schedule();
+  }
+
+  /** Deletes the current page (never the only one), and shows the one before it (or the new first page). */
+  function deletePage() {
+    setConfirmingDeletePage(false);
+    if (pagesRef.current.length <= 1) return;
+    const next = pagesRef.current.filter((_, index) => index !== pageIndex);
+    pagesRef.current = next;
+    setPages(next);
+    setPageIndex(Math.max(0, pageIndex - 1));
+    schedule();
+  }
+
+  function togglePageMenu(event: ReactMouseEvent) {
+    if (ignoredTap(stylusMode, event)) return;
+    const rect = pageMenuButton.current?.getBoundingClientRect();
+    if (pageMenu || !rect) setPageMenu(undefined);
+    else setPageMenu({ bottom: window.innerHeight - rect.top + 4, left: rect.left });
+  }
+
+  // The page menu closes when clicking elsewhere, pressing Escape or resizing.
+  useEffect(() => {
+    if (!pageMenu) return;
+    const close = () => setPageMenu(undefined);
+    const onPointerDown = (event: PointerEvent) => {
+      if (!pageMenuRef.current?.contains(event.target as Node)) close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", close);
+    };
+  }, [pageMenu]);
+
+  /** A page menu item: ignores finger taps in stylus mode, like the buttons. */
+  function menuAction(action: () => void) {
+    return (event: ReactMouseEvent) => {
+      if (!ignoredTap(stylusMode, event)) action();
+    };
+  }
+
   /**
-   * Exports the handwritten details as a PNG (black on white, cropped to the ink): through the device's
-   * share sheet where the browser can share files (Android), otherwise as a download.
+   * The handwritten details as one PNG (black on white): each page with writing, cropped to its ink,
+   * one under another (lined up on the left), with a thin grey line between pages. Blank pages are left out.
+   */
+  function exportImage(): string | undefined {
+    const parts = pagePads()
+      .filter((pad) => pad?.hasInk())
+      .map((pad) => pad!.toCanvas("#fff"));
+    if (parts.length === 0) return undefined;
+    const joined = document.createElement("canvas");
+    joined.width = Math.max(...parts.map((part) => part.width));
+    joined.height = parts.reduce((total, part) => total + part.height, 0) + EXPORT_PAGE_GAP * (parts.length - 1);
+    const context = joined.getContext("2d")!;
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, joined.width, joined.height);
+    let top = 0;
+    parts.forEach((part, index) => {
+      if (index > 0) {
+        context.fillStyle = "#ccc";
+        context.fillRect(0, top - EXPORT_PAGE_GAP / 2 - 1, joined.width, 2);
+      }
+      context.drawImage(part, 0, top);
+      top += part.height + EXPORT_PAGE_GAP;
+    });
+    return joined.toDataURL("image/png");
+  }
+
+  /**
+   * Exports the handwritten details (every page) as a PNG: through the device's share sheet where the
+   * browser can share files (Android), otherwise as a download.
    */
   function onExportClick(event: ReactMouseEvent) {
-    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
-    const pad = padRef.current;
-    if (!pad?.hasInk()) return;
-    const dataUrl = pad.toImage("#fff");
+    if (ignoredTap(stylusMode, event)) return;
+    const dataUrl = exportImage();
+    if (!dataUrl) return;
     const file = new File([dataUrlToBlob(dataUrl)], exportFileName(title), { type: "image/png" });
     // Shared straight away (no waiting first), as sharing needs the tap that asked for it.
     if (navigator.canShare?.({ files: [file] })) {
@@ -395,8 +560,8 @@ export function LongFormEditor({
 
   /** Cancel (new notes only): straight away if there are no details, otherwise after asking. */
   function onCancelClick(event: ReactMouseEvent) {
-    if (stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch") return;
-    const empty = kind === "text" ? latest.current.detailsText.trim() === "" : !padRef.current?.hasInk();
+    if (ignoredTap(stylusMode, event)) return;
+    const empty = kind === "text" ? latest.current.detailsText.trim() === "" : !pagePads().some((pad) => pad?.hasInk());
     if (empty) void cancel();
     else setConfirmingCancel(true);
   }
@@ -557,16 +722,32 @@ export function LongFormEditor({
             />
           </div>
         ) : (
-          <StylusPad
-            ref={padRef}
-            fill
-            label="Details of the long-form note"
-            disabled={!detailsEditable}
-            erasing={erasing}
-            initialImage={note?.detailsImage || undefined}
-            onInk={schedule}
-            onInkChange={setPadHasInk}
-          />
+          pages.map((page, index) => (
+            // Every page's canvas stays, stacked; only the current one is shown (and can be written on).
+            <div key={page.key} className={index === pageIndex ? "lf-page" : "lf-page hidden"}>
+              <StylusPad
+                ref={(handle) => {
+                  if (handle) pads.current.set(page.key, handle);
+                  else pads.current.delete(page.key);
+                }}
+                fill
+                label="Details of the long-form note"
+                disabled={!detailsEditable || index !== pageIndex}
+                erasing={erasing}
+                initialImage={page.image}
+                onInk={schedule}
+                onInkChange={(inked) =>
+                  setInkedPages((was) => {
+                    if (was.has(page.key) === inked) return was;
+                    const next = new Set(was);
+                    if (inked) next.add(page.key);
+                    else next.delete(page.key);
+                    return next;
+                  })
+                }
+              />
+            </div>
+          ))
         )}
         {!detailsEditable && kind === "image" && (
           <p className="lf-locked-hint">{noteId === undefined ? "Accept the title to write the details" : "Accept the title to keep writing"}</p>
@@ -580,7 +761,7 @@ export function LongFormEditor({
       )}
 
       <div className="lf-finish">
-        {/* At the far left, then the pen thicknesses; Cancel and Finish are at the far right. */}
+        {/* At the far left, then the pen thicknesses and the pages; Export, Cancel and Finish are at the far right. */}
         {kind === "image" && (
           <>
           <button
@@ -611,6 +792,87 @@ export function LongFormEditor({
                 <span className="lf-pen-size">{width}px</span>
               </button>
             ))}
+          </div>
+          <div className="lf-pages" role="group" aria-label="Pages">
+            <span className="lf-page-count" title={`Page ${pageIndex + 1} of ${pages.length}`}>
+              {pageIndex + 1}/{pages.length}
+            </span>
+            {/* Hidden when the row is too narrow for them; they're in the menu too. */}
+            <button
+              type="button"
+              className="icon-button lf-page-step"
+              aria-label="Previous page"
+              title="Previous page"
+              disabled={busy || !detailsEditable || pageIndex === 0}
+              onClick={onPreviousPage}
+            >
+              <FontAwesomeIcon icon={faChevronLeft} />
+            </button>
+            <button
+              type="button"
+              className="icon-button lf-page-step"
+              aria-label="Next page"
+              title={atPageLimit && pageIndex === pages.length - 1 ? PAGE_LIMIT_HINT : "Next page"}
+              disabled={busy || !detailsEditable || (atPageLimit && pageIndex === pages.length - 1)}
+              onClick={onNextPage}
+            >
+              <FontAwesomeIcon icon={faChevronRight} />
+            </button>
+            <div className="lf-page-menu" ref={pageMenuRef}>
+              <button
+                ref={pageMenuButton}
+                type="button"
+                className="icon-button"
+                aria-label="Page options"
+                title="Page options"
+                aria-haspopup="menu"
+                aria-expanded={pageMenu !== undefined}
+                disabled={busy || !detailsEditable}
+                onClick={togglePageMenu}
+              >
+                <FontAwesomeIcon icon={faCopy} />
+              </button>
+              {pageMenu && (
+                <div className="tag-dropdown-list lf-page-menu-list" role="menu" aria-label="Page options" style={pageMenu}>
+                  <button type="button" role="menuitem" className="tag-option" disabled={pageIndex === 0} onClick={menuAction(() => goToPage(pageIndex - 1))}>
+                    Previous page
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tag-option"
+                    disabled={atPageLimit && pageIndex === pages.length - 1}
+                    title={atPageLimit && pageIndex === pages.length - 1 ? PAGE_LIMIT_HINT : undefined}
+                    onClick={onNextPage}
+                  >
+                    Next page
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tag-option"
+                    disabled={atPageLimit}
+                    title={atPageLimit ? PAGE_LIMIT_HINT : undefined}
+                    onClick={menuAction(addPage)}
+                  >
+                    Add page after this one
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="tag-option"
+                    disabled={pages.length <= 1}
+                    title={pages.length <= 1 ? "A note always has at least one page" : undefined}
+                    onClick={menuAction(() => {
+                      setPageMenu(undefined);
+                      setConfirmingDeletePage(true);
+                    })}
+                  >
+                    Delete this page
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <button
             type="button"
@@ -661,6 +923,25 @@ export function LongFormEditor({
           owner={note?.shared ? { id: note.shared.ownerId, name: note.shared.ownerName } : sharedTagsOwner(categories, selection)}
           onSet={changeParent}
           onCancel={() => setChoosingParent(false)}
+        />
+      )}
+      {confirmingAddPage && (
+        <ConfirmDialog
+          message="This is the last page. Add a new page?"
+          confirmLabel="Yes"
+          cancelLabel="No"
+          danger={false}
+          onConfirm={addPage}
+          onCancel={() => setConfirmingAddPage(false)}
+        />
+      )}
+      {confirmingDeletePage && (
+        <ConfirmDialog
+          message="Delete this page?"
+          confirmLabel="Yes"
+          cancelLabel="No"
+          onConfirm={deletePage}
+          onCancel={() => setConfirmingDeletePage(false)}
         />
       )}
       {confirmingCancel && (
