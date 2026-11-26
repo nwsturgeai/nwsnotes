@@ -3181,3 +3181,44 @@ button.ignored-tap,
   color: #ffffff !important;
   transition: none !important;
 }
+
+/* The Long-form filter's list: each option after a caret button that folds away the notes inside it (or a space). */
+.tag-dropdown-tree-row {
+  display: flex;
+  align-items: center;
+}
+
+.tag-dropdown-tree-row:hover {
+  background: var(--bg);
+}
+
+.tag-dropdown-tree-row label {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0.25rem;
+}
+
+.tag-dropdown-tree-row label:hover {
+  background: none;
+}
+
+.tag-dropdown-caret {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.8rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+button.tag-dropdown-caret {
+  cursor: pointer;
+}
+
+button.tag-dropdown-caret:hover {
+  color: var(--text);
+}

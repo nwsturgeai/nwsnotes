@@ -94,7 +94,7 @@ test("the Long-form filter lists the tab's long-form notes as a tree, and shows 
   const list = longFormFilter(page);
   await expect(list.locator("label")).toHaveText(["Holiday plans(4)", "Flight options(2)"]);
   // The child is indented under its parent.
-  const indent = async (name: string) => list.locator("label").filter({ hasText: name }).evaluate((label) => parseFloat(getComputedStyle(label).paddingLeft));
+  const indent = async (name: string) => (await list.getByRole("checkbox", { name: new RegExp(`^${name}`) }).boundingBox())!.x;
   expect(await indent("Flight options")).toBeGreaterThan(await indent("Holiday plans"));
 
   // Ticking the parent ticks (and locks) the long-form note inside it, and lists the whole tree.
@@ -126,6 +126,39 @@ test("the Long-form filter lists the tab's long-form notes as a tree, and shows 
   // A tab with no long-form notes has no Long-form dropdown.
   await selectTab(page, "Work");
   await expect(page.getByRole("button", { name: /^Long-form: / })).toHaveCount(0);
+});
+
+test("the Long-form filter's caret buttons fold away and show the notes inside a note, at every depth", async ({ page }) => {
+  const flights = await addNote(page.request, "Flight options", { long: true, parentId: HOLIDAY_PLANS });
+  await addNote(page.request, "Airlines", { long: true, parentId: flights.id });
+  await openNotes(page);
+  await page.getByRole("button", { name: /^Long-form: / }).click();
+  const list = longFormFilter(page);
+  await expect(list.locator("label")).toHaveText([/^Holiday plans/, /^Flight options/, /^Airlines/]);
+  // Notes without notes inside them have no caret, but their tick boxes line up with those that do.
+  await expect(list.getByRole("button", { name: /^Hide the notes inside/ })).toHaveCount(2);
+
+  // Folding Holiday plans hides everything inside it, at every depth; the list stays open and nothing is ticked.
+  const holiday = list.getByRole("button", { name: "Hide the notes inside Holiday plans" });
+  await expect(holiday).toHaveAttribute("aria-expanded", "true");
+  await holiday.click();
+  await expect(list.locator("label")).toHaveText([/^Holiday plans/]);
+  const show = list.getByRole("button", { name: "Show the notes inside Holiday plans" });
+  await expect(show).toHaveAttribute("aria-expanded", "false");
+  await expect(list.getByRole("checkbox", { name: /^Holiday plans/ })).not.toBeChecked();
+
+  // Showing them again; then folding Flight options hides only what's inside it.
+  await show.click();
+  await expect(list.locator("label")).toHaveText([/^Holiday plans/, /^Flight options/, /^Airlines/]);
+  await list.getByRole("button", { name: "Hide the notes inside Flight options" }).click();
+  await expect(list.locator("label")).toHaveText([/^Holiday plans/, /^Flight options/]);
+
+  // Ticks are unchanged by folding; reopening the list shows every note again.
+  await list.getByRole("checkbox", { name: /^Flight options/ }).check();
+  expect(await noteTitles(page)).toEqual(["Flight options", "Airlines"]);
+  await page.getByRole("button", { name: /^Long-form: / }).click();
+  await page.getByRole("button", { name: /^Long-form: / }).click();
+  await expect(longFormFilter(page).locator("label")).toHaveText([/^Holiday plans/, /^Flight options/, /^Airlines/]);
 });
 
 test("tapping a long-form note's child count shows it with the notes inside it", async ({ page }) => {

@@ -1355,6 +1355,7 @@ export function NotesPage({
                     checkLists
                     counts={{ byTag: filterCounts.byLongForm, total: filterCounts.total }}
                     indents={new Map(longFormOptions.map(({ note, depth }) => [note.id, depth]))}
+                    foldable
                     implied={{
                       ids: new Set([...(longFormShown ?? [])].filter((id) => !longFormTicks.includes(id))),
                       hint: "Ticked because a note it's inside is ticked",
