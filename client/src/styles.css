@@ -1490,7 +1490,7 @@ body:has(.note-list li.dragging) {
   pointer-events: none;
 }
 
-/* The editor's bottom row: the eraser and pen thicknesses at the left, Cancel and Finish at the right. */
+/* The editor's bottom row: the eraser and pen thicknesses at the left; Export, Cancel and Finish at the right. */
 .lf-finish {
   display: flex;
   align-items: center;
@@ -1504,9 +1504,15 @@ body:has(.note-list li.dragging) {
   margin-left: 12px;
 }
 
-/* Export, after the pen thicknesses with the same wider gap. */
+/* Export, pushed over to the right: a 24px gap (with the row's own 4px) before Cancel and Finish. */
 .lf-export {
-  margin-left: 12px;
+  margin-left: auto;
+  margin-right: 20px;
+}
+
+/* Export has already taken the free space, so Cancel and Finish sit just after it. */
+.lf-export + .lf-finish-end {
+  margin-left: 0;
 }
 
 /* Each pen button: a short line at its thickness, with its size in small text underneath. */

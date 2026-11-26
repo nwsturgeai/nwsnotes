@@ -124,6 +124,9 @@ test("the long-form editor has pen-thickness buttons beside the eraser, sharing 
   expect(Math.round(row.x + row.width - (finish.x + finish.width))).toBe(0);
   expect(cancel.x).toBeLessThan(finish.x);
   expect(finish.width).toBe(40);
+  // Export is over at the right too, a little way before Cancel.
+  const exportBox = (await editor.getByRole("button", { name: "Export as image" }).boundingBox())!;
+  expect(Math.round(cancel.x - (exportBox.x + exportBox.width))).toBe(24);
 
   // Choosing a thickness turns the eraser off, and draws at it.
   await eraser.click();

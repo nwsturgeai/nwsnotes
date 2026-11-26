@@ -580,7 +580,7 @@ export function LongFormEditor({
       )}
 
       <div className="lf-finish">
-        {/* At the far left, then the pen thicknesses; Cancel and Finish are at the far right. */}
+        {/* At the far left, then the pen thicknesses; Export, Cancel and Finish are at the far right. */}
         {kind === "image" && (
           <>
           <button
