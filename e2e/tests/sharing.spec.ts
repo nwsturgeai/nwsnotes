@@ -326,10 +326,12 @@ test("the owner's shared tags show the icon in the tag pickers", async ({ page, 
   await expect(filterList.getByRole("checkbox", { name: "Shopping (1)" })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  // The add area's dropdowns (the tests' default).
+  // The add area's dropdowns (a category collapsed from pills).
+  await addArea(page).getByRole("button", { name: "Show Topic as a dropdown" }).click();
   await addArea(page).getByRole("button", { name: /^Topic:/ }).click();
   await expect(icon(page.locator(".tag-dropdown-list"), "Shopping")).toHaveCount(1);
   await page.keyboard.press("Escape");
+  await addArea(page).getByRole("button", { name: "Show Topic as pills" }).click();
 
   // Its pills ("Show all tags") do, and so do multi-select's.
   await page.getByRole("button", { name: "Show all tags" }).click();

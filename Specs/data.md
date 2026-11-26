@@ -90,5 +90,5 @@ Bulk changes (such as Empty Bin, or changing the tags of several notes at once) 
   - Afterwards, a short message says how many changes were undone, and the new change shows at the top of the list.
   - "Load older changes" at the bottom, while there are more.
   - It needs the server, so the link is greyed out offline, like the settings cog.
-- **Not in the history:** device settings (stylus mode, columns, pen thickness, full-tag-list mode, a tab's additional filters), push devices, and logging in or out.
+- **Not in the history:** device settings (stylus mode, columns, pen thickness, full-tag-list mode, a tab's additional filters and which add-area categories are dropdowns), push devices, and logging in or out.
 - **Tests:** a new `history.spec.ts`. Changes are listed with their summaries. Going back undoes later notes, edits, Lifetime changes and settings changes. A bulk change is undone in one step. A revert can itself be undone. Long-form autosaves make one change.

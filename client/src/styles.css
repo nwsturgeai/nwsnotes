@@ -1045,8 +1045,8 @@ body:has(.note-list li.dragging) {
 
 /*
  * In full-tag-list mode the area itself doesn't scroll: the title box or canvas, any message and the
- * buttons stay put, and only the pills scroll. (Collapsed, the whole area scrolls, since the dropdowns'
- * lists would be cut off in a separately scrolling strip.)
+ * buttons stay put, and only the tags (dropdowns and pills) scroll. The dropdowns' lists are placed on
+ * the window, so the scrolling strip doesn't cut them off. Collapsed, the whole area scrolls.
  */
 .new-note.full,
 .new-note.full form,
@@ -1080,6 +1080,7 @@ body:has(.note-list li.dragging) {
   flex: none;
 }
 
+.new-note.full .new-note-main > .tag-mixed-picker,
 .new-note.full .new-note-main > .tag-pill-picker {
   flex: 1 1 auto;
   min-height: 0;
@@ -1150,6 +1151,52 @@ body:has(.note-list li.dragging) {
   margin-right: 0.2rem;
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+/* The add/edit area: a category's dropdown with its expand button just right of it (the icon 3px from the
+   dropdown: this 1px, plus the 2px either side of the 20px icon in its 24px button). */
+.tag-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+/* Expand (outline circle-plus, after a dropdown) and collapse (outline circle-minus, after a pill line's name). */
+.category-toggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.category-toggle:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--editing-bg);
+}
+
+/* A pill line's name and collapse icon are one button, the icon 3px after the name; the 2px after the icon
+   keeps the same space before the first pill as the icon's own button had. */
+.category-toggle.with-name {
+  display: flex;
+  gap: 3px;
+  width: auto;
+  margin-right: 2px;
+}
+
+.category-toggle.with-name .tag-pill-category {
+  margin-right: 0;
+}
+
+.category-toggle.with-name:hover:not(:disabled) .tag-pill-category {
+  color: var(--accent);
 }
 
 .tag-pill {

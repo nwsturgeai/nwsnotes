@@ -61,7 +61,8 @@ test.describe("categories", () => {
 
     await expect(categoryLine(page, "Priority").locator(".category-tags")).toHaveText("High, Low");
     await page.getByRole("link", { name: "← Notes" }).click();
-    await expect(addArea(page).getByRole("button", { name: "Priority: no tag" })).toBeVisible();
+    // A new category starts as pills in the add area.
+    await expect(addArea(page).getByRole("group", { name: "Priority", exact: true }).getByRole("button", { name: "High", exact: true })).toBeVisible();
   });
 
   test("a category needs a name", async ({ page }) => {

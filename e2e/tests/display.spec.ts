@@ -113,7 +113,7 @@ test.describe("expanded add area", () => {
   test("the pills reach right down to the bottom of the page", async ({ page }) => {
     const gap = await page.evaluate(() => {
       const area = document.querySelector(".new-note.full")!.getBoundingClientRect();
-      const pills = document.querySelector(".new-note.full .tag-pill-picker")!.getBoundingClientRect();
+      const pills = document.querySelector(".new-note.full .tag-mixed-picker")!.getBoundingClientRect();
       return area.bottom - pills.bottom;
     });
     expect(gap).toBe(0);

@@ -42,3 +42,42 @@ export function useExtraFilters(tabId: number | undefined): [TagSelection, (sele
 
   return [state.tabId === tabId ? state.selection : load(tabId), set];
 }
+
+/** Local-storage key for which categories a tab's add area shows as dropdowns ("all" for the built-in tab). */
+function collapsedKey(tabId: number | undefined): string {
+  return `nwsnotes.collapsedCategories.${tabId ?? "all"}`;
+}
+
+function loadCollapsed(tabId: number | undefined): number[] {
+  try {
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(collapsedKey(tabId)) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((id): id is number => Number.isInteger(id)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The categories the add/edit area shows as a dropdown rather than pills, for the selected tab. Every
+ * category starts as pills (new ones too). Each tab keeps its own, remembered on this device.
+ */
+export function useCollapsedCategories(tabId: number | undefined): [number[], (categoryIds: number[]) => void] {
+  const [state, setState] = useState(() => ({ tabId, collapsed: loadCollapsed(tabId) }));
+  useEffect(() => {
+    if (state.tabId !== tabId) setState({ tabId, collapsed: loadCollapsed(tabId) });
+  }, [tabId, state.tabId]);
+
+  const set = useCallback(
+    (collapsed: number[]) => {
+      setState({ tabId, collapsed });
+      try {
+        window.localStorage.setItem(collapsedKey(tabId), JSON.stringify(collapsed));
+      } catch {
+        // Storage can be unavailable; the choice then lasts until reload.
+      }
+    },
+    [tabId],
+  );
+
+  return [state.tabId === tabId ? state.collapsed : loadCollapsed(tabId), set];
+}
