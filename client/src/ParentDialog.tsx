@@ -12,7 +12,7 @@ import {
 import { useCollapsedCategories } from "./extraFilters";
 import { longFormTree, possibleParents, shortTitle } from "./parents";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faBoxArchive, faChevronDown, faChevronRight, faHourglass } from "@fortawesome/free-solid-svg-icons";
+import { faBoxArchive, faCaretDown, faCaretRight, faChevronDown, faChevronRight, faHourglass } from "@fortawesome/free-solid-svg-icons";
 import { useParentSort, useParentTagsOpen } from "./stylusMode";
 import { MixedTagPicker, selectionToFilters, type TagSelection } from "./TagPickers";
 
@@ -85,6 +85,8 @@ export function ParentDialog({ notes, categories, noteOrder, parentId, childId, 
   const [collapsed, setCollapsed] = useCollapsedCategories("parent-dialog");
   /** The whole tag filter folds away (remembered on this device); closed, its header says how many tags are ticked. */
   const [tagsOpen, setTagsOpen] = useParentTagsOpen();
+  /** Notes whose children are folded away (hidden, at every depth). All start open; not remembered. */
+  const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set());
   /** Escape closing an open dropdown list shouldn't also close the pop-up. */
   const escapeClosedList = useRef(false);
 
@@ -123,6 +125,28 @@ export function ParentDialog({ notes, categories, noteOrder, parentId, childId, 
   );
   /** The note itself and everything under it: choosing one of them would make a loop. */
   const inside = useMemo(() => (childId === undefined ? new Set<number>() : new Set([childId, ...descendantIds(notes, childId)])), [notes, childId]);
+
+  /**
+   * The rows shown, each with whether it has children in the list (so a caret to fold them): every entry
+   * of the tree except those under a folded note.
+   */
+  const rows = useMemo(() => {
+    const shown: { note: Note; depth: number; hasChildren: boolean }[] = [];
+    /** While set, entries deeper than this are under a folded note. */
+    let hiddenBelow: number | undefined;
+    tree.forEach(({ note, depth }, index) => {
+      if (hiddenBelow !== undefined && depth > hiddenBelow) return;
+      hiddenBelow = folded.has(note.id) ? depth : undefined;
+      shown.push({ note, depth, hasChildren: (tree[index + 1]?.depth ?? -1) > depth });
+    });
+    return shown;
+  }, [tree, folded]);
+
+  function toggleFolded(noteId: number) {
+    const next = new Set(folded);
+    if (!next.delete(noteId)) next.add(noteId);
+    setFolded(next);
+  }
 
   /** Why a note can't be the parent, if it can't. */
   function unavailable(note: Note): string | undefined {
@@ -212,27 +236,41 @@ export function ParentDialog({ notes, categories, noteOrder, parentId, childId, 
         </p>
       ) : (
         <div className="parent-dialog-list" role="group" aria-label="Long-form notes">
-          {tree.map(({ note, depth }) => {
+          {rows.map(({ note, depth, hasChildren }) => {
             const why = unavailable(note);
+            const title = withoutMarkers(note.titleText ?? "");
+            const isFolded = folded.has(note.id);
             return (
-              <label
-                key={note.id}
-                className={why ? "unavailable" : undefined}
-                title={why ?? withoutMarkers(note.titleText ?? "")}
-                style={depth > 0 ? { paddingLeft: `${0.5 + depth * 1.25}rem` } : undefined}
-              >
-                <input
-                  type="checkbox"
-                  checked={chosen === note.id}
-                  disabled={why !== undefined}
-                  onChange={(event) => setChosen(event.target.checked ? note.id : undefined)}
-                />
-                <span className="parent-dialog-title">
-                  {withoutMarkers(note.titleText ?? "")}
-                  {note.shared && <span className="parent-dialog-owner"> ({note.shared.ownerName})</span>}
-                  <LifetimePill note={note} />
-                </span>
-              </label>
+              <div key={note.id} className="parent-dialog-row" style={depth > 0 ? { paddingLeft: `${depth * 1.25}rem` } : undefined}>
+                {/* Left of the tick box: folds or unfolds the notes inside it. Outside the label, so it never ticks the box. */}
+                {hasChildren ? (
+                  <button
+                    type="button"
+                    className="parent-dialog-caret"
+                    aria-expanded={!isFolded}
+                    aria-label={`${isFolded ? "Show" : "Hide"} the notes inside ${title}`}
+                    title={isFolded ? "Show the notes inside it" : "Hide the notes inside it"}
+                    onClick={() => toggleFolded(note.id)}
+                  >
+                    <FontAwesomeIcon icon={isFolded ? faCaretRight : faCaretDown} />
+                  </button>
+                ) : (
+                  <span className="parent-dialog-caret" aria-hidden />
+                )}
+                <label className={why ? "unavailable" : undefined} title={why ?? title}>
+                  <input
+                    type="checkbox"
+                    checked={chosen === note.id}
+                    disabled={why !== undefined}
+                    onChange={(event) => setChosen(event.target.checked ? note.id : undefined)}
+                  />
+                  <span className="parent-dialog-title">
+                    {title}
+                    {note.shared && <span className="parent-dialog-owner"> ({note.shared.ownerName})</span>}
+                    <LifetimePill note={note} />
+                  </span>
+                </label>
+              </div>
             );
           })}
         </div>

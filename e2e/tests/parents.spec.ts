@@ -361,3 +361,35 @@ test("the Parent pop-up marks Waiting and Archived long-form notes", async ({ pa
   await expect(row("Holiday plans").locator(".parent-status-pill")).toHaveCount(0);
   await parentDialog(page).getByRole("checkbox", { name: /^Old project/ }).check();
 });
+
+test("the Parent pop-up folds away the notes inside a long-form note, at every depth", async ({ page }) => {
+  const flights = await addNote(page.request, "Flight options", { long: true, parentId: HOLIDAY_PLANS });
+  await addNote(page.request, "Airlines", { long: true, parentId: flights.id });
+  await addNote(page.request, "Garden plan", { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const dialog = parentDialog(page);
+  const titles = () => dialog.locator(".parent-dialog-list label");
+  await expect(titles()).toHaveText(["Holiday plans", "Flight options", "Airlines", "Garden plan"]);
+  // Only notes with notes inside them have the caret.
+  await expect(dialog.locator("button.parent-dialog-caret")).toHaveCount(2);
+
+  // Folding Holiday plans hides everything inside it; the caret points right, and the box isn't ticked.
+  const holidayCaret = dialog.getByRole("button", { name: "Hide the notes inside Holiday plans" });
+  await expect(holidayCaret).toHaveAttribute("aria-expanded", "true");
+  await holidayCaret.click();
+  await expect(titles()).toHaveText(["Holiday plans", "Garden plan"]);
+  await expect(dialog.getByRole("button", { name: "Show the notes inside Holiday plans" })).toHaveAttribute("aria-expanded", "false");
+  await expect(dialog.getByRole("checkbox", { name: "Holiday plans" })).not.toBeChecked();
+
+  // Unfolding it shows them again; folding Flight options hides only Airlines.
+  await dialog.getByRole("button", { name: "Show the notes inside Holiday plans" }).click();
+  await dialog.getByRole("button", { name: "Hide the notes inside Flight options" }).click();
+  await expect(titles()).toHaveText(["Holiday plans", "Flight options", "Garden plan"]);
+
+  // Not remembered: opened again, everything is unfolded.
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  await expect(titles()).toHaveCount(4);
+});
