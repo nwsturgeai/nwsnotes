@@ -59,7 +59,7 @@ Straight after adding a note (by text or in the app), you can give it a due date
 
 > "Hey Google, send a text to nwsnotes: **Due tomorrow at 3pm**"
 
-"Due date tomorrow at 3pm" works too. It sets the due date of the last note you added, as long as that was in the last 5 minutes. Notes other people have added to your notebook don't count.
+"Due date tomorrow at 3pm" works too, and so does "Do you tomorrow at 3pm", in case your phone hears "Due" that way. It sets the due date of the last note you added, as long as that was in the last 5 minutes. Notes other people have added to your notebook don't count.
 
 - **The day:** "today", "tomorrow", a day of the week ("Friday"), or a date ("25th December", "25/12").
 - **The time:** "3pm", "3:30 pm", "15:00", "half past three", "noon". With no am or pm, 7 to 11 mean the morning and 1 to 6 the afternoon, so "tomorrow at 2" is 2pm.
