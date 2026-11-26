@@ -1162,12 +1162,21 @@ body:has(.note-list li.dragging) {
   font-size: 0.75rem;
 }
 
-/* The add/edit area: a category's dropdown with its expand button just right of it (the icon 3px from the
-   dropdown: this 1px, plus the 2px either side of the 20px icon in its 24px button). */
+/* The add/edit area: a category's dropdown with its expand button just right of it, the icon 1px from the
+   dropdown (its button is only 1px wider than the icon each side, though as tall as the others). */
 .tag-dropdown-toggle {
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 0;
+}
+
+.tag-dropdown-toggle .category-toggle {
+  width: 18px;
+}
+
+/* Dropdowns with expand buttons sit closer together than the filter row's. */
+.tag-mixed-picker .tag-pickers {
+  column-gap: 0.5rem;
 }
 
 /* Expand (outline circle-plus, after a dropdown) and collapse (outline circle-minus, after a pill line's name). */
