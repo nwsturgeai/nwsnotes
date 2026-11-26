@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { descendantIds, noteMatchesFilters, withoutMarkers, type Category, type Note } from "@nwsnotes/shared";
+import {
+  descendantIds,
+  lifetimeOf,
+  LIFETIME_ARCHIVED,
+  LIFETIME_WAITING,
+  noteMatchesFilters,
+  withoutMarkers,
+  type Category,
+  type Note,
+} from "@nwsnotes/shared";
 import { useCollapsedCategories } from "./extraFilters";
 import { longFormTree, possibleParents, shortTitle } from "./parents";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChevronDown, faChevronRight } from "@fortawesome/free-solid-svg-icons";
+import { faBoxArchive, faChevronDown, faChevronRight, faHourglass } from "@fortawesome/free-solid-svg-icons";
 import { useParentSort, useParentTagsOpen } from "./stylusMode";
 import { MixedTagPicker, selectionToFilters, type TagSelection } from "./TagPickers";
 
@@ -221,6 +230,7 @@ export function ParentDialog({ notes, categories, noteOrder, parentId, childId, 
                 <span className="parent-dialog-title">
                   {withoutMarkers(note.titleText ?? "")}
                   {note.shared && <span className="parent-dialog-owner"> ({note.shared.ownerName})</span>}
+                  <LifetimePill note={note} />
                 </span>
               </label>
             );
@@ -236,5 +246,22 @@ export function ParentDialog({ notes, categories, noteOrder, parentId, childId, 
         </button>
       </div>
     </dialog>
+  );
+}
+
+/**
+ * After a Waiting or Archived note's title: a small pill in the list's colours for those notes (light grey,
+ * or dark grey with white text), with the icon of the list's button for that state. New and Active notes have none.
+ */
+function LifetimePill({ note }: { note: Note }) {
+  const lifetime = lifetimeOf(note);
+  if (lifetime !== LIFETIME_WAITING && lifetime !== LIFETIME_ARCHIVED) return null;
+  const waiting = lifetime === LIFETIME_WAITING;
+  const name = waiting ? "Waiting" : "Archived";
+  return (
+    <span className={`parent-status-pill ${waiting ? "waiting" : "archived"}`} title={`This note is ${name}`}>
+      <FontAwesomeIcon icon={waiting ? faHourglass : faBoxArchive} className="pill-icon" />
+      {name}
+    </span>
   );
 }

@@ -2116,6 +2116,34 @@ body:has(.note-list li.dragging) {
   color: var(--muted);
 }
 
+/* After a Waiting or Archived note's title: its state, in the list's colours for those notes. */
+.parent-status-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.4rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+}
+
+.parent-status-pill.waiting {
+  background: #c0c0c0;
+  color: #000;
+}
+
+.parent-status-pill.archived {
+  background: #606060;
+  color: #fff;
+}
+
+/* A note that can't be chosen is faded as a whole, its state pill too. */
+.parent-dialog-list label.unavailable .parent-status-pill {
+  opacity: 0.6;
+}
+
 .parent-dialog-empty {
   margin-bottom: 1rem !important;
   color: var(--muted) !important;

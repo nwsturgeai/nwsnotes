@@ -344,3 +344,20 @@ test("the Parent pop-up filters by tag in a section that folds away, keeping mat
   await expect(dialog.getByRole("button", { name: "Area: no tag" })).toBeVisible();
   await expect(titles()).toHaveCount(4);
 });
+
+test("the Parent pop-up marks Waiting and Archived long-form notes", async ({ page }) => {
+  const waiting = await addNote(page.request, "On hold plans", { long: true });
+  const archived = await addNote(page.request, "Old project", { long: true });
+  await page.request.put(`/api/notes/${waiting.id}/lifetime`, { data: { lifetime: "Waiting" } });
+  await page.request.put(`/api/notes/${archived.id}/lifetime`, { data: { lifetime: "Archived" } });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const row = (title: string) => parentDialog(page).locator(".parent-dialog-list label").filter({ hasText: title });
+  await expect(row("On hold plans").locator(".parent-status-pill")).toHaveText("Waiting");
+  await expect(row("Old project").locator(".parent-status-pill")).toHaveText("Archived");
+  await expect(row("Old project").locator(".parent-status-pill")).toHaveAttribute("title", "This note is Archived");
+  // Active (and New) notes have none, and the pill isn't part of the checkbox's name.
+  await expect(row("Holiday plans").locator(".parent-status-pill")).toHaveCount(0);
+  await parentDialog(page).getByRole("checkbox", { name: /^Old project/ }).check();
+});
