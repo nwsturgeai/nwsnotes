@@ -13,8 +13,8 @@ import { useCollapsedCategories } from "./extraFilters";
 import { longFormTree, possibleParents, shortTitle } from "./parents";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBoxArchive, faCaretDown, faCaretRight, faChevronDown, faChevronRight, faHourglass } from "@fortawesome/free-solid-svg-icons";
-import { useParentSort, useParentTagsOpen } from "./stylusMode";
-import { MixedTagPicker, selectionToFilters, type TagSelection } from "./TagPickers";
+import { useParentSort, useParentTagSelection, useParentTagsOpen } from "./stylusMode";
+import { MixedTagPicker, selectionToFilters } from "./TagPickers";
 
 /** Titles in alphabetical order, ignoring case and formatting markers, with numbers in number order ("2" before "10"). */
 const byTitle = (a: Note, b: Note) =>
@@ -79,9 +79,10 @@ export function ParentDialog({ notes, categories, noteOrder, parentId, childId, 
   const [chosen, setChosen] = useState(parentId);
   /**
    * The tag filter: the add area's own controls (each category as pills or a dropdown, remembered once for
-   * the pop-up on this device). The tags ticked start empty each time, so the list starts complete.
+   * the pop-up on this device). The tags ticked are remembered on this device too, so the pop-up opens
+   * filtered as it was left.
    */
-  const [tagSelection, setTagSelection] = useState<TagSelection>({});
+  const [tagSelection, setTagSelection] = useParentTagSelection();
   const [collapsed, setCollapsed] = useCollapsedCategories("parent-dialog");
   /** The whole tag filter folds away (remembered on this device); closed, its header says how many tags are ticked. */
   const [tagsOpen, setTagsOpen] = useParentTagsOpen();

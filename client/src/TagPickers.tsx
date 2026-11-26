@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
+import { faCaretDown, faCaretRight, faCheck, faLock } from "@fortawesome/free-solid-svg-icons";
 import { LIFETIME_CATEGORY_ID, tagLabel, type Category, type Note, type TabFilter, type Tag } from "@nwsnotes/shared";
 import { faCircleMinusOutline, faCirclePlusOutline } from "./icons";
 import { SharingIcons } from "./sharingIcons";
@@ -126,6 +126,12 @@ interface Props {
   indents?: ReadonlyMap<number, number>;
   /** Check-lists: options ticked because of another one (a ticked note's child notes), which can't be unticked themselves. */
   implied?: { ids: ReadonlySet<number>; hint: string };
+  /**
+   * Check-lists with `indents` (a tree, each option followed by those under it): an option with options
+   * under it gets a caret button that folds them away (at every depth) or shows them again. All start
+   * shown each time the list opens.
+   */
+  foldable?: boolean;
   /** Full-tag-list mode: a last line after the categories (the note's parent), scrolling with them. */
   lastRow?: ReactNode;
 }
@@ -150,6 +156,7 @@ export function TagPickers({
   noneOption,
   indents,
   implied,
+  foldable,
 }: Props) {
   if (categories.length === 0) return null;
 
@@ -172,6 +179,7 @@ export function TagPickers({
           noneChosen={(selection[category.id] ?? []).includes(NONE_TAG_ID)}
           indents={indents}
           implied={implied}
+          foldable={foldable}
         />
       ))}
     </div>
@@ -188,6 +196,7 @@ interface DropdownProps {
   counts?: Props["counts"];
   indents?: Props["indents"];
   implied?: Props["implied"];
+  foldable?: boolean;
   selectAll?: boolean;
   showSharing?: boolean;
   /** The list ends with a "(None)" check-box (filter row only). */
@@ -232,10 +241,13 @@ function TagDropdown({
   noneChosen,
   indents,
   implied,
+  foldable,
 }: DropdownProps) {
   /** Where the open list sits. It is positioned on the window, so a scrolling area can't clip it. */
   const [position, setPosition] = useState<{ left: number; top?: number; bottom?: number; room: number }>();
   const open = position !== undefined;
+  /** Foldable lists: the options whose options under them are folded away. */
+  const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set());
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const withNone = checkList && noneOption === true;
@@ -269,6 +281,7 @@ function TagDropdown({
     const needed = Math.min(rows, LIST_MAX_ROWS) * LIST_ROW_PX + LIST_PADDING_PX;
     const spaceBelow = window.innerHeight - rect.bottom - 4 - LIST_MARGIN_PX;
     const spaceAbove = rect.top - 4 - LIST_MARGIN_PX;
+    setFolded(new Set());
     setPosition(
       spaceBelow >= needed || spaceBelow >= spaceAbove
         ? { left: rect.left, top: rect.bottom + 4, room: spaceBelow }
@@ -314,6 +327,30 @@ function TagDropdown({
   /** Ticking a tag unticks "(None)" (it's never in `chosen`, which only holds tags). */
   function toggle(tagId: number, checked: boolean) {
     onChange(checked ? [...chosen, tagId] : chosen.filter((id) => id !== tagId));
+  }
+
+  /**
+   * The check-list's rows: every option except those under a folded one, each with whether it has options
+   * under it (the next option is deeper), so a caret when the list is foldable.
+   */
+  const checkRows: { tag: Tag; indent: number; hasChildren: boolean }[] = [];
+  if (checkList) {
+    /** While set, options deeper than this are under a folded one. */
+    let hiddenBelow: number | undefined;
+    category.tags.forEach((tag, index) => {
+      const indent = indents?.get(tag.id) ?? 0;
+      const next = category.tags[index + 1];
+      const hasChildren = foldable === true && next !== undefined && (indents?.get(next.id) ?? 0) > indent;
+      if (hiddenBelow !== undefined && indent > hiddenBelow) return;
+      hiddenBelow = hasChildren && folded.has(tag.id) ? indent : undefined;
+      checkRows.push({ tag, indent, hasChildren });
+    });
+  }
+
+  function toggleFolded(tagId: number) {
+    const next = new Set(folded);
+    if (!next.delete(tagId)) next.add(tagId);
+    setFolded(next);
   }
 
   const classes = ["tag-dropdown-button", names.length === 0 && "unset", fullyLocked && "locked"].filter(Boolean);
@@ -367,15 +404,15 @@ function TagDropdown({
             </div>
           )}
           {checkList ? (
-            category.tags.map((tag) => {
+            checkRows.map(({ tag, indent, hasChildren }) => {
               const locked = tag.id === lockedTagId || implied?.ids.has(tag.id) === true;
-              const indent = indents?.get(tag.id) ?? 0;
-              return (
+              const isFolded = folded.has(tag.id);
+              const label = (
                 <label
                   key={tag.id}
                   className={locked ? "locked" : undefined}
                   title={tag.id === lockedTagId ? lockHint : locked ? implied?.hint : undefined}
-                  style={indent > 0 ? { paddingLeft: `${0.75 + indent * 1.25}rem` } : undefined}
+                  style={!foldable && indent > 0 ? { paddingLeft: `${0.75 + indent * 1.25}rem` } : undefined}
                 >
                   <input
                     type="checkbox"
@@ -388,6 +425,27 @@ function TagDropdown({
                   <TagCount count={counts?.byTag.get(tag.id)} />
                   {locked && <FontAwesomeIcon icon={faLock} className="lock-icon" />}
                 </label>
+              );
+              if (!foldable) return label;
+              // Left of the tick box: folds or unfolds the options under it. Outside the label, so it never ticks the box.
+              return (
+                <div key={tag.id} className="tag-dropdown-tree-row" style={{ paddingLeft: `${0.25 + indent * 1.25}rem` }}>
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      className="tag-dropdown-caret"
+                      aria-expanded={!isFolded}
+                      aria-label={`${isFolded ? "Show" : "Hide"} the notes inside ${tagLabel(tag)}`}
+                      title={isFolded ? "Show the notes inside it" : "Hide the notes inside it"}
+                      onClick={() => toggleFolded(tag.id)}
+                    >
+                      <FontAwesomeIcon icon={isFolded ? faCaretRight : faCaretDown} />
+                    </button>
+                  ) : (
+                    <span className="tag-dropdown-caret" aria-hidden />
+                  )}
+                  {label}
+                </div>
               );
             })
           ) : (

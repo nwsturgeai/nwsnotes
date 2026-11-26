@@ -35,6 +35,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { ParentDialog, ParentPill } from "./ParentDialog";
 import { possibleParents } from "./parents";
 import { FormattedText } from "./FormattedText";
+import { flashIgnoredTap } from "./ignoredTap";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
 import { PEN_WIDTHS, usePenWidth } from "./stylusMode";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
@@ -84,7 +85,9 @@ const EXPORT_PAGE_GAP = 32;
 
 /** In stylus mode, finger and palm taps on the editor's bottom-row buttons are ignored (a stylus or mouse works). */
 function ignoredTap(stylusMode: boolean, event: ReactMouseEvent): boolean {
-  return stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch";
+  const ignored = stylusMode && (event.nativeEvent as Partial<PointerEvent>).pointerType === "touch";
+  if (ignored) flashIgnoredTap(event.currentTarget);
+  return ignored;
 }
 
 /** One page of handwritten details: a key for its canvas, and the saved image it starts from (if any). */

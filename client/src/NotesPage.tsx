@@ -66,6 +66,7 @@ import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
 import { FormattedText } from "./FormattedText";
+import { flashIgnoredTap } from "./ignoredTap";
 import { useCollapsedCategories, useExtraFilters } from "./extraFilters";
 import { PROPERTIES_CATEGORY, PROPERTIES_CATEGORY_ID, noteMatchesProperties, validProperties } from "./propertyFilters";
 import {
@@ -341,6 +342,7 @@ export function NotesPage({
     if (pointerType === "touch") {
       event.preventDefault();
       event.stopPropagation();
+      flashIgnoredTap(event.target);
     }
   }
 
@@ -1353,6 +1355,7 @@ export function NotesPage({
                     checkLists
                     counts={{ byTag: filterCounts.byLongForm, total: filterCounts.total }}
                     indents={new Map(longFormOptions.map(({ note, depth }) => [note.id, depth]))}
+                    foldable
                     implied={{
                       ids: new Set([...(longFormShown ?? [])].filter((id) => !longFormTicks.includes(id))),
                       hint: "Ticked because a note it's inside is ticked",

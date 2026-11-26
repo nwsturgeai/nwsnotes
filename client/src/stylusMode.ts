@@ -135,3 +135,27 @@ export function useParentSort(): [ParentSort, (sort: ParentSort) => void] {
 export function useParentTagsOpen(): [boolean, (on: boolean) => void] {
   return useDeviceSetting("nwsnotes.parentTagsOpen", (stored) => stored === "on", onOff);
 }
+
+/**
+ * The tags ticked in the Parent pop-up's "Filter by tag" section (category id → tag ids; default none),
+ * remembered on this device. A saved value that isn't one is treated as none; tags since deleted are ignored.
+ */
+export function useParentTagSelection(): [Record<number, number[]>, (selection: Record<number, number[]>) => void] {
+  return useDeviceSetting<Record<number, number[]>>(
+    "nwsnotes.parentTagSelection",
+    (stored) => {
+      try {
+        const parsed: unknown = JSON.parse(stored ?? "{}");
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+        const selection: Record<number, number[]> = {};
+        for (const [categoryId, tagIds] of Object.entries(parsed)) {
+          if (Array.isArray(tagIds)) selection[Number(categoryId)] = tagIds.filter((id): id is number => typeof id === "number");
+        }
+        return selection;
+      } catch {
+        return {};
+      }
+    },
+    (selection) => JSON.stringify(selection),
+  );
+}
