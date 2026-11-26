@@ -335,12 +335,18 @@ test("the Parent pop-up filters by tag in a section that folds away, keeping mat
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
-  // Opened again (after a reload too): the ticks start empty, but the section and the dropdown are remembered,
+  // Opened again (after a reload too): the ticked tags, the section and the dropdown are remembered,
   // separately from the add area, whose Area is still pills.
   await page.reload();
   await expect(addArea(page).getByRole("group", { name: "Area", exact: true })).toBeVisible();
   await addArea(page).getByRole("button", { name: /^Parent: / }).click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(dialog.getByRole("button", { name: "Area: Home" })).toBeVisible();
+  await expect(titles()).toHaveText(["Holiday plans", "Garden plan"]);
+  // Clearing them is remembered too.
+  await dialog.getByRole("button", { name: "clear tags" }).click();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
   await expect(dialog.getByRole("button", { name: "Area: no tag" })).toBeVisible();
   await expect(titles()).toHaveCount(4);
 });
