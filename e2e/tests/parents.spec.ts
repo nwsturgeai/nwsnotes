@@ -401,6 +401,19 @@ test("the Parent pop-up marks Waiting and Archived long-form notes", async ({ pa
   await parentDialog(page).getByRole("checkbox", { name: /^Old project/ }).check();
 });
 
+test("the Parent pop-up cuts long titles to 50 characters, with the full title on hover", async ({ page }) => {
+  const long = "A very long long-form note title that goes on and on past fifty characters";
+  await addNote(page.request, long, { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const label = parentDialog(page).locator(".parent-dialog-list label").filter({ hasText: long.slice(0, 49) });
+  await expect(label.locator(".parent-dialog-title")).toHaveText(`${long.slice(0, 49)}…`);
+  await expect(label).toHaveAttribute("title", long);
+  // Short titles are shown whole.
+  await expect(parentDialog(page).locator(".parent-dialog-title").filter({ hasText: /^Holiday plans$/ })).toHaveCount(1);
+});
+
 test("the Parent pop-up folds away the notes inside a long-form note, at every depth", async ({ page }) => {
   const flights = await addNote(page.request, "Flight options", { long: true, parentId: HOLIDAY_PLANS });
   await addNote(page.request, "Airlines", { long: true, parentId: flights.id });
