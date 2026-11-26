@@ -605,7 +605,7 @@ a:focus-visible {
  * out. The padding gives back the border's extra width, so its size doesn't change.
  */
 .filter-row .tag-dropdown-button:not(.unset) {
-  padding: calc(0.3rem - 1px) calc(0.5rem - 1px);
+  padding: calc(0.2rem - 1px) calc(0.35rem - 1px);
   border: 2px solid #000000;
 }
 
@@ -2302,9 +2302,9 @@ button.parent-dialog-caret:hover {
 
 .tag-dropdown-button {
   overflow: hidden;
-  min-width: 6rem;
-  max-width: 16rem;
-  padding: 0.3rem 0.5rem;
+  min-width: 4.5rem;
+  max-width: 9rem;
+  padding: 0.2rem 0.35rem;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);

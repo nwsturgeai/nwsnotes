@@ -527,11 +527,11 @@ test("a filter row that wraps onto more lines can be collapsed to its first line
   expect(await search.evaluate((button) => button.closest("[inert]") !== null)).toBe(true);
 
   // The same on other tabs, and after a reload.
-  await selectTab(page, "Work");
+  await selectTab(page, "Home");
   await expect(expand).toBeVisible();
   await page.reload();
   await expect(expand).toBeVisible();
-  // (The reload stays on Work; back on All, whose row was measured.)
+  // (The reload stays on Home; back on All, whose row was measured.)
   await selectTab(page, "All");
   await expect(expand).toBeVisible();
 
