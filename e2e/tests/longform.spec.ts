@@ -49,6 +49,40 @@ test.describe("with the page loaded", () => {
     await expect(noteRow(page, "Trip to Florence")).toBeVisible();
   });
 
+  test("Create long-form note while one is open finishes it, and the new one goes inside it", async ({ page }) => {
+    const create = addArea(page).getByRole("button", { name: "Create long-form note" });
+    const titleBox = editor(page).getByRole("textbox", { name: "Long-form note title" });
+    const startTitle = async (title: string) => {
+      await expect(titleBox).toHaveValue("");
+      await titleBox.fill(title);
+      await titleBox.press("Enter");
+      await expect(editor(page).getByRole("textbox", { name: "Details" })).toBeFocused();
+    };
+    // A new note: still offered while it's open, and its details are saved as Finish would.
+    await startLongForm(page, "Trip to Rome");
+    await editor(page).getByRole("textbox", { name: "Details" }).fill("Pack");
+    await create.click();
+    await startTitle("Flights");
+    const rome = await savedNote(page, "Trip to Rome");
+    expect(rome?.detailsText).toBe("Pack");
+    await expect(editor(page).getByRole("button", { name: /^Parent: Trip to Rome/ })).toBeVisible();
+    await editor(page).getByRole("button", { name: "Finish" }).click();
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await savedNote(page, "Flights"))?.parentId).toBe(rome?.id);
+
+    // Editing a note: a changed title not yet accepted is saved too, as on Finish.
+    await noteRow(page, /^Holiday plans/).getByRole("button", { name: "Edit note" }).click();
+    await editor(page).getByRole("button", { name: "Edit title" }).click();
+    await titleBox.fill("Summer holiday");
+    await create.click();
+    await startTitle("Packing list");
+    await editor(page).getByRole("button", { name: "Finish" }).click();
+    await expect(editor(page)).toHaveCount(0);
+    const summer = await savedNote(page, "Summer holiday");
+    expect(summer).toBeDefined();
+    await expect.poll(async () => (await savedNote(page, "Packing list"))?.parentId).toBe(summer?.id);
+  });
+
   test("Cancel deletes a new note, asking first if it has details", async ({ page }) => {
     await startLongForm(page, "Nothing yet");
     await editor(page).getByRole("button", { name: "Cancel" }).click();

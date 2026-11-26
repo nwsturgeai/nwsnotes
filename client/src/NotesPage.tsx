@@ -252,7 +252,13 @@ export function NotesPage({
   /** The note whose archive / reinstate / bin button is being handled. */
   const [busyNoteId, setBusyNoteId] = useState<number>();
   /** The open long-form editor: the note being edited, or none when creating one. */
-  const [longForm, setLongForm] = useState<{ note: Note | undefined; key: number; converted?: boolean }>();
+  const [longForm, setLongForm] = useState<{
+    note: Note | undefined;
+    key: number;
+    converted?: boolean;
+    /** A new note started from another long-form note: it goes inside that one (undefined: it wasn't saved, so the usual parent). */
+    parentId?: number;
+  }>();
   /** The open long-form note's id, once its title has been accepted; new notes become its children. */
   const [longFormId, setLongFormId] = useState<number>();
   /** Before a new long-form note's title is first accepted, regular notes can't be added. */
@@ -290,12 +296,46 @@ export function NotesPage({
     setOrdering(false);
     setLongForm({ note, key: Date.now(), converted });
     setLongFormId(note?.id);
-    // Child notes can have any tags: the dropdowns start on the tab's tags, then are no longer locked.
     selectionBeforeLongForm.current = { tabId: selectedTab?.id, selection: tagSelection };
-    const chosen = selectedTagIds(userCategories, tagSelection, constraints);
+    startChildTags(tagSelection);
+  }
+
+  /** Child notes can have any tags: the dropdowns start on the tab's tags (from `selection`), then are no longer locked. */
+  function startChildTags(selection: TagSelection) {
+    const chosen = selectedTagIds(userCategories, selection, constraints);
     onTagSelectionChange(
       Object.fromEntries(userCategories.map((category) => [category.id, category.tags.filter((tag) => chosen.includes(tag.id)).map((tag) => tag.id)])),
     );
+  }
+
+  /** The open long-form editor's Finish (set by the editor). */
+  const finishLongForm = useRef<() => Promise<boolean>>(undefined);
+  /** Set while the open long-form note is being finished to start another: the new one's parent (the finished note, if it was saved). */
+  const nextLongForm = useRef<{ parentId: number | undefined }>(undefined);
+
+  /**
+   * "Create long-form note" while one is open: it's finished (as Finish does), then a new one opens,
+   * inside it. If it can't be finished (a refused save), it stays open and nothing new starts.
+   */
+  async function startAnotherLongForm() {
+    const finish = finishLongForm.current;
+    if (!finish) return;
+    nextLongForm.current = { parentId: longFormId };
+    if (!(await finish())) nextLongForm.current = undefined;
+  }
+
+  /** The long-form editor closed: back to the add area, or straight on to the next long-form note. */
+  function longFormFinished() {
+    const next = nextLongForm.current;
+    nextLongForm.current = undefined;
+    if (!next) {
+      closeLongForm();
+      return;
+    }
+    setLongForm({ note: undefined, key: Date.now(), parentId: next.parentId });
+    setLongFormId(undefined);
+    const before = selectionBeforeLongForm.current;
+    startChildTags(before && before.tabId === selectedTab?.id ? before.selection : {});
   }
 
   function closeLongForm() {
@@ -1700,8 +1740,8 @@ export function NotesPage({
           note={longForm.note}
           notes={notes}
           noteOrder={noteOrder}
-          // A new long-form note starts in the parent new notes would get.
-          initialParentId={longForm.note ? longForm.note.parentId : newParent}
+          // A new long-form note starts in the parent new notes would get, or in the long-form note it was started from.
+          initialParentId={longForm.note ? longForm.note.parentId : (longForm.parentId ?? newParent)}
           startInDetails={longForm.converted}
           tabTags={tabTags}
           tabName={selectedTab?.name}
@@ -1717,9 +1757,10 @@ export function NotesPage({
             setLongFormId(note.id);
           }}
           onFinish={(deleted) => {
-            closeLongForm();
+            longFormFinished();
             if (deleted) onNotesChanged();
           }}
+          finishRef={finishLongForm}
           offline={offline}
           onSessionExpired={onSessionExpired}
         />
@@ -1866,15 +1907,15 @@ export function NotesPage({
                   <FontAwesomeIcon icon={faDeleteLeft} />
                 </button>
               )}
-              {/* In the expanded (250px) area: start a long-form note. */}
-              {fullTagList && !editingNote && !longForm && !bulk && (
+              {/* In the expanded (250px) area: start a long-form note. With one open, it's finished first and the new one goes inside it. */}
+              {fullTagList && !editingNote && !bulk && (
                 <button
                   type="button"
                   className="icon-button"
                   aria-label="Create long-form note"
-                  title="Create long-form note"
+                  title={longForm ? "Create long-form note (finishes this one, and the new one goes inside it)" : "Create long-form note"}
                   disabled={saving}
-                  onClick={() => openLongForm(undefined)}
+                  onClick={() => (longForm ? void startAnotherLongForm() : openLongForm(undefined))}
                 >
                   <FontAwesomeIcon icon={faFileLines} />
                 </button>
