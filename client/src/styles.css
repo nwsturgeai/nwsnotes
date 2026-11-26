@@ -2134,18 +2134,54 @@ body:has(.note-list li.dragging) {
   margin-top: 0.3rem;
 }
 
-/* The Parent pop-up: the long-form notes as a tree, scrolling when there are many. */
+/*
+ * The Parent pop-up: a fixed size, so it never grows, shrinks or moves when the tag filter opens or closes
+ * or tags are ticked. The title, Sort line and tag filter sit at the top and Set Parent and Cancel at the
+ * bottom, always in view; the long-form notes (a tree) fill the room between them and scroll.
+ */
 .parent-dialog {
   width: min(28rem, calc(100vw - 2rem));
   max-width: none;
+  height: min(36rem, 85vh);
+  max-height: none;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.parent-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.parent-dialog > * {
+  flex: none;
+}
+
+/* The open tag filter takes at most 40% of the pop-up, scrolling on its own, so some notes stay in view. */
+.parent-dialog > .parent-dialog-tags {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.parent-dialog > .parent-dialog-list,
+.parent-dialog > .parent-dialog-empty {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .parent-dialog-list {
   display: flex;
   flex-direction: column;
-  max-height: min(24rem, 55vh);
-  margin-bottom: 1rem;
   overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+/* With no notes to list, the message sits in a box the same size as the list's. */
+.parent-dialog-empty {
+  padding: 0.5rem 0.6rem;
   border: 1px solid var(--line);
   border-radius: 6px;
 }
@@ -2237,7 +2273,6 @@ button.parent-dialog-caret:hover {
 }
 
 .parent-dialog-empty {
-  margin-bottom: 1rem !important;
   color: var(--muted) !important;
 }
 

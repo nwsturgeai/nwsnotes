@@ -384,6 +384,45 @@ test("the Parent pop-up filters by tag in a section that folds away, keeping mat
   await expect(titles()).toHaveCount(4);
 });
 
+test("the Parent pop-up keeps its size as the tag filter opens and tags are ticked, with its buttons always in view", async ({ page }) => {
+  await addNote(page.request, "Team offsite", { long: true, tagIds: [WORK] });
+  for (let i = 1; i <= 30; i++) await addNote(page.request, `Long-form ${i}`, { long: true });
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: /^Parent: / }).click();
+  const dialog = parentDialog(page);
+  const toggle = dialog.getByRole("button", { name: /^Filter by tag/ });
+  const box = async () => (await dialog.boundingBox())!;
+  const start = await box();
+  const sameSize = async () => expect(await box()).toEqual(start);
+  /** Set Parent and Cancel are inside the pop-up, not scrolled out of it. */
+  const buttonsInView = async () => {
+    const dialogBox = await box();
+    for (const name of ["Set Parent", "Cancel"]) {
+      const button = (await dialog.getByRole("button", { name }).boundingBox())!;
+      expect(button.y).toBeGreaterThanOrEqual(dialogBox.y);
+      expect(button.y + button.height).toBeLessThanOrEqual(dialogBox.y + dialogBox.height);
+    }
+  };
+  await buttonsInView();
+  // Opening the filter, ticking a tag (one note left), a tag no note has (none left), and folding it away.
+  await toggle.click();
+  await sameSize();
+  await buttonsInView();
+  await dialog.getByRole("group", { name: "Area", exact: true }).getByRole("button", { name: "Work", exact: true }).click();
+  await expect(dialog.locator(".parent-dialog-list label")).toHaveText(["Team offsite"]);
+  await sameSize();
+  await dialog.getByRole("group", { name: "Topic", exact: true }).getByRole("button", { name: "Reading", exact: true }).click();
+  await expect(dialog.getByText("No long-form notes have the ticked tags.")).toBeVisible();
+  await sameSize();
+  await buttonsInView();
+  await toggle.click();
+  await sameSize();
+  await dialog.getByRole("button", { name: "clear tags" }).click();
+  await sameSize();
+  await buttonsInView();
+});
+
 test("the Parent pop-up marks Waiting and Archived long-form notes", async ({ page }) => {
   const waiting = await addNote(page.request, "On hold plans", { long: true });
   const archived = await addNote(page.request, "Old project", { long: true });
