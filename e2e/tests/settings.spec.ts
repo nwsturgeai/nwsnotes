@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { addArea, expect, filterRow, noteRow, openNotes, pills, test } from "./fixtures";
+import { addArea, expect, filterRow, noteRow, openNotes, pills, seed, test } from "./fixtures";
 
 async function openSettings(page: Page) {
   await openNotes(page);
@@ -146,6 +146,98 @@ test.describe("categories", () => {
 
     await page.getByRole("link", { name: "← Notes" }).click();
     await expect(pills(noteRow(page, "Garden ideas"))).toHaveText(["Home", "Ideas"]);
+  });
+
+  test("deleting a category takes its tags off notes and drops it from tabs, after asking, and can be undone", async ({ page }) => {
+    // A tab filtering on Area and on something else keeps its other filter.
+    const made = await page.request.post("/api/tabs", { data: { name: "Work waiting", categories: [{ categoryId: 1, tagIds: [1] }, { categoryId: -1, tagIds: [-5] }] } });
+    expect(made.ok(), await made.text()).toBe(true);
+    const withArea = (seed as { notes: { tagIds: number[] }[] }).notes.filter((note) => note.tagIds.some((id) => id === 1 || id === 2)).length;
+    await page.reload();
+
+    await editCategory(page, "Area");
+    await page.getByRole("button", { name: "Delete category" }).click();
+    const dialog = page.locator("dialog.confirm-dialog");
+    await expect(dialog.locator("p").first()).toHaveText(
+      `Delete the category "Area"? Its 2 tags will be removed from ${withArea} notes. The notes themselves are kept.`,
+    );
+    // Tabs left with no filter are the highlighted part.
+    const warning = dialog.locator(".confirm-warning");
+    await expect(warning).toContainText("2 tabs will be left with no filter, so they will show every note:");
+    await expect(warning.getByRole("listitem")).toHaveText(["Work", "Home"]);
+    await expect(dialog).toContainText('The tab "Work waiting" will no longer filter on this category.');
+    await expect(dialog).toContainText("This can be undone from Settings → History.");
+    // Cancel changes nothing.
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole("button", { name: "Delete category" }).click();
+    await dialog.getByRole("button", { name: "Delete category" }).click();
+
+    await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+    await expect(categoryLine(page, "Area")).toHaveCount(0);
+    const data = (await (await page.request.get("/api/notes")).json()) as {
+      notes: { titleText?: string; tagIds: number[] }[];
+      tabs: { name: string; categories: { categoryId: number }[] }[];
+    };
+    expect(data.notes).toHaveLength((seed as { notes: unknown[] }).notes.length);
+    expect(data.notes.filter((note) => note.tagIds.some((id) => id === 1 || id === 2))).toEqual([]);
+    expect(data.tabs.map((tab) => [tab.name, tab.categories.map((filter) => filter.categoryId)])).toEqual([
+      ["Work", []],
+      ["Home", []],
+      ["On hold", [-1]],
+      ["Work waiting", [-1]],
+    ]);
+    await page.getByRole("link", { name: "← Notes" }).click();
+    await expect(pills(noteRow(page, "Garden ideas"))).not.toContainText(["Home"]);
+
+    // Undone from the History: the category, its tags on the notes and the tabs' filters all come back.
+    const history = (await (await page.request.get("/api/history")).json()) as { changes: { id: number; summary: string }[] };
+    expect(history.changes[0]!.summary).toBe('Deleted category "Area"');
+    expect((await page.request.post("/api/history/revert", { data: { toChangeId: history.changes[1]!.id } })).ok()).toBe(true);
+    const back = (await (await page.request.get("/api/notes")).json()) as typeof data & { categories: { name: string }[] };
+    expect(back.categories.map((category) => category.name)).toContain("Area");
+    expect(back.notes.filter((note) => note.tagIds.some((id) => id === 1 || id === 2))).toHaveLength(withArea);
+    expect(back.tabs.find((tab) => tab.name === "Work")!.categories.map((filter) => filter.categoryId)).toEqual([1]);
+  });
+
+  test("every category can be deleted; a new one never gets a deleted one's id", async ({ page }) => {
+    await editCategory(page, "Topic");
+    await page.getByRole("button", { name: "Delete category" }).click();
+    const dialog = page.locator("dialog.confirm-dialog");
+    // No tab filters on Topic.
+    await expect(dialog.locator(".confirm-warning")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Delete category" }).click();
+    await editCategory(page, "Area");
+    await page.getByRole("button", { name: "Delete category" }).click();
+    await dialog.getByRole("button", { name: "Delete category" }).click();
+    await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+    await expect(categoryLine(page, "Area")).toHaveCount(0);
+    await expect(categoryLine(page, "Topic")).toHaveCount(0);
+
+    // The notes page still works, and notes can still be added.
+    await page.getByRole("link", { name: "← Notes" }).click();
+    const box = page.getByRole("textbox", { name: "New note" });
+    await box.fill("No categories at all");
+    await box.press("Enter");
+    await expect(noteRow(page, "No categories at all")).toBeVisible();
+
+    // Built-in categories can't be deleted.
+    expect((await page.request.delete("/api/categories/-1")).status()).toBe(400);
+    const added = await page.request.post("/api/categories", { data: { name: "Place", multiSelect: false, tags: [{ name: "Home" }] } });
+    expect(added.ok(), await added.text()).toBe(true);
+    expect(((await added.json()) as { id: number }).id).toBeGreaterThan(2);
+  });
+
+  test("a note sent with a tag deleted since (e.g. waiting offline) is saved without it", async ({ page }) => {
+    expect((await page.request.delete("/api/categories/2")).ok()).toBe(true);
+    // Garden ideas, with Home and the deleted Ideas.
+    const saved = await page.request.put("/api/notes/9", { data: { titleText: "Garden ideas", tagIds: [2, 3] } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    expect(((await saved.json()) as { tagIds: number[] }).tagIds.filter((id) => id > 0)).toEqual([2]);
+    const added = await page.request.post("/api/notes", { data: { titleText: "Written offline", tagIds: [5] } });
+    expect(added.ok(), await added.text()).toBe(true);
+    // A tag that was never this notebook's is still refused.
+    expect((await page.request.put("/api/notes/9", { data: { titleText: "Garden ideas", tagIds: [99999] } })).status()).toBe(400);
   });
 
   test("deleting a tag removes it from its notes, after asking", async ({ page }) => {

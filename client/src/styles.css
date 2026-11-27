@@ -1458,9 +1458,10 @@ body:has(.note-list li.dragging) {
 }
 
 /*
- * The typed details: the formatted text (.lf-text-display) underneath, and the real text box on top
- * with invisible text. The two must lay out every letter identically, so they share every setting that
- * affects layout, and the formatting never changes a letter's width (bold is an outline, italic a slant).
+ * The typed details: the formatted text (.lf-text-display) underneath, the real text box on top with
+ * invisible text, and above that the tickboxes to click on (.lf-text-targets, invisible plain text).
+ * They must lay out every letter identically, so they share every setting that affects layout, and the
+ * formatting never changes a letter's width (bold is an outline, italic a slant).
  */
 .lf-text {
   position: relative;
@@ -1472,6 +1473,7 @@ body:has(.note-list li.dragging) {
 }
 
 .lf-text-display,
+.lf-text-targets,
 .lf-details textarea {
   box-sizing: border-box;
   margin: 0;
@@ -1497,6 +1499,29 @@ body:has(.note-list li.dragging) {
   pointer-events: none;
 }
 
+.lf-text-targets {
+  position: absolute;
+  inset: 0;
+  overflow-y: hidden;
+  /* Seen through: only the tickboxes take clicks, the rest reaches the text box. */
+  border-color: transparent;
+  color: transparent;
+  pointer-events: none;
+}
+
+.fmt-tickbox-target {
+  position: relative;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* A bigger area to tap than the tickbox's few letters. */
+.fmt-tickbox-target::before {
+  content: "";
+  position: absolute;
+  inset: -0.35em -0.3em;
+}
+
 .lf-details textarea {
   position: relative;
   flex: 1;
@@ -1517,7 +1542,7 @@ body:has(.note-list li.dragging) {
   outline-offset: 2px;
 }
 
-/* Formatting: *bold*, _underline_ and /italic/. In the list, bold is the font's real bold. */
+/* Formatting: *bold*, _underline_, /italic/, -strikethrough- and #highlight#. In the list, bold is the font's real bold. */
 .fmt-bold {
   font-weight: 700;
 }
@@ -1531,10 +1556,68 @@ body:has(.note-list li.dragging) {
   font-style: italic;
 }
 
+.fmt-strikethrough {
+  text-decoration: line-through;
+}
+
+/* Underlined and struck through together: both lines. */
+.fmt-underline.fmt-strikethrough {
+  text-decoration: underline line-through;
+}
+
+.fmt-highlight {
+  background-color: #ffff00;
+  color: #000;
+}
+
 /* In the long-form text box bold mustn't change widths, so it's the normal letters with an outline. */
 .lf-text-display .fmt-bold {
   font-weight: inherit;
   -webkit-text-stroke: 0.045em currentColor;
+}
+
+/* A tickbox starting a line of long-form details, drawn over its "[ ]" or "[x]" (whose letters are hidden). */
+.fmt-tickbox {
+  position: relative;
+  color: transparent;
+}
+
+.fmt-tickbox::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 0.85em;
+  height: 0.85em;
+  border: 1.5px solid var(--text);
+  border-radius: 3px;
+  background: var(--surface);
+  transform: translate(-50%, -50%);
+}
+
+.fmt-tickbox.ticked::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* The tick. */
+.fmt-tickbox.ticked::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 0.28em;
+  height: 0.5em;
+  border: solid var(--accent-text);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -62%) rotate(45deg);
+}
+
+/* The rest of a ticked line is struck through. */
+.fmt-ticked {
+  text-decoration: line-through;
 }
 
 /* The markers themselves, shown (dimmed) only in the long-form text box. */
@@ -2904,6 +2987,33 @@ body:has(.dragging) {
 .confirm-dialog p {
   margin: 0;
   color: var(--text);
+}
+
+/* More in a confirmation, under its message (e.g. what deleting a category changes). */
+.confirm-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+/* The part of a confirmation most worth noticing. */
+.confirm-warning {
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--error);
+  border-radius: 6px;
+  background: var(--error-bg);
+}
+
+.confirm-warning ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.25rem;
+  font-weight: 700;
+}
+
+.confirm-dialog .confirm-note {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 /* Moving a note to another tab: the tag changes, one per line, and the auto-accept tickbox. */

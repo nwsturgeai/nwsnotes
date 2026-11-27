@@ -172,6 +172,7 @@ export const api = {
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
+  deleteCategory: (id: number) => request<{ ok: true }>("DELETE", `/api/categories/${id}`, undefined, changeHeaders()),
   /** The user categories' order (every id, once each); returns all categories, Lifetime last. */
   tagShares: (tagId: number) => request<TagShare[]>("GET", `/api/tags/${tagId}/shares`),
   setTagShares: (tagId: number, body: TagSharesRequest) => request<TagShare[]>("PUT", `/api/tags/${tagId}/shares`, body, changeHeaders()),

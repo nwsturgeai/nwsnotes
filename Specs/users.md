@@ -136,7 +136,7 @@ The app can be used by several people, each with their own completely separate n
 
 ### Separate notebooks
 - **Everything that's now "the data" becomes per user:** notes, categories, tabs, the All tab's placement, the shared note order, the History, backups, and reminder devices.
-- **Ids:** each notebook's category and tab ids start at 1. Note and tag ids are unique across all users, so they can be shared (see "Global note and tag ids" in [sharing.md](sharing.md)).
+- **Ids:** each notebook's tab ids start at 1 (category ids did too, until new ones came from a sequence, so a deleted category's id is never reused; see [tags.md](tags.md)). Note and tag ids are unique across all users, so they can be shared (see "Global note and tag ids" in [sharing.md](sharing.md)).
 - **Database:**
   - `notes`, `categories` and `tabs` get a `user_id` column, and their primary keys become `(user_id, id)`.
   - `meta` gets `user_id`, and its key becomes `(user_id, name)`.

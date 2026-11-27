@@ -1,7 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 interface Props {
   message: string;
+  /** More to say, under the message. */
+  details?: ReactNode;
   confirmLabel: string;
   cancelLabel?: string;
   /** The confirm button is red (for deleting); otherwise it's the usual accent colour. */
@@ -41,7 +43,7 @@ export function MessageDialog({ messages, onClose }: { messages: string[]; onClo
 }
 
 /** The app's own confirmation pop-up (a modal <dialog>), used instead of the browser's confirm box. */
-export function ConfirmDialog({ message, confirmLabel, cancelLabel = "Cancel", danger = true, onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ message, details, confirmLabel, cancelLabel = "Cancel", danger = true, onConfirm, onCancel }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export function ConfirmDialog({ message, confirmLabel, cancelLabel = "Cancel", d
       }}
     >
       <p>{message}</p>
+      {details}
       <div className="form-buttons">
         <button type="button" className={danger ? "button danger-filled" : "button primary"} onClick={onConfirm} autoFocus>
           {confirmLabel}

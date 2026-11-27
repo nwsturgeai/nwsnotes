@@ -509,6 +509,20 @@ export function createApp(
     res.json((await sharing.withSharedOut(userOf(res).id, [category]))[0]);
   });
 
+  // Deletes a category: its tags come off every note and out of every tab's filter, and their shares end.
+  categoriesRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no category with id ${req.params.id}.` });
+      return;
+    }
+    await notebookOf(res).deleteCategory(id);
+    notifyChanged(req, res);
+    // Its tags are no longer shared: the people they were shared with are told, and their pages reload.
+    notifyUsers(await sharing.pruneDeletedTags(userOf(res).id));
+    res.json({ ok: true });
+  });
+
   app.use("/api/categories", categoriesRouter);
 
   // --- Sharing tags ---------------------------------------------------------------

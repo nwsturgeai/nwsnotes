@@ -50,6 +50,8 @@ import {
   oldTabOrders,
   revertedSnapshot,
   syncIdSequences,
+  nextCategoryId,
+  formerTagIds,
   withoutNoteOrder,
   writeChange,
   type ChangeRecord,
@@ -470,7 +472,7 @@ export class NoteStore {
         );
       }
       if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
-      const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
+      const tagIds = validateTagIds(await this.withoutDeletedTags(withoutLifetime(rawTagIds)), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       if (details && title.titleText === undefined) {
         throw new RequestError(400, "A long-form note's title must be typed text.");
@@ -587,7 +589,7 @@ export class NoteStore {
         );
       }
       if (details !== undefined && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
-      const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
+      const tagIds = validateTagIds(await this.withoutDeletedTags(withoutLifetime(rawTagIds)), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       // A typed note converted to a long-form note with handwritten details becomes a stylus note.
       if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
@@ -944,7 +946,8 @@ export class NoteStore {
       if (!check.ok) throw new RequestError(400, check.error);
 
       const category: Category = {
-        id: this.categories.reduce((max, c) => Math.max(max, c.id), 0) + 1,
+        // Never a deleted category's id, so nothing kept for that one (on a device, or in the History) applies to this.
+        id: await nextCategoryId(this.db),
         name: check.category.name,
         multiSelect: check.category.multiSelect,
         tags: await this.withTagIds(check.category.tags),
@@ -960,7 +963,7 @@ export class NoteStore {
   updateCategory(id: number, raw: unknown): Promise<Category> {
     return this.enqueue(async () => {
       const existing = this.categories.find((c) => c.id === id);
-      if (!existing) throw new RequestError(404, `There is no category with id ${id}.`);
+      if (!existing) throw new RequestError(404, `There is no category with id ${id}. It may have been deleted on another page.`);
       const check = validateCategory(raw, this.categories, existing);
       if (!check.ok) throw new RequestError(400, check.error);
 
@@ -1004,6 +1007,32 @@ export class NoteStore {
       }));
       await this.save(this.nextSaveTime(), { categories, notes, tabs }, { record });
       return category;
+    });
+  }
+
+  /**
+   * Deletes a category: its tags come off every note (the notes stay, with their times unchanged, as for
+   * deleting a tag), and it's dropped from every tab's filter (a tab left with no filters shows every note).
+   */
+  deleteCategory(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      // Lifetime and "Shared with me" have negative ids.
+      if (id < 0) throw new RequestError(400, "The built-in categories can't be deleted.");
+      const existing = this.categories.find((c) => c.id === id);
+      if (!existing) throw new RequestError(404, `There is no category with id ${id}. It may have been deleted on another page.`);
+      const deleted = new Set(existing.tags.map((tag) => tag.id));
+      const notes = this.notes.map((note) => {
+        const tagIds = note.tagIds.filter((tagId) => !deleted.has(tagId));
+        return tagIds.length === note.tagIds.length ? note : { ...note, tagIds };
+      });
+      const tabs = this.tabs.map((tab) =>
+        tab.categories.some((filter) => filter.categoryId === id) ? { ...tab, categories: tab.categories.filter((filter) => filter.categoryId !== id) } : tab,
+      );
+      await this.save(
+        this.nextSaveTime(),
+        { categories: this.categories.filter((c) => c.id !== id), notes, tabs },
+        { record: { summary: `Deleted category "${existing.name}"` } },
+      );
     });
   }
 
@@ -1094,6 +1123,19 @@ export class NoteStore {
       await this.save(this.nextSaveTime(), { tabs }, { record: { summary: "Changed the order of the tabs" } });
       return tabs;
     });
+  }
+
+  /**
+   * A note's tags without any this notebook used to have but has since deleted (with their category, say):
+   * a change made before the deletion, e.g. waiting offline, is saved without them rather than refused.
+   */
+  private async withoutDeletedTags(rawTagIds: unknown): Promise<unknown> {
+    if (!Array.isArray(rawTagIds)) return rawTagIds;
+    const exists = (id: unknown) => this.categories.some((category) => category.tags.some((tag) => tag.id === id));
+    const missing = rawTagIds.filter((id): id is number => Number.isInteger(id) && !exists(id));
+    if (missing.length === 0) return rawTagIds;
+    const deleted = await formerTagIds(this.db, this.userId, missing);
+    return rawTagIds.filter((id) => !deleted.has(id as number));
   }
 
   /** Gives new tags new ids, which are unique across all users' categories and never reused. */

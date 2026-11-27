@@ -1116,10 +1116,10 @@ export function validateTab(
 
 // ---- Text formatting -------------------------------------------------------
 
-/** A style the markers turn on: *bold*, _underline_ and /italic/. */
-export type TextStyle = "bold" | "underline" | "italic";
+/** A style the markers turn on: *bold*, _underline_, /italic/, -strikethrough- and #highlight#. */
+export type TextStyle = "bold" | "underline" | "italic" | "strikethrough" | "highlight";
 
-const STYLE_MARKERS: Record<string, TextStyle> = { "*": "bold", _: "underline", "/": "italic" };
+const STYLE_MARKERS: Record<string, TextStyle> = { "*": "bold", _: "underline", "/": "italic", "-": "strikethrough", "#": "highlight" };
 /** What may come just before an opening marker, besides the start of the line or a space. */
 const BEFORE_OPENING = "([{\"'";
 /** What may come just after a closing marker, besides the end of the line or a space. */
@@ -1221,4 +1221,68 @@ export interface HistoryChange {
 export interface HistoryPage {
   changes: HistoryChange[];
   more: boolean;
+}
+
+// ---- Tickboxes (long-form details only) ------------------------------------
+
+/** A tickbox at the start of a line of long-form details: "[ ]", "[]", "[x]" or "[X]", after any indent. */
+export interface Tickbox {
+  /** The spaces or tabs before it. */
+  indent: string;
+  /** The tickbox as typed, e.g. "[ ]". */
+  box: string;
+  ticked: boolean;
+}
+
+const TICKBOX = /^([ \t]*)(\[[ xX]?\])/;
+
+/** The tickbox a line starts with, if any. */
+export function tickboxOf(line: string): Tickbox | undefined {
+  const match = TICKBOX.exec(line);
+  if (!match) return undefined;
+  const box = match[2]!;
+  return { indent: match[1]!, box, ticked: box === "[x]" || box === "[X]" };
+}
+
+/** A change to make to some text: replace [from, to) with `insert`. */
+export interface TextEdit {
+  from: number;
+  to: number;
+  insert: string;
+}
+
+const lineStartOf = (text: string, lineIndex: number) => {
+  let start = 0;
+  for (let index = 0; index < lineIndex; index++) start = text.indexOf("\n", start) + 1;
+  return start;
+};
+
+/** Ticking or unticking line `lineIndex`'s tickbox: "[ ]" and "[]" become "[x]", "[x]" and "[X]" become "[ ]". */
+export function tickboxToggle(text: string, lineIndex: number): TextEdit | undefined {
+  const lineStart = lineStartOf(text, lineIndex);
+  const end = text.indexOf("\n", lineStart);
+  const tickbox = tickboxOf(text.slice(lineStart, end < 0 ? undefined : end));
+  if (!tickbox) return undefined;
+  const inside = lineStart + tickbox.indent.length + 1;
+  if (tickbox.box === "[]") return { from: inside, to: inside, insert: "x" };
+  return { from: inside, to: inside + 1, insert: tickbox.ticked ? " " : "x" };
+}
+
+/**
+ * The spaces a just-typed tickbox needs once text is typed after it, on the line starting at `lineStart`:
+ * "[]Hello" and "[] Hello" become "[ ] Hello", and "[x]Done" becomes "[x] Done". Undefined if it needs none.
+ */
+export function tickboxSpacing(text: string, lineStart: number): TextEdit | undefined {
+  const line = text.slice(lineStart).split("\n", 1)[0]!;
+  const empty = /^([ \t]*)\[\] ?(?=\S)/.exec(line);
+  if (empty) {
+    const inside = lineStart + empty[1]!.length + 1;
+    return { from: inside, to: lineStart + empty[0].length, insert: " ] " };
+  }
+  const filled = /^[ \t]*\[[ xX]\](?=\S)/.exec(line);
+  if (filled) {
+    const after = lineStart + filled[0].length;
+    return { from: after, to: after, insert: " " };
+  }
+  return undefined;
 }
