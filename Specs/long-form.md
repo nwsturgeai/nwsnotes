@@ -128,6 +128,7 @@ Changing the parent isn't offered when bulk-editing tags.
   - Other categories, and filters that allow several tags, are left alone.
   - It's saved like any other tag change.
   - It's greyed out when there's nothing to match: under "All", or a tab whose filters all allow several tags. The hint says why.
+- **The locked text box's placeholder:** while the typed details are locked and empty (a new note before its title is first accepted, or a note with no details while its title is being edited), the box shows, in grey, "Accept the title to write the details", a blank line, then "Formatting:" and one line per marker: "\*text\* for bold", "\_text\_ for underline", "/text/ for italic", "-text- for strikethrough" and "#text# for a yellow highlight" (see [formatting.md](formatting.md)). Once the details can be written, the placeholder is just "Details".
 - **Before the title is first accepted,** the bottom add-note area is greyed out, with the hint "Set the long-form note's title first". After that, regular notes added there are children of the long-form note. Their tags are free (see "Tags on child notes" below).
 - **Tags on child notes:**
   - When the long-form editor opens, the new-note tag dropdowns start on the tab's tags, as before. From then on they aren't locked, any tags can be chosen, and the tab's required categories aren't enforced.

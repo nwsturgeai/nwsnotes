@@ -32,6 +32,19 @@ test.describe("with the page loaded", () => {
     await openNotes(page);
   });
 
+  test("until the title is accepted, the details box says so and lists the formatting", async ({ page }) => {
+    await page.getByRole("button", { name: "Show all tags" }).click();
+    await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+    const details = editor(page).getByRole("textbox", { name: "Details" });
+    await expect(details).toHaveAttribute(
+      "placeholder",
+      "Accept the title to write the details\n\nFormatting:\n*text* for bold\n_text_ for underline\n/text/ for italic\n-text- for strikethrough\n#text# for a yellow highlight",
+    );
+    await editor(page).getByRole("textbox", { name: "Long-form note title" }).fill("Trip to Rome");
+    await editor(page).getByRole("textbox", { name: "Long-form note title" }).press("Enter");
+    await expect(details).toHaveAttribute("placeholder", "Details");
+  });
+
   test("a new long-form note is saved with its title, tags and details", async ({ page }) => {
     await startLongForm(page, "Trip to Rome");
     await editor(page).getByRole("button", { name: /^Area: / }).click();
