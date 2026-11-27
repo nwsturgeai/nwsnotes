@@ -10,6 +10,12 @@ async function savedNote(page: Page, title: string) {
   return data.notes.find((note) => note.titleText === title);
 }
 
+/** The note once the server has it: the app saves in the background, so a single read can come too soon. */
+async function waitForSavedNote(page: Page, title: string) {
+  await expect.poll(async () => (await savedNote(page, title)) !== undefined).toBe(true);
+  return (await savedNote(page, title))!;
+}
+
 /** Opens a new long-form note (its button is in the expanded add area) and accepts a title. */
 async function startLongForm(page: Page, title: string) {
   await page.getByRole("button", { name: "Show all tags" }).click();
@@ -63,7 +69,7 @@ test.describe("with the page loaded", () => {
     await editor(page).getByRole("textbox", { name: "Details" }).fill("Pack");
     await create.click();
     await startTitle("Flights");
-    const rome = await savedNote(page, "Trip to Rome");
+    const rome = await waitForSavedNote(page, "Trip to Rome");
     expect(rome?.detailsText).toBe("Pack");
     await expect(editor(page).getByRole("button", { name: /^Parent: Trip to Rome/ })).toBeVisible();
     await editor(page).getByRole("button", { name: "Finish" }).click();
@@ -107,8 +113,8 @@ test.describe("with the page loaded", () => {
     await expect(page).toHaveURL(/[?&]note=new$/);
     await titleBox.fill("Visa forms");
     await titleBox.press("Enter");
-    const visa = await savedNote(page, "Visa forms");
-    await expect(page).toHaveURL(new RegExp(`[?&]note=${visa?.id}$`));
+    const visa = await waitForSavedNote(page, "Visa forms");
+    await expect(page).toHaveURL(new RegExp(`[?&]note=${visa.id}$`));
     await page.goBack();
     await expect(titleBox).toHaveValue("Holiday plans");
     await page.goForward();
