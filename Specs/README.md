@@ -11,7 +11,7 @@ requirements first, then the "Agreed technical decisions" for that area.
 | [tabs.md](tabs.md) | Tabs (along the top or down the left), tab editing, additional tab filters, search |
 | [long-form.md](long-form.md) | Long-form notes and their child notes |
 | [stylus.md](stylus.md) | Stylus mode, the eraser, pen thickness |
-| [formatting.md](formatting.md) | Text formatting (bold, underline, italic, strikethrough, highlight) |
+| [formatting.md](formatting.md) | Text formatting (bold, underline, italic, strikethrough, highlight, tickboxes) |
 | [lifetime.md](lifetime.md) | Lifetime: New, Active, Waiting, Archived, Bin |
 | [due-dates.md](due-dates.md) | Due dates and reminders |
 | [offline-and-updates.md](offline-and-updates.md) | Offline use, live updates, the Android app, app updates |

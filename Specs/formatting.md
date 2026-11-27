@@ -8,6 +8,7 @@ _text_ renders as underline, with the underscores disappearing.
 -text- renders as strikethrough, with the dashes disappearing.
 #text# renders with a bright yellow background (highlighted), with the hashes disappearing.
 Formatting resets at the start of a new line.
+In long-form note details only (not titles), "[ ] " at the start of a line is a tickbox. "[x] " is a ticked one, and the rest of its line is struck through. Clicking or tapping a tickbox ticks or unticks it. Typing "[]" and then text spaces it out to "[ ] " once the text starts.
 In the long-form editor's text box, the formatting should show while typing (the markers can stay visible there).
 
 The whole app should use the font Atkinson Hyperlegible.
@@ -35,3 +36,17 @@ The whole app should use the font Atkinson Hyperlegible.
 - **Highlight:** a bright yellow background (`#ffff00`) with black text, so it reads the same whatever the text colour around it. Underline and strikethrough together show both lines.
 - **Search** matches the text as typed, so searching "bold" finds `*bold*`.
 - **Handwritten titles and drawn details** aren't affected.
+
+### Tickboxes
+- **Only in long-form details:** in the long-form editor's text box. Titles (in the list or anywhere else) show "[ ]" as typed.
+- **What counts:** "[ ]", "[]", "[x]" or "[X]" at the start of a line, after any spaces or tabs (so indented sub-items work). Anywhere else in a line, e.g. "list[]", it's just text. "[x]" and "[X]" are ticked.
+- **Stored as typed,** like the other markers: ticking turns "[ ]" or "[]" into "[x]", and unticking turns "[x]" or "[X]" into "[ ]". Nothing else changes, so saving, syncing, the history and backups work as for any typing.
+- **How it looks:** a box drawn over the tickbox's characters, whose letters are hidden, so no width changes and the cursor still lines up. A ticked box is filled in the accent colour with a white tick. The rest of a ticked line (after the space following the box) is struck through, on top of any other formatting.
+- **Ticking:** the boxes to click are on a layer above the text box, laid over the drawn ones exactly (invisible plain text, so every letter is in the same place). Only the boxes take clicks, with a slightly bigger area to tap; anything else reaches the text box. A tickbox can't be ticked while the details are locked.
+  - While the text box has the focus, the change is made as an edit of the text box, so Undo takes it back, and the cursor stays where it was (Undo puts it back there too).
+  - Otherwise, e.g. a tap on a phone with the keyboard down, the text is just changed, without focusing the text box, so the keyboard doesn't come up. That tick isn't on the text box's Undo list.
+- **Spacing a typed tickbox:** when the first character after a tickbox typed at the start of a line is typed, the tickbox is spaced out to have exactly one space after it: "[]H" becomes "[ ] H", "[] H" becomes "[ ] H", and "[ ]M" or "[x]D" get a space before the letter. Until then (e.g. "[]" on a line by itself), it's left as typed.
+  - It only happens straight after the tickbox is typed. Something else typed, deleted or undone in between, pasted text, or a space deleted on purpose later, isn't changed.
+  - One Undo straight after takes out just the added spaces, and puts the cursor back after the letter typed. Typing on doesn't add them again.
+  - On a phone, while the keyboard is still working on the word being typed (for its suggestions and autocorrect), the spacing waits until the word is finished, as changing the text before it can upset the keyboard.
+- **Placeholder:** the text box's formatting list includes "[ ] or [] at the start of a line for a tickbox".

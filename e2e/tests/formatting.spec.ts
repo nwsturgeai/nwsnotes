@@ -50,3 +50,10 @@ test("markers inside words, or without a partner, are left as typed", async ({ p
   await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe(title);
   await expect(row.locator(".fmt-bold, .fmt-underline, .fmt-italic, .fmt-strikethrough, .fmt-highlight")).toHaveCount(0);
 });
+
+test("tickboxes are only for long-form details: a title starting [ ] or [x] shows as typed", async ({ page }) => {
+  await addNote(page, "[x] Not a tickbox");
+  const row = noteRow(page, "[x] Not a tickbox");
+  await expect(row).toBeVisible();
+  await expect(row.locator(".fmt-tickbox, .fmt-ticked")).toHaveCount(0);
+});

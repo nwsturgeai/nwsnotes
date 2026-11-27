@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -29,13 +30,16 @@ import {
   type Category,
   type Note,
   type NoteDetails,
+  type TextEdit,
+  tickboxSpacing,
+  tickboxToggle,
 } from "@nwsnotes/shared";
 import { ApiError } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ParentDialog, ParentPill } from "./ParentDialog";
 import { possibleParents } from "./parents";
-import { FormattedText } from "./FormattedText";
+import { FormattedText, TickboxTargets } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
 import { PEN_WIDTHS, usePenWidth } from "./stylusMode";
@@ -112,12 +116,6 @@ function selectionFor(note: Note | undefined, categories: Category[]): TagSelect
   );
 }
 
-/**
- * Creating or editing a long-form note: a title, tags, and details (typed, or handwritten in stylus
- * mode). The title and the details are never editable at the same time: accepting the title (which
- * creates the note the first time) unlocks the details; "edit title" locks them again. Details and tag
- * changes are saved at most every 30 seconds, and straight away on Finish or when the app is hidden.
- */
 /** The formatting the details can use, shown under the first line of the empty text box's placeholder. */
 const FORMATTING_HELP = [
   "",
@@ -127,11 +125,18 @@ const FORMATTING_HELP = [
   "/text/ for italic",
   "-text- for strikethrough",
   "#text# for a yellow highlight",
+  "[ ] or [] at the start of a line for a tickbox",
 ].join("\n");
 const DETAILS_PLACEHOLDER = `Details\n${FORMATTING_HELP}`;
 /** While the text box is locked, it says what to do first. */
 const LOCKED_DETAILS_PLACEHOLDER = `Accept the title to write the details\n${FORMATTING_HELP}`;
 
+/**
+ * Creating or editing a long-form note: a title, tags, and details (typed, or handwritten in stylus
+ * mode). The title and the details are never editable at the same time: accepting the title (which
+ * creates the note the first time) unlocks the details; "edit title" locks them again. Details and tag
+ * changes are saved at most every 30 seconds, and straight away on Finish or when the app is hidden.
+ */
 export function LongFormEditor({
   note,
   notes,
@@ -167,6 +172,7 @@ export function LongFormEditor({
   const detailsRef = useRef<HTMLTextAreaElement>(null);
   /** The formatted copy of the typed details, under the text box; it scrolls with it. */
   const displayRef = useRef<HTMLDivElement>(null);
+  const targetsRef = useRef<HTMLDivElement>(null);
   /** Set when the title is accepted (or on opening a converted note), so the typed details take the focus once enabled. */
   const focusDetails = useRef(startInDetails === true && kind === "text");
   const [busy, setBusy] = useState(false);
@@ -299,6 +305,125 @@ export function LongFormEditor({
     dirty.current = true;
     if (conflictRef.current) return;
     if (timer.current === undefined) timer.current = window.setTimeout(() => void flush(), SAVE_DELAY_MS);
+  }
+
+  /** The typed details changed (by typing, or by a tickbox or its spacing). */
+  function changeDetails(text: string) {
+    setDetailsText(text);
+    latest.current.detailsText = text;
+    schedule();
+  }
+
+  /**
+   * A tickbox just typed at the start of a line: where it ends (after "[]" a space may follow), so the
+   * first thing typed after it can space it out ("[]Hello" becomes "[ ] Hello"). Anything else typed,
+   * deleted or undone clears it, so a space taken out on purpose doesn't come back.
+   */
+  const freshTickbox = useRef<{ lineStart: number; end: number }>(undefined);
+  /** The line whose tickbox needs spacing once the phone's keyboard has finished the word being typed. */
+  const spaceAfterComposing = useRef<number>(undefined);
+  /** Lines (where each starts) whose tickboxes are waiting to be spaced out. */
+  const tickboxesToSpace = useRef<number[]>([]);
+  /** Set while this editor changes the text box's text itself, so that change isn't taken as typing. */
+  const editing = useRef(false);
+  /**
+   * The text and cursor from before this editor's last change to the text box. Undo would put the cursor
+   * where the change was (in a tickbox), so when Undo brings this text back, the cursor goes back too.
+   */
+  const beforeEdit = useRef<{ text: string; start: number; end: number }>(undefined);
+  /**
+   * Makes a change to the typed details. While the text box has the focus, it's made as an edit of the
+   * text box, so Undo takes it back and the cursor stays where it was. Otherwise (a tickbox tapped on a
+   * phone, say) the text is just replaced, without focusing the box and bringing up the keyboard.
+   */
+  function editDetails({ from, to, insert }: TextEdit) {
+    const text = latest.current.detailsText;
+    if (text.length - (to - from) + insert.length > DETAILS_TEXT_MAX_LENGTH) return;
+    const shift = (at: number) => (at >= to ? at + insert.length - (to - from) : at);
+    // A tickbox being typed further on, while this one is spaced out, has moved along.
+    const fresh = freshTickbox.current;
+    if (fresh) freshTickbox.current = { lineStart: shift(fresh.lineStart), end: shift(fresh.end) };
+    if (spaceAfterComposing.current !== undefined) spaceAfterComposing.current = shift(spaceAfterComposing.current);
+    tickboxesToSpace.current = tickboxesToSpace.current.map(shift);
+    const box = detailsRef.current;
+    if (box && document.activeElement === box) {
+      const { selectionStart, selectionEnd } = box;
+      box.setSelectionRange(from, to);
+      editing.current = true;
+      const done = document.execCommand("insertText", false, insert);
+      editing.current = false;
+      if (done) {
+        box.setSelectionRange(shift(selectionStart), shift(selectionEnd));
+        beforeEdit.current = { text, start: selectionStart, end: selectionEnd };
+        return;
+      }
+    }
+    changeDetails(text.slice(0, from) + insert + text.slice(to));
+  }
+
+  function toggleTickbox(lineIndex: number) {
+    if (!detailsEditable) return;
+    const edit = tickboxToggle(latest.current.detailsText, lineIndex);
+    if (edit) editDetails(edit);
+  }
+
+  /** Queues the spacing of a line's tickbox, made once the typing that called for it is in the text box. */
+  function spaceTickbox(lineStart: number) {
+    tickboxesToSpace.current.push(lineStart);
+  }
+
+  function spaceTickboxes() {
+    for (let lineStart; (lineStart = tickboxesToSpace.current.shift()) !== undefined; ) {
+      const edit = tickboxSpacing(latest.current.detailsText, lineStart);
+      if (edit) editDetails(edit);
+    }
+  }
+  // Straight after the keystroke that called for it has been shown, before the next one (but not while
+  // React is still updating the page, which would put the text box's old text back).
+  useLayoutEffect(() => {
+    if (tickboxesToSpace.current.length > 0) queueMicrotask(spaceTickboxes);
+  }, [detailsText]);
+
+  function onDetailsInput(box: HTMLTextAreaElement, input: InputEvent | undefined) {
+    changeDetails(box.value);
+    if (editing.current) return;
+    const undone = beforeEdit.current;
+    beforeEdit.current = undefined;
+    if (input?.inputType === "historyUndo" && undone?.text === box.value) box.setSelectionRange(undone.start, undone.end);
+    const fresh = freshTickbox.current;
+    freshTickbox.current = undefined;
+    const type = input?.inputType ?? "";
+    const typed = type.startsWith("insert") && type !== "insertFromPaste" && type !== "insertFromDrop" && box.selectionStart === box.selectionEnd;
+    if (!typed) return;
+    const text = box.value;
+    const caret = box.selectionStart;
+    const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
+    const before = text.slice(lineStart, caret);
+    if (/^[ \t]*(\[[ xX]?\]|\[\] )$/.test(before)) {
+      freshTickbox.current = { lineStart, end: caret };
+      return;
+    }
+    // The first thing typed after a fresh tickbox, if it isn't a space or a new line.
+    if (!fresh || fresh.lineStart !== lineStart || caret <= fresh.end || !/\S/.test(text[fresh.end] ?? "")) return;
+    if (caret - (input?.data?.length ?? 1) !== fresh.end) return;
+    if (input?.isComposing) {
+      // A phone's keyboard is still working on this word: changing the text before it now can upset
+      // its suggestions and autocorrect, so wait until it's finished.
+      freshTickbox.current = fresh;
+      spaceAfterComposing.current = lineStart;
+      return;
+    }
+    spaceTickbox(lineStart);
+  }
+
+  function onDetailsCompositionEnd() {
+    const lineStart = spaceAfterComposing.current;
+    spaceAfterComposing.current = undefined;
+    freshTickbox.current = undefined;
+    if (lineStart === undefined) return;
+    spaceTickbox(lineStart);
+    // The keyboard may have finished without changing the text, so nothing else would make the change.
+    window.setTimeout(spaceTickboxes);
   }
 
   // Save straight away if the app goes into the background, and when the editor closes.
@@ -722,12 +847,13 @@ export function LongFormEditor({
 
       <div className={detailsEditable ? "lf-details" : "lf-details locked"}>
         {kind === "text" ? (
-          // Two exactly overlapping layers: the formatted text underneath, and the real text box on top
-          // with invisible text, so typing, the cursor and selection work as usual. Every letter is the
-          // same width in both (see .lf-text in styles.css), so the cursor lines up with what's shown.
+          // Exactly overlapping layers: the formatted text underneath, the real text box on top with
+          // invisible text, so typing, the cursor and selection work as usual, and above that only the
+          // tickboxes, to click on. Every letter is the same width in all three (see .lf-text in
+          // styles.css), so the cursor lines up with what's shown.
           <div className="lf-text">
             <div className="lf-text-display" ref={displayRef} aria-hidden>
-              <FormattedText text={detailsText} showMarkers />
+              <FormattedText text={detailsText} showMarkers tickboxes />
               {/* A last empty line still takes its height, as it does in the text box. */}
               {detailsText.endsWith("\n") && " "}
             </div>
@@ -738,15 +864,27 @@ export function LongFormEditor({
               value={detailsText}
               maxLength={DETAILS_TEXT_MAX_LENGTH}
               disabled={!detailsEditable}
-              onChange={(event) => {
-                setDetailsText(event.target.value);
-                latest.current.detailsText = event.target.value;
-                schedule();
-              }}
+              onChange={(event) => onDetailsInput(event.currentTarget, event.nativeEvent as InputEvent)}
+              onCompositionEnd={onDetailsCompositionEnd}
               onScroll={(event) => {
                 if (displayRef.current) displayRef.current.scrollTop = event.currentTarget.scrollTop;
+                if (targetsRef.current) targetsRef.current.scrollTop = event.currentTarget.scrollTop;
               }}
             />
+            {/* Above the text box: the tickboxes, to click on. */}
+            {detailsEditable && (
+              <div
+                className="lf-text-targets"
+                ref={(layer) => {
+                  targetsRef.current = layer;
+                  if (layer && detailsRef.current) layer.scrollTop = detailsRef.current.scrollTop;
+                }}
+                aria-hidden
+              >
+                <TickboxTargets text={detailsText} onToggle={toggleTickbox} />
+                {detailsText.endsWith("\n") && " "}
+              </div>
+            )}
           </div>
         ) : (
           pages.map((page, index) => (
