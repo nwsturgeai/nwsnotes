@@ -351,3 +351,17 @@ test("the owner's shared tags show the icon in the tag pickers", async ({ page, 
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator(".category-list a", { hasText: "Errands" }).getByRole("img", canEdit)).toBeVisible();
 });
+
+test("deleting a category warns who its shared tags are shared with, and ends the shares", async ({ page, browser }) => {
+  const sam = await newUserPage(page.request, browser, "Sam Smith", "sam@example.com");
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "read");
+  await page.goto("/settings/categories/2");
+  await page.getByRole("button", { name: "Delete category" }).click();
+  const dialog = page.locator("dialog.confirm-dialog");
+  await expect(dialog).toContainText("Sam Smith will stop seeing your notes through its shared tags.");
+  await dialog.getByRole("button", { name: "Delete category" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  // Sam's page reloads without the shared tag.
+  await expect.poll(async () => ((await (await sam.request.get("/api/notes")).json()) as { categories: { shared?: boolean }[] }).categories.some((c) => c.shared)).toBe(false);
+  await sam.context().close();
+});

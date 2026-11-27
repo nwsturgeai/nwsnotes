@@ -41,7 +41,7 @@ When a test fails, it should be easy to see what went wrong.
   - **long-form:** creating, editing, autosave, cancel and delete, child notes, converting a note, matching the tab, the formatting overlay lining up, and tickboxes (ticking, Undo, and spacing out a typed `[]`).
   - **formatting:** `*bold*`, `_underline_`, `/italic/`, `-strikethrough-` and `#highlight#` in the list, words like "and/or" left alone, and titles starting `[x]` not shown as tickboxes.
   - **stylus:** drawing a handwritten note, the eraser, and pen width.
-  - **settings:** categories (add, rename, reorder, colours, changing to single-select, deleting tags), tabs (add, edit, reorder, delete), stylus mode and columns.
+  - **settings:** categories (add, rename, reorder, colours, changing to single-select, deleting tags, deleting a category and undoing it, deleting every category, a note sent with a since-deleted tag), tabs (add, edit, reorder, delete), stylus mode and columns.
   - **due dates:** setting, clearing and the colours over time.
   - **offline:** the server is cut off mid-test. Adding and editing still work, the offline icon shows, and the changes sync when the server comes back.
   - **live updates:** two browser windows. A change in one appears in the other.

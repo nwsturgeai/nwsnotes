@@ -2989,6 +2989,33 @@ body:has(.dragging) {
   color: var(--text);
 }
 
+/* More in a confirmation, under its message (e.g. what deleting a category changes). */
+.confirm-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+/* The part of a confirmation most worth noticing. */
+.confirm-warning {
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--error);
+  border-radius: 6px;
+  background: var(--error-bg);
+}
+
+.confirm-warning ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.25rem;
+  font-weight: 700;
+}
+
+.confirm-dialog .confirm-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* Moving a note to another tab: the tag changes, one per line, and the auto-accept tickbox. */
 .tab-move-changes {
   margin: 0.75rem 0 0;
