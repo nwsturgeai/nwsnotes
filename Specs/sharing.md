@@ -83,7 +83,7 @@ Before sharing is built, note ids and tag ids become unique across all users. It
 - **Ids are never reused:** new note ids and tag ids come from two database sequences, one for notes and one for tags, shared by all users. A sequence hands each number out once, even when two people add at the same moment. Each sequence starts above the highest id already in use.
   - This replaces the per-user `lastNoteId`, and the current way of choosing a new tag's id (the highest tag id in use + 1, in `server/src/store.ts`), which reuses a deleted tag's id. With sharing, a reused tag id could point a share, a recipient's colour or an old History copy at a different tag.
   - A user's note ids will have gaps where other people's notes took numbers. Nothing depends on ids being consecutive: the order comes from `noteOrder`, then creation time.
-- **Category and tab ids stay per user.** "Shared with me" is a built-in category with the fixed id `-2` (Lifetime is `-1`).
+- **Tab ids stay per user, and so did category ids** until deleting categories came in (since then, new ones come from a sequence; see [tags.md](tags.md)). "Shared with me" is a built-in category with the fixed id `-2` (Lifetime is `-1`).
 - **Restoring a backup** (`--restore <file> --user <email>`) is refused if any of the file's note or tag ids belong to another user. After a restore, both sequences move past the highest id restored. A backup file's `lastNoteId` is ignored, and downloaded backups no longer need it.
 - **Tests:** tests stop assuming particular ids (for example, a new account's first note being id 1). `POST /api/test/reset` also resets both sequences.
 
