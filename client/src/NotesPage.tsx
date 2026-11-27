@@ -881,14 +881,22 @@ export function NotesPage({
     // A handwritten note's writing is loaded into the canvas, so it starts with ink.
     setPadInked(note.titleImage !== undefined);
     onEditStart(note);
-    if (note.titleText !== undefined) {
-      requestAnimationFrame(() => {
-        const input = inputRef.current;
-        input?.focus();
-        input?.setSelectionRange(input.value.length, input.value.length);
-      });
-    }
+    focusTitleAtEnd.current = note.titleText !== undefined;
   }
+
+  /**
+   * Starting to edit a typed note puts the cursor at the end of its title. It's done as soon as the title
+   * is in the box, in the same update, not a frame later: then it can't land in the middle of something
+   * already being typed or pasted there (e.g. undoing a select-all just before the new text goes in).
+   */
+  const focusTitleAtEnd = useRef(false);
+  useLayoutEffect(() => {
+    if (!focusTitleAtEnd.current) return;
+    focusTitleAtEnd.current = false;
+    const input = inputRef.current;
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
+  });
 
   /** Back to adding notes, with an empty title box or canvas. */
   function finishEdit() {
