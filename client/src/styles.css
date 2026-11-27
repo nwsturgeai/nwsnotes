@@ -1517,7 +1517,7 @@ body:has(.note-list li.dragging) {
   outline-offset: 2px;
 }
 
-/* Formatting: *bold*, _underline_ and /italic/. In the list, bold is the font's real bold. */
+/* Formatting: *bold*, _underline_, /italic/, -strikethrough- and #highlight#. In the list, bold is the font's real bold. */
 .fmt-bold {
   font-weight: 700;
 }
@@ -1529,6 +1529,20 @@ body:has(.note-list li.dragging) {
 .fmt-italic {
   /* The font has no italic version, so this is the upright letters slanted (widths unchanged). */
   font-style: italic;
+}
+
+.fmt-strikethrough {
+  text-decoration: line-through;
+}
+
+/* Underlined and struck through together: both lines. */
+.fmt-underline.fmt-strikethrough {
+  text-decoration: underline line-through;
+}
+
+.fmt-highlight {
+  background-color: #ffff00;
+  color: #000;
 }
 
 /* In the long-form text box bold mustn't change widths, so it's the normal letters with an outline. */

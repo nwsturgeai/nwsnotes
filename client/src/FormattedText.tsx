@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { formatLine, type FormattedRun } from "@nwsnotes/shared";
 
 /**
- * Text with its *bold*, _underline_ and /italic/ markers applied (see formatLine). The markers are
+ * Text with its *bold*, _underline_, /italic/, -strikethrough- and #highlight# markers applied (see formatLine). The markers are
  * hidden, or with `showMarkers` kept (dimmed), so the text matches what was typed character for
  * character (the long-form text box's display layer relies on that).
  */

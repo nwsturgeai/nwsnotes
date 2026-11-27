@@ -30,10 +30,23 @@ test("*bold*, _underline_ and /italic/ are shown formatted, without their marker
   await expect(page.getByRole("textbox", { name: "Note title" })).toHaveValue("Make *this* _that_ and /other/ *_both_*");
 });
 
+test("-strikethrough- and #highlight# are shown formatted, without their markers", async ({ page }) => {
+  await addNote(page, "Buy -milk- and #eggs# then #-both-#");
+  const row = noteRow(page, "Buy milk and eggs then both");
+  await expect(row).toBeVisible();
+  await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe("Buy milk and eggs then both");
+  await expect(row.locator(".fmt-strikethrough").first()).toHaveText("milk");
+  await expect(row.locator(".fmt-strikethrough").first()).toHaveCSS("text-decoration-line", "line-through");
+  await expect(row.locator(".fmt-highlight").first()).toHaveText("eggs");
+  await expect(row.locator(".fmt-highlight").first()).toHaveCSS("background-color", "rgb(255, 255, 0)");
+  await expect(row.locator(".fmt-highlight.fmt-strikethrough")).toHaveText("both");
+});
+
 test("markers inside words, or without a partner, are left as typed", async ({ page }) => {
-  await addNote(page, "Cats and/or dogs on 12/11/2026, snake_case_name, 2*3*4 and *unfinished");
+  const title = "Cats and/or dogs on 12/11/2026, snake_case_name, 2*3*4, well-known, 10 - 5, C# and *unfinished";
+  await addNote(page, title);
   const row = noteRow(page, "Cats and/or dogs");
   await expect(row).toBeVisible();
-  await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe("Cats and/or dogs on 12/11/2026, snake_case_name, 2*3*4 and *unfinished");
-  await expect(row.locator(".fmt-bold, .fmt-underline, .fmt-italic")).toHaveCount(0);
+  await expect.poll(async () => (await noteTitles(page)).at(-1)).toBe(title);
+  await expect(row.locator(".fmt-bold, .fmt-underline, .fmt-italic, .fmt-strikethrough, .fmt-highlight")).toHaveCount(0);
 });

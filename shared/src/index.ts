@@ -1116,10 +1116,10 @@ export function validateTab(
 
 // ---- Text formatting -------------------------------------------------------
 
-/** A style the markers turn on: *bold*, _underline_ and /italic/. */
-export type TextStyle = "bold" | "underline" | "italic";
+/** A style the markers turn on: *bold*, _underline_, /italic/, -strikethrough- and #highlight#. */
+export type TextStyle = "bold" | "underline" | "italic" | "strikethrough" | "highlight";
 
-const STYLE_MARKERS: Record<string, TextStyle> = { "*": "bold", _: "underline", "/": "italic" };
+const STYLE_MARKERS: Record<string, TextStyle> = { "*": "bold", _: "underline", "/": "italic", "-": "strikethrough", "#": "highlight" };
 /** What may come just before an opening marker, besides the start of the line or a space. */
 const BEFORE_OPENING = "([{\"'";
 /** What may come just after a closing marker, besides the end of the line or a space. */

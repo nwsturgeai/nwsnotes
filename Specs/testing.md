@@ -39,7 +39,7 @@ When a test fails, it should be easy to see what went wrong.
   - **ordering:** edit-order mode and dragging a note; the shared order (a note on two tabs keeps its place relative to the others on both, "All" included, and adding at the top there); making the shared order from older per-tab orders, the higher tab winning; going back in the History.
   - **multi-select:** selecting notes, All/None, and bulk tag changes.
   - **long-form:** creating, editing, autosave, cancel and delete, child notes, converting a note, matching the tab, and the formatting overlay lining up.
-  - **formatting:** `*bold*`, `_underline_` and `/italic/` in the list, and words like "and/or" left alone.
+  - **formatting:** `*bold*`, `_underline_`, `/italic/`, `-strikethrough-` and `#highlight#` in the list, and words like "and/or" left alone.
   - **stylus:** drawing a handwritten note, the eraser, and pen width.
   - **settings:** categories (add, rename, reorder, colours, changing to single-select, deleting tags), tabs (add, edit, reorder, delete), stylus mode and columns.
   - **due dates:** setting, clearing and the colours over time.
