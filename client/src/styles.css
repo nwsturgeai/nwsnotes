@@ -312,6 +312,15 @@ body:has(.app) {
   color: var(--text);
 }
 
+/* Edit-order mode: the tab a note is being dragged over, where letting go moves the note into it. */
+.tab.drop-target,
+.left-tab.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
 /* Blocked while a note is being edited. */
 .tab[aria-disabled],
 .cog.blocked {
@@ -2895,6 +2904,21 @@ body:has(.dragging) {
 .confirm-dialog p {
   margin: 0;
   color: var(--text);
+}
+
+/* Moving a note to another tab: the tag changes, one per line, and the auto-accept tickbox. */
+.tab-move-changes {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.tab-move-auto {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 /* ---- Login page --------------------------------------------------------- */

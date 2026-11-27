@@ -47,6 +47,27 @@ interface Active {
   clientY: number;
   target: number;
   frame: number;
+  /** The drop zone outside the list the pointer is over (see `DropZones`), if any. */
+  zone: HTMLElement | undefined;
+}
+
+/**
+ * Places outside the list a row can be dropped on (the tabs, for notes): elements matching `selector`.
+ * While the pointer is over one it gets the `drop-target` class and the gap goes back to where the row
+ * started; letting go there calls `onDrop` with the row's id and that element instead of reordering.
+ */
+export interface DropZones {
+  selector: string;
+  onDrop: (id: number, zone: HTMLElement) => void;
+}
+
+/** The drop zone under the point, looking past the dragged row (which follows the pointer). */
+function zoneAt(selector: string, x: number, y: number): HTMLElement | undefined {
+  for (const element of document.elementsFromPoint(x, y)) {
+    const zone = element.closest<HTMLElement>(selector);
+    if (zone) return zone;
+  }
+  return undefined;
 }
 
 /** The nearest element that scrolls up and down, from `element` outwards (the page itself if none). */
@@ -79,11 +100,24 @@ export function useListDrag(
   onDrop: (id: number, target: number) => void,
   itemSelector = "[data-drag-id]",
   idOf: (item: HTMLElement) => number = (item) => Number(item.dataset.dragId),
+  zones?: DropZones,
 ) {
   const [drag, setDrag] = useState<ListDrag>();
   const active = useRef<Active>(undefined);
   const onDropRef = useRef(onDrop);
   onDropRef.current = onDrop;
+  const zonesRef = useRef(zones);
+  zonesRef.current = zones;
+
+  /** Notes which drop zone the pointer is over (none if `clear`), marking it. */
+  function updateZone(a: Active, clear = false) {
+    const selector = zonesRef.current?.selector;
+    const zone = clear || !selector ? undefined : zoneAt(selector, a.clientX, a.clientY);
+    if (zone === a.zone) return;
+    a.zone?.classList.remove("drop-target");
+    zone?.classList.add("drop-target");
+    a.zone = zone;
+  }
 
   function show(a: Active) {
     setDrag({ id: a.id, target: a.target, top: a.clientY - a.grabY, left: a.left, width: a.width, height: a.height });
@@ -112,8 +146,11 @@ export function useListDrag(
     active.current = undefined;
     cancelAnimationFrame(a.frame);
     if (a.grip.hasPointerCapture(a.pointerId)) a.grip.releasePointerCapture(a.pointerId);
+    const zone = a.zone;
+    updateZone(a, true);
     setDrag(undefined);
-    if (drop && a.target !== a.start) onDropRef.current(a.id, a.target);
+    if (drop && zone) zonesRef.current?.onDrop(a.id, zone);
+    else if (drop && a.target !== a.start) onDropRef.current(a.id, a.target);
   }
 
   function startDrag(event: ReactPointerEvent<HTMLElement>, id: number) {
@@ -151,6 +188,7 @@ export function useListDrag(
       clientY: event.clientY,
       target: start,
       frame: 0,
+      zone: undefined,
     };
     active.current = a;
     show(a);
@@ -158,6 +196,11 @@ export function useListDrag(
     // Scroll near the edges, every frame while dragging (the pointer may be held still there).
     const tick = () => {
       if (active.current !== a) return;
+      // Not while over a drop zone (the tabs are near the list's top edge).
+      if (a.zone) {
+        a.frame = requestAnimationFrame(tick);
+        return;
+      }
       const bounds = visibleBounds(scroller);
       const before = scroller.scrollTop;
       if (a.clientY < bounds.top + EDGE) scroller.scrollTop -= SCROLL_SPEED;
@@ -176,7 +219,8 @@ export function useListDrag(
     if (!a || event.pointerId !== a.pointerId) return;
     a.clientX = event.clientX;
     a.clientY = event.clientY;
-    a.target = targetAt(a);
+    updateZone(a);
+    a.target = a.zone ? a.start : targetAt(a);
     show(a);
   }
 

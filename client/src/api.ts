@@ -12,6 +12,7 @@ import {
   type HistoryPage,
   type LifetimeChange,
   type LifetimeRequest,
+  type TabMoveRequest,
   type LoginRequest,
   type Me,
   type NewUserRequest,
@@ -152,6 +153,8 @@ export const api = {
   deleteNote: (id: number) => request<{ ok: true }>("DELETE", `/api/notes/${id}`, undefined, changeHeaders()),
   /** Multi-select: add and remove tags on several notes in one save; returns the updated notes. */
   bulkTags: (body: BulkTagsRequest) => request<Note[]>("PUT", "/api/notes/bulk-tags", body, changeHeaders()),
+  /** Edit-order mode: a note dragged onto another tab gets that tab's tags (refused, isNoteChanged, if it has changed since `base`). */
+  moveNoteToTab: (id: number, body: TabMoveRequest) => request<Note>("PUT", `/api/notes/${id}/tab-move`, body, changeHeaders()),
   /** `tagsChangedDateTime`: only for a change made offline, the time it was made. */
   setLifetime: (id: number, lifetime: LifetimeChange, tagsChangedDateTime?: string) =>
     request<Note>(

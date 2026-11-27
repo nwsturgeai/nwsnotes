@@ -17,6 +17,7 @@ import {
   LIFETIME_WAITING,
   mergeNoteOrders,
   sameTags,
+  tagsForTabMove,
   validateCategory,
   validateTab,
   validateTagIds,
@@ -732,6 +733,46 @@ export class NoteStore {
       };
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
         record: { summary: LIFETIME_SUMMARIES[raw as LifetimeChange](label(note)) },
+      });
+      return note;
+    });
+  }
+
+  /**
+   * Edit-order mode: a note dragged onto tab `toTabId` from `fromTabId` (undefined: "All") gets the tags
+   * that put it in that tab and take it out of the one it came from (see `tagsForTabMove`), Lifetime
+   * included, in one save. `baseModifiedDateTime`: refused (412) if the note has changed since.
+   */
+  moveToTab(id: number, raw: unknown): Promise<Note> {
+    return this.enqueue(async () => {
+      const body = (raw ?? {}) as Partial<Record<"toTabId" | "fromTabId" | "baseModifiedDateTime", unknown>>;
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
+      const tabOf = (tabId: unknown, name: string) => {
+        if (!Number.isInteger(tabId)) throw new RequestError(400, `"${name}" must be a tab id.`);
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab) throw new RequestError(404, `There is no tab with id ${String(tabId)}.`);
+        return tab;
+      };
+      const to = tabOf(body.toTabId, "toTabId");
+      const from = body.fromTabId === undefined || body.fromTabId === null ? undefined : tabOf(body.fromTabId, "fromTabId");
+      const base = body.baseModifiedDateTime;
+      if (base !== undefined && base !== null) {
+        if (typeof base !== "string") throw new RequestError(400, `"baseModifiedDateTime" must be a date and time.`);
+        if (base !== existing.lastModifiedDateTime) throw new RequestError(NOTE_CHANGED_STATUS, NOTE_CHANGED_ELSEWHERE);
+      }
+      const move = tagsForTabMove(existing, [...this.categories, LIFETIME_CATEGORY], to, from);
+      if (!move.ok) throw new RequestError(400, move.error);
+      if (move.changes.length === 0) throw new RequestError(400, `That note is already in "${to.name}".`);
+      const now = this.nextSaveTime();
+      const note: Note = {
+        ...existing,
+        lastModifiedDateTime: now.toISOString(),
+        tagsChangedDateTime: this.tagsChangedTime(existing, move.tagIds, now),
+        tagIds: move.tagIds,
+      };
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
+        record: { summary: `Moved ${label(note)} to tab "${to.name}"` },
       });
       return note;
     });

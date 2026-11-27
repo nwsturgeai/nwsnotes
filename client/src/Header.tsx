@@ -232,6 +232,8 @@ export function LeftTabStrip({
             key={tab.id ?? "all"}
             type="button"
             role="tab"
+            // Edit-order mode: a note can be dragged onto a tab (not "All") to move it there.
+            data-drop-tab={tab.id}
             className={selected ? "left-tab selected" : "left-tab"}
             aria-selected={selected}
             aria-disabled={(editing && !selected) || undefined}
@@ -356,6 +358,8 @@ function TabStrip({
           <button
             key={tabKey(tab)}
             data-tab-key={tabKey(tab)}
+            // Edit-order mode: a note can be dragged onto a tab (not "All") to move it there.
+            data-drop-tab={tab.id}
             type="button"
             role="tab"
             className={selected ? "tab selected" : "tab"}
