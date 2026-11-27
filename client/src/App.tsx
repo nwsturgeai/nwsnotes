@@ -483,6 +483,7 @@ export function App() {
               notes={state.data.notes}
               categories={state.data.categories}
               selectedTab={selectedTab}
+              tabs={tabs}
               leftTabs={[
                 ...(allOnLeft ? [{ id: undefined, name: ALL_TAB_NAME, count: tabCounts?.get("all") }] : []),
                 ...tabs.filter((tab) => tab.placement === "left").map((tab) => ({

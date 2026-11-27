@@ -429,6 +429,18 @@ export function createApp(
     res.json({ ok: true });
   });
 
+  // Edit-order mode: a note dragged onto another tab gets that tab's tags.
+  notesRouter.put("/:id/tab-move", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
+      return;
+    }
+    const note = await sharing.moveToTab(userOf(res), id, req.body);
+    notifyChanged(req, res);
+    res.json(note);
+  });
+
   // Archive, reinstate or bin a note.
   notesRouter.put(
     "/:id/lifetime",

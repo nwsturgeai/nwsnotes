@@ -437,6 +437,13 @@ export class Sharing {
     return this.viewAfter(user.id, await resolved.store.setLifetime(id, raw, rawTagsChanged));
   }
 
+  /** Dragging a note onto another tab: only the user's own notes' tags can be changed. */
+  async moveToTab(user: User, id: number, raw: unknown): Promise<Note> {
+    const resolved = await this.resolve(user.id, id);
+    if (resolved.kind === "shared") throw new RequestError(400, `You can't change the tags of ${resolved.owner.displayName}'s notes.`);
+    return resolved.store.moveToTab(id, raw);
+  }
+
   /** Multi-select: only the user's own notes' tags can be changed. */
   async bulkTags(user: User, raw: unknown): Promise<Note[]> {
     const noteIds = (raw as { noteIds?: unknown } | undefined)?.noteIds;

@@ -51,6 +51,7 @@ import {
   noteMatchesFilters,
   orderNotes,
   tagLabel,
+  tagsForTabMove,
   validateTitle,
   validateTitleImage,
   withoutMarkers,
@@ -59,6 +60,7 @@ import {
   type Note,
   type NoteTitle,
   type Tab,
+  type TabMoveChange,
   NOTE_CHANGED_ELSEWHERE,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
@@ -66,6 +68,7 @@ import { isWaiting, offlineApi } from "./offline";
 import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DueDateDialog } from "./DueDateDialog";
+import { autoAcceptingTabMoves, describeTabMoveChange, TabMoveDialog } from "./TabMoveDialog";
 import { FormattedText } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
 import { useCollapsedCategories, useExtraFilters } from "./extraFilters";
@@ -112,6 +115,8 @@ interface Props {
   categories: Category[];
   /** The selected tab, or undefined for "All". Only matching notes are listed. */
   selectedTab: Tab | undefined;
+  /** Every tab (not "All"), so a note dragged onto one in edit-order mode can be moved into it. */
+  tabs: Tab[];
   /** The tabs set to "Left" ("All" first if it is), shown in a strip left of the filter row and list. */
   leftTabs: TabEntry[];
   onSelectTab: (id: number | undefined) => void;
@@ -180,6 +185,7 @@ export function NotesPage({
   notes,
   categories,
   selectedTab,
+  tabs,
   leftTabs,
   onSelectTab,
   tabsBlocked,
@@ -651,7 +657,11 @@ export function NotesPage({
 
   /** The list as it was when a drag started: live updates don't change what's shown until the drop. */
   const dragList = useRef<Note[]>(undefined);
-  const { drag, gripHandlers } = useNoteDrag(listRef, (noteId, target) => void dropNote(noteId, target));
+  const { drag, gripHandlers } = useNoteDrag(listRef, (noteId, target) => void dropNote(noteId, target), {
+    // Any tab but "All" (which has no data-drop-tab) and the one showing.
+    selector: '[data-drop-tab]:not([aria-selected="true"])',
+    onDrop: (noteId, zone) => dropNoteOnTab(noteId, Number(zone.dataset.dropTab)),
+  });
   const listedNotes = drag && dragList.current ? dragList.current : visibleNotes;
 
   /** Every note's id in the shared order (unordered notes after, oldest first), without `leaving`. */
@@ -686,6 +696,54 @@ export function NotesPage({
       onNotesChanged();
     }
   }
+  /** A note dragged onto another tab, waiting for OK in the dialog: the tag changes it would get. */
+  const [tabMove, setTabMove] = useState<{ note: Note; to: Tab; changes: TabMoveChange[] }>();
+
+  /**
+   * Edit-order mode: a note let go over another tab gets the tags that put it in that tab (and take it
+   * out of this one), after the dialog's OK, or straight away while auto-accepting.
+   */
+  function dropNoteOnTab(noteId: number, tabId: number) {
+    const note = notes.find((n) => n.id === noteId);
+    const to = tabs.find((tab) => tab.id === tabId);
+    if (!note || !to) return;
+    if (note.shared) {
+      setNotice({ text: `You can't change the tags of ${note.shared.ownerName}'s notes.`, error: true });
+      return;
+    }
+    const move = tagsForTabMove(note, categories, to, selectedTab);
+    if (!move.ok) {
+      setNotice({ text: move.error, error: true });
+      return;
+    }
+    if (move.changes.length === 0) {
+      setNotice({ text: "Already in that tab." });
+      return;
+    }
+    if (autoAcceptingTabMoves()) void moveNoteToTab(note, to, move.changes, true);
+    else setTabMove({ note, to, changes: move.changes });
+  }
+
+  async function moveNoteToTab(note: Note, to: Tab, changes: TabMoveChange[], auto: boolean) {
+    setBusyNoteId(note.id);
+    try {
+      onNoteUpdated(
+        await api.moveNoteToTab(note.id, { toTabId: to.id, fromTabId: selectedTab?.id, baseModifiedDateTime: note.lastModifiedDateTime }),
+      );
+      // Without the dialog, a notice says what changed.
+      if (auto) setNotice({ text: `Moved to "${to.name}": ${changes.map((change) => describeTabMoveChange(change, categories)).join("; ")}` });
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      const reason = error instanceof ApiError && error.isNoteChanged ? NOTE_CHANGED_ELSEWHERE : error instanceof Error ? error.message : String(error);
+      setNotice({ text: `The note wasn't moved: ${reason}`, error: true });
+    } finally {
+      setBusyNoteId(undefined);
+    }
+  }
+
   /** Edit-order mode's buttons: moves a note to the top or the bottom of the listed notes, and saves the order. */
   function moveToEnd(noteId: number, end: "top" | "bottom") {
     // Not a drag, so the order is worked out from the list as it is now.
@@ -1764,6 +1822,18 @@ export function NotesPage({
         </div>
       </div>
 
+      {tabMove && (
+        <TabMoveDialog
+          tabName={tabMove.to.name}
+          changes={tabMove.changes}
+          categories={categories}
+          onConfirm={() => {
+            setTabMove(undefined);
+            void moveNoteToTab(tabMove.note, tabMove.to, tabMove.changes, false);
+          }}
+          onCancel={() => setTabMove(undefined)}
+        />
+      )}
       {confirmResetNew && (
         <ConfirmDialog
           message="Do you want to reset the New tags?"

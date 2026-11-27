@@ -388,6 +388,72 @@ export interface LifetimeRequest {
   tagsChangedDateTime?: string;
 }
 
+/**
+ * Body of PUT /api/notes/:id/tab-move: dragging a note onto another tab in edit-order mode. The server
+ * works out the tags with `tagsForTabMove`, from the note as it is then.
+ */
+export interface TabMoveRequest {
+  toTabId: number;
+  /** The tab it was dragged from; undefined for "All". */
+  fromTabId?: number;
+  /** The note's lastModifiedDateTime when it was dropped: refused if it has changed since. */
+  baseModifiedDateTime?: string;
+}
+
+/** One category's tags before and after a move to a tab (only categories that change). */
+export interface TabMoveChange {
+  categoryId: number;
+  removed: number[];
+  added: number[];
+}
+
+export type TabMove = { ok: true; tagIds: number[]; changes: TabMoveChange[] } | { ok: false; error: string };
+
+/**
+ * The tags a note gets when it's dragged onto tab `to` from tab `from` (undefined: "All"). `categories`
+ * includes Lifetime. For each of `to`'s filters the note keeps a tag it already has, or else gets the
+ * filter's first tag (in a single-select category, replacing the one it had; Lifetime never becomes
+ * New). Then the tags of `from`'s filters are taken off, in categories `to` doesn't filter on (never
+ * Lifetime, which every note has one of), so the note leaves the tab it came from.
+ */
+export function tagsForTabMove(note: Note, categories: Category[], to: Tab, from: Tab | undefined): TabMove {
+  let tagIds = note.tagIds.some(isLifetimeTag) ? [...note.tagIds] : [...note.tagIds, LIFETIME_ACTIVE];
+  for (const filter of to.categories) {
+    const category = categories.find((c) => c.id === filter.categoryId);
+    if (!category || category.shared) {
+      return { ok: false, error: `"${to.name}" shows tags shared with you, so your own notes can't be moved into it.` };
+    }
+    const options = filter.tagIds.filter((id) => category.tags.some((tag) => tag.id === id));
+    if (options.some((id) => tagIds.includes(id))) continue;
+    const pick = options.find((id) => id !== LIFETIME_NEW);
+    if (pick === undefined) {
+      return {
+        ok: false,
+        error: options.length > 0 ? `Notes can't be made New, so they can't be moved to "${to.name}".` : `"${to.name}" has no tags to give the note.`,
+      };
+    }
+    if (!category.multiSelect) tagIds = tagIds.filter((id) => !category.tags.some((tag) => tag.id === id));
+    tagIds.push(pick);
+  }
+  for (const filter of from?.categories ?? []) {
+    if (filter.categoryId === LIFETIME_CATEGORY_ID || to.categories.some((f) => f.categoryId === filter.categoryId)) continue;
+    tagIds = tagIds.filter((id) => !filter.tagIds.includes(id));
+  }
+  // The Lifetime tag stays last, as everywhere else.
+  const lifetime = tagIds.find(isLifetimeTag)!;
+  tagIds = [...tagIds.filter((id) => id !== lifetime), lifetime];
+  const changes: TabMoveChange[] = [];
+  for (const category of categories) {
+    const inCategory = (ids: number[]) => category.tags.filter((tag) => ids.includes(tag.id)).map((tag) => tag.id);
+    const before = inCategory(category.id === LIFETIME_CATEGORY_ID ? [lifetimeOf(note)] : note.tagIds);
+    const after = inCategory(tagIds);
+    const removed = before.filter((id) => !after.includes(id));
+    const added = after.filter((id) => !before.includes(id));
+    if (removed.length > 0 || added.length > 0) changes.push({ categoryId: category.id, removed, added });
+  }
+  return { ok: true, tagIds, changes };
+}
+
 /** Whether two notes' tag lists hold the same tags, in any order. */
 export function sameTags(a: number[], b: number[]): boolean {
   return a.length === b.length && a.every((id) => b.includes(id));
