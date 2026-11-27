@@ -118,9 +118,8 @@ function selectionFor(note: Note | undefined, categories: Category[]): TagSelect
  * creates the note the first time) unlocks the details; "edit title" locks them again. Details and tag
  * changes are saved at most every 30 seconds, and straight away on Finish or when the app is hidden.
  */
-/** Shown in an empty, locked text box: what to do first, then the formatting the details can use. */
-const LOCKED_DETAILS_PLACEHOLDER = [
-  "Accept the title to write the details",
+/** The formatting the details can use, shown under the first line of the empty text box's placeholder. */
+const FORMATTING_HELP = [
   "",
   "Formatting:",
   "*text* for bold",
@@ -129,6 +128,9 @@ const LOCKED_DETAILS_PLACEHOLDER = [
   "-text- for strikethrough",
   "#text# for a yellow highlight",
 ].join("\n");
+const DETAILS_PLACEHOLDER = `Details\n${FORMATTING_HELP}`;
+/** While the text box is locked, it says what to do first. */
+const LOCKED_DETAILS_PLACEHOLDER = `Accept the title to write the details\n${FORMATTING_HELP}`;
 
 export function LongFormEditor({
   note,
@@ -732,7 +734,7 @@ export function LongFormEditor({
             <textarea
               ref={detailsRef}
               aria-label="Details"
-              placeholder={detailsEditable ? "Details" : LOCKED_DETAILS_PLACEHOLDER}
+              placeholder={detailsEditable ? DETAILS_PLACEHOLDER : LOCKED_DETAILS_PLACEHOLDER}
               value={detailsText}
               maxLength={DETAILS_TEXT_MAX_LENGTH}
               disabled={!detailsEditable}
