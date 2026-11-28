@@ -42,7 +42,8 @@ import { possibleParents } from "./parents";
 import { FormattedText, TickboxTargets } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
-import { PEN_WIDTHS, usePenWidth } from "./stylusMode";
+import { BLACK_PEN, PEN_WIDTHS, usePenColour, usePenWidth } from "./stylusMode";
+import { PenColourDialog } from "./PenColourDialog";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
 /** Details and tag changes are sent at most this often (and once this long after the first change). */
@@ -185,6 +186,9 @@ export function LongFormEditor({
   const [erasing, setErasing] = useState(false);
   /** The device's pen thickness, also chosen with the buttons beside the eraser. */
   const [penWidth, setPenWidth] = usePenWidth();
+  /** The device's pen colour for long-form notes, chosen from the pen menu. */
+  const [penColour, setPenColour] = usePenColour();
+  const [choosingPenColour, setChoosingPenColour] = useState(false);
   /**
    * Handwritten details' pages. Each has its own canvas; they're all kept (stacked, only the current
    * one shown), so turning the page never redraws or moves what's written.
@@ -595,6 +599,14 @@ export function LongFormEditor({
     setPenMenu(undefined);
   }
 
+  /** A pen colour (from the dialog, or black from the menu): drawn with from now on, and the eraser turns off. */
+  function choosePenColour(colour: string) {
+    setPenColour(colour);
+    setErasing(false);
+    setChoosingPenColour(false);
+    setPenMenu(undefined);
+  }
+
   /** Turns to another page (the menu closes). */
   function goToPage(index: number) {
     setPageMenu(undefined);
@@ -657,7 +669,7 @@ export function LongFormEditor({
   }
 
   /**
-   * The handwritten details as one PNG (black on white): each page with writing, cropped to its ink,
+   * The handwritten details as one PNG (the ink on white): each page with writing, cropped to its ink,
    * one under another (lined up on the left), with a thin grey line between pages. Blank pages are left out.
    */
   function exportImage(): string | undefined {
@@ -894,6 +906,7 @@ export function LongFormEditor({
                 fill
                 label="Details of the long-form note"
                 disabled={!detailsEditable || index !== pageIndex}
+                colour={penColour}
                 erasing={erasing}
                 initialImage={page.image}
                 onInk={schedule}
@@ -949,7 +962,7 @@ export function LongFormEditor({
               disabled={busy || !detailsEditable}
               onClick={togglePenMenu}
             >
-              <ScribbleIcon />
+              <ScribbleIcon colour={penColour === BLACK_PEN ? undefined : penColour} />
             </button>
             {penMenu && (
               <div className="tag-dropdown-list lf-pen-menu-list" role="menu" aria-label="Pen thickness" style={penMenu}>
@@ -970,6 +983,31 @@ export function LongFormEditor({
                     <span className="lf-pen-size">{width}px</span>
                   </button>
                 ))}
+                <div className="lf-pen-menu-divider" role="separator" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tag-option"
+                  onClick={menuAction(() => {
+                    setPenMenu(undefined);
+                    setChoosingPenColour(true);
+                  })}
+                >
+                  <span className="lf-pen-check" aria-hidden />
+                  <span className="lf-pen-swatch" style={{ background: penColour }} aria-hidden />
+                  Pen colour…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tag-option"
+                  disabled={penColour === BLACK_PEN}
+                  onClick={menuAction(() => choosePenColour(BLACK_PEN))}
+                >
+                  <span className="lf-pen-check" aria-hidden />
+                  <span className="lf-pen-swatch" style={{ background: BLACK_PEN }} aria-hidden />
+                  Black pen
+                </button>
               </div>
             )}
           </div>
@@ -1105,6 +1143,15 @@ export function LongFormEditor({
           onCancel={() => setChoosingParent(false)}
         />
       )}
+      {choosingPenColour && (
+        <PenColourDialog
+          colour={penColour}
+          onChoose={(colour, event) => {
+            if (!ignoredTap(stylusMode, event)) choosePenColour(colour);
+          }}
+          onCancel={() => setChoosingPenColour(false)}
+        />
+      )}
       {confirmingAddPage && (
         <ConfirmDialog
           message="This is the last page. Add a new page?"
@@ -1194,14 +1241,15 @@ function useCloseOnOutside(open: boolean, ref: RefObject<HTMLElement | null>, cl
 
 /**
  * A scribble (like Font Awesome Pro's fa-scribble, which the free icons don't have): one rounded line
- * with two loops, rising from the bottom left and ending at the right. Sized like a Font Awesome icon.
+ * with two loops, rising from the bottom left and ending at the right. Sized like a Font Awesome icon;
+ * drawn in the pen colour when it isn't black (black follows the text colour, for dark mode).
  */
-function ScribbleIcon() {
+function ScribbleIcon({ colour = "currentColor" }: { colour?: string }) {
   return (
     <svg className="svg-inline--fa" viewBox="0 0 512 512" aria-hidden focusable="false">
       <path
         fill="none"
-        stroke="currentColor"
+        stroke={colour}
         strokeWidth={44}
         strokeLinecap="round"
         strokeLinejoin="round"

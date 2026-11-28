@@ -1701,12 +1701,14 @@ body:has(.note-list li.dragging) {
   min-width: 13rem;
 }
 
-.lf-page-menu-list .tag-option:disabled {
+.lf-page-menu-list .tag-option:disabled,
+.lf-pen-menu-list .tag-option:disabled {
   color: var(--muted);
   cursor: default;
 }
 
-.lf-page-menu-list .tag-option:disabled:hover {
+.lf-page-menu-list .tag-option:disabled:hover,
+.lf-pen-menu-list .tag-option:disabled:hover {
   background: none;
 }
 
@@ -1715,9 +1717,51 @@ body:has(.note-list li.dragging) {
   margin-left: 12px;
 }
 
-/* The pen-thickness menu opens above its button. */
+/* The pen menu opens above its button: the thicknesses, a line, then Pen colour… and Black pen. */
 .lf-pen-menu-list {
-  min-width: 9rem;
+  min-width: 10rem;
+}
+
+.lf-pen-menu-divider {
+  margin: 0.35rem 0;
+  border-top: 1px solid var(--line);
+}
+
+/* A small circle of the colour, in line with the thickness samples. */
+.lf-pen-swatch {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-right: 18px;
+  border-radius: 50%;
+}
+
+/* The pen colour pop-up: a grid of colour circles, the chosen one ticked. */
+.pen-colours {
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  gap: 12px;
+  margin-top: 1rem;
+}
+
+.pen-colour {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.pen-colour[aria-pressed="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 /* Export, pushed over to the right: a 24px gap (with the row's own 4px) before Cancel and Finish. */
