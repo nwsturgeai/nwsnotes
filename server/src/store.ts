@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   CLIENT_ID_MAX_LENGTH,
   detailsPagesOf,
+  isAllDayTime,
   isAncestor,
   isLifetimeTag,
   isLongForm,
@@ -128,7 +129,7 @@ const REMINDED_LIFETIMES = [LIFETIME_NEW, LIFETIME_ACTIVE, LIFETIME_WAITING];
  * A note's due date and reminder record after an add or edit. An unchanged due date keeps its record;
  * a due date that's already past counts as reminded, since it didn't just pass.
  */
-function dueDateFields(dueDateTime: string | undefined, existing: Note | undefined, now: Date): Partial<Note> {
+function dueDateFields(dueDateTime: string | undefined, existing: Note | undefined, now: Date, allDay = existing?.allDay === true): Partial<Note> {
   if (dueDateTime === undefined) return {};
   const reminderSentFor =
     existing?.dueDateTime === dueDateTime
@@ -136,7 +137,31 @@ function dueDateFields(dueDateTime: string | undefined, existing: Note | undefin
       : Date.parse(dueDateTime) <= now.getTime()
         ? dueDateTime
         : undefined;
-  return { dueDateTime, ...(reminderSentFor !== undefined && { reminderSentFor }) };
+  // An all-day note (from Google Calendar) stays all-day only while it's due at the all-day time.
+  return {
+    dueDateTime,
+    ...(reminderSentFor !== undefined && { reminderSentFor }),
+    ...(allDay && isAllDayTime(dueDateTime) && { allDay: true as const }),
+  };
+}
+
+/** Where a change came from, for the History: texted in, or from Google Calendar. */
+type ChangeSource = "sms" | "calendar";
+const SOURCE_SUFFIX: Record<ChangeSource, string> = { sms: " by text message", calendar: " from Google Calendar" };
+const sourceSuffix = (source: ChangeSource | undefined) => (source ? SOURCE_SUFFIX[source] : "");
+
+/** What a change from Google Calendar does to a note (see calendarUpdate). */
+export interface CalendarChange {
+  titleText?: string;
+  /** Typed details: a regular note given them becomes a long-form note. */
+  detailsText?: string;
+  /** A new due date, or null to clear it. */
+  dueDateTime?: string | null;
+  allDay?: boolean;
+  /** The note's user tags (without Lifetime). */
+  tagIds?: number[];
+  /** Moved to the Bin (the event was deleted). */
+  toBin?: boolean;
 }
 
 /** A time the page sent for something done offline, if it's valid and not after `now`; otherwise undefined. */
@@ -443,8 +468,10 @@ export class NoteStore {
       tagsChangedDateTime?: unknown;
       noteLimit?: number;
       stylusNoteLimit?: number;
-      /** "sms": texted in, which the History says. */
-      source?: "sms";
+      /** "sms": texted in; "calendar": from Google Calendar. The History says so. */
+      source?: ChangeSource;
+      /** From an all-day event in Google Calendar (kept only while it's due at 20:00). */
+      allDay?: boolean;
       /** Set when someone a tag is shared with adds the note: this notebook's owner, for the limits' messages. */
       ownerName?: string;
       /** Who is adding it (the owner, or someone a tag is shared with). */
@@ -486,7 +513,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...dueDateFields(options.dueDateTime, undefined, now),
+        ...dueDateFields(options.dueDateTime, undefined, now, options.allDay === true),
         ...(options.createdByUserId !== undefined && { createdByUserId: options.createdByUserId }),
         createdDateTime,
         lastModifiedDateTime: timestamp,
@@ -496,7 +523,7 @@ export class NoteStore {
         ...(clientId !== undefined && { clientId }),
       };
       await this.save(now, { notes: [...this.notes, note] }, {
-        record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}${options.source === "sms" ? " by text message" : ""}` },
+        record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}${sourceSuffix(options.source)}` },
       });
       return { note, created: true };
     });
@@ -639,16 +666,69 @@ export class NoteStore {
    * Sets a note's due date (already validated), keeping everything else about it, and saves.
    * Used by "Due" texts; the page sets due dates with the rest of the note (updateNote).
    */
-  setDueDate(id: number, dueDateTime: string, options: { source?: "sms" } = {}): Promise<Note> {
+  setDueDate(id: number, dueDateTime: string, options: { source?: ChangeSource } = {}): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
       const now = this.nextSaveTime();
-      const { reminderSentFor: _sent, ...rest } = existing;
+      const { reminderSentFor: _sent, allDay: _allDay, ...rest } = existing;
       const note: Note = { ...rest, ...dueDateFields(dueDateTime, existing, now), lastModifiedDateTime: now.toISOString() };
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
-        record: { summary: `Set the due date of ${label(note)}${options.source === "sms" ? " by text message" : ""}` },
+        record: { summary: `Set the due date of ${label(note)}${sourceSuffix(options.source)}` },
       });
+      return note;
+    });
+  }
+
+  /** One note, if the notebook has it (for Google Calendar's sync). */
+  noteById(id: number): Note | undefined {
+    return this.notes.find((n) => n.id === id);
+  }
+
+  /** Every note, and the user categories in their order (for Google Calendar's sync). */
+  notesAndCategories(): { notes: readonly Note[]; categories: readonly Category[] } {
+    return { notes: this.notes, categories: this.categories };
+  }
+
+  /**
+   * A change made to a note's event in Google Calendar: any of its title, typed details (a regular
+   * typed note becomes long-form), due date, tags, or moving it to the Bin. In the History, as from
+   * Google Calendar. Returns the note, or undefined if it's gone or nothing changed.
+   */
+  calendarUpdate(id: number, change: CalendarChange): Promise<Note | undefined> {
+    return this.enqueue(async () => {
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) return undefined;
+      const now = this.nextSaveTime();
+      const { reminderSentFor: _sent, allDay: _allDay, dueDateTime: _due, ...rest } = existing;
+      let note: Note = { ...rest };
+      if (change.titleText !== undefined && existing.titleText !== undefined) note.titleText = change.titleText;
+      // Only typed notes take typed details: handwritten details stay as they are.
+      if (change.detailsText !== undefined && existing.titleText !== undefined && existing.detailsImage === undefined) {
+        note.detailsText = change.detailsText;
+      }
+      const due = change.dueDateTime === undefined ? existing.dueDateTime : (change.dueDateTime ?? undefined);
+      note = { ...note, ...dueDateFields(due, existing, now, change.allDay ?? existing.allDay === true) };
+      if (change.tagIds !== undefined) {
+        const valid = validateTagIds(change.tagIds.filter((tagId) => !isLifetimeTag(tagId)), this.categories);
+        if (valid.ok) note.tagIds = [...valid.value, lifetimeOf(existing)];
+      }
+      if (change.toBin) note.tagIds = withLifetime(note, LIFETIME_BIN);
+      const same = JSON.stringify(note) === JSON.stringify(existing);
+      if (same) return undefined;
+      note = {
+        ...note,
+        lastModifiedDateTime: now.toISOString(),
+        tagsChangedDateTime: this.tagsChangedTime(existing, note.tagIds, now),
+      };
+      const what = change.toBin
+        ? `Moved ${label(note)} to the Bin`
+        : !isLongForm(existing) && isLongForm(note)
+          ? `Made ${label(note)} a long-form note`
+          : change.titleText !== undefined && change.titleText !== existing.titleText
+            ? `Renamed ${label(existing)} to ${label(note)}`
+            : `Changed ${label(note)}`;
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, { record: { summary: `${what}${SOURCE_SUFFIX.calendar}` } });
       return note;
     });
   }

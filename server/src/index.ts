@@ -11,6 +11,8 @@ import { Sharing } from "./sharing.js";
 import { Notebooks } from "./notebooks.js";
 import { Mailer } from "./email.js";
 import { SmsNotes } from "./sms.js";
+import { GoogleCalendar } from "./google.js";
+import { FakeGoogle } from "./fakeGoogle.js";
 import { Users } from "./users.js";
 import { serverLog } from "./serverLog.js";
 
@@ -70,7 +72,13 @@ async function main() {
   if (config.email) console.log(`Emails are sent from ${config.email.from}, through Brevo.`);
   const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, mailer, sharing);
   if (config.sms) console.log(`Notes can be texted to ${config.sms.number}.`);
-  const app = createApp(config, notebooks, live, push, db, sharing, sms, mailer);
+  const google = config.google && new GoogleCalendar(config.google, db, notebooks, push, live);
+  if (google) {
+    await google.init();
+    push.alertsElsewhere = (userId, noteId) => google.alertsInGoogle(userId, noteId);
+  }
+  const fakeGoogle = config.production ? undefined : new FakeGoogle();
+  const app = createApp(config, notebooks, live, push, db, sharing, sms, mailer, google, fakeGoogle);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {

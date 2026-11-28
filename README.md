@@ -134,7 +134,26 @@ Lets everyone text notes in, e.g. by voice from the car with Android Auto (see [
 
 It costs about $0.0075 for each text received and $0.05 for each text sent back (only when a note couldn't be saved).
 
-### 7. Sending email (Brevo, optional)
+### 7. Google Calendar (optional)
+
+Lets everyone sync their notes with due dates with Google Calendar, both ways (see [Specs/google-calendar.md](Specs/google-calendar.md)). Without it, the app works as before, and Settings has no "Google Calendar" section. It's free.
+
+1. At https://console.cloud.google.com, signed in with your own Google account, create a project (e.g. "nwsnotes").
+2. In **APIs & Services → Library**, find the **Google Calendar API** and tap **Enable**.
+3. In **Google Auth Platform** (or **APIs & Services → OAuth consent screen**), set it up as **External**: the app name "nwsnotes", a support email, and nwsnotes.com as an authorised domain. Leave out a logo (it would need Google's brand check). Under **Data access**, add the scope `https://www.googleapis.com/auth/calendar.app.created`.
+4. Under **Audience**, tap **Publish app**, so it's "In production". (While it's "Testing", only listed test users can connect, and their connections stop after 7 days.) It doesn't need Google's verification: people see "Google hasn't verified this app" once, and tap **Advanced → Go to nwsnotes**. Up to 100 people can connect.
+5. Under **Clients**, create an **OAuth client**, of type **Web application**, with the authorised redirect URI `https://nwsnotes.com/api/google/callback`. Copy its **client ID** and **client secret**.
+6. Copy the script to the VM and run it. It asks for the client ID, the secret (without showing it) and the site's address, then restarts the app:
+
+   ```bash
+   scp deploy/set-google.sh root@nwsnotes.com:
+   ssh root@nwsnotes.com
+   sudo bash set-google.sh
+   ```
+
+7. Each person then opens Settings → **Google Calendar** → **Connect Google Calendar**.
+
+### 8. Sending email (Brevo, optional)
 
 Lets nwsnotes send email, e.g. a summary of a tab when someone texts "Email tab Shopping" (see "Emailing a tab" in [Specs/text-messages.md](Specs/text-messages.md)). It goes through Brevo's API over HTTPS, as DigitalOcean blocks the usual mail ports. Without it, the app works as before, and the email command texts back that email isn't set up.
 

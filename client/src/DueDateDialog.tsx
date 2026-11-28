@@ -74,8 +74,10 @@ export function DueDateDialog({ dueDate, onSet, onCancel }: Props) {
  * A note's creation or due time in the device's local time, as "dd/MM HH:mm" (e.g. "26/10 14:05"),
  * with the year as "dd/MM/yy" when it isn't this year (e.g. "12/01/27 20:00").
  */
-export function formatNoteDate(iso: string): string {
+export function formatNoteDate(iso: string, allDay = false): string {
   const date = new Date(iso);
   const year = date.getFullYear() === new Date().getFullYear() ? "" : `/${two(date.getFullYear() % 100)}`;
-  return `${two(date.getDate())}/${two(date.getMonth() + 1)}${year} ${two(date.getHours())}:${two(date.getMinutes())}`;
+  // An all-day note (from Google Calendar) shows "all day" in place of its 20:00.
+  const time = allDay ? "all day" : `${two(date.getHours())}:${two(date.getMinutes())}`;
+  return `${two(date.getDate())}/${two(date.getMonth() + 1)}${year} ${time}`;
 }

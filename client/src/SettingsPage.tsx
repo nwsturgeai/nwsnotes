@@ -19,6 +19,7 @@ import {
   type Note,
   type NoteStats,
   type SmsLinkCode,
+  type GoogleStatus,
   type SmsStatus,
   type Tab,
   type TabPlacement,
@@ -706,6 +707,8 @@ export function SettingsPage({
 
       <TextMessages notes={notes} tabs={tabs} onSessionExpired={onSessionExpired} />
 
+      <GoogleCalendarSection notes={notes} onSessionExpired={onSessionExpired} />
+
       {me.admin && (
         <section>
           <h2>Users</h2>
@@ -944,6 +947,127 @@ function TextMessages({ notes, tabs, onSessionExpired }: { notes: Note[]; tabs: 
             void run(async () => setStatus(await api.smsUnlink()));
           }}
           onCancel={() => setConfirmingUnlink(false)}
+        />
+      )}
+    </section>
+  );
+}
+
+/** Where the Connect button goes: the server sends the browser on to Google's sign-in, and back to Settings. */
+const GOOGLE_CONNECT_PATH = "/api/google/connect";
+
+/** What Settings says on coming back from Google's sign-in (`?google=...`). */
+const GOOGLE_RESULTS: Record<string, { text: string; error?: boolean }> = {
+  connected: { text: "Google Calendar is connected." },
+  declined: { text: "Google Calendar wasn't connected, as access wasn't allowed.", error: true },
+  failed: { text: "Google Calendar couldn't be connected. Please try again.", error: true },
+};
+
+/**
+ * Syncing notes with Google Calendar (see Specs/google-calendar.md): connect, disconnect, and any problem
+ * that has stopped the sync. Hidden when the server doesn't have it set up (it answers 404).
+ */
+function GoogleCalendarSection({ notes, onSessionExpired }: { notes: Note[]; onSessionExpired: () => void }) {
+  const [status, setStatus] = useState<GoogleStatus | "off">();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
+  // Back from Google's sign-in: says how it went, once, and tidies the address.
+  const [result] = useState(() => GOOGLE_RESULTS[new URLSearchParams(window.location.search).get("google") ?? ""]);
+  useEffect(() => {
+    if (!result) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("google");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [result]);
+
+  // Again whenever the notes change, so a problem found by a sync shows.
+  useEffect(() => {
+    let current = true;
+    api
+      .googleStatus()
+      .then((found) => current && setStatus(found))
+      .catch((err: unknown) => {
+        if (!current) return;
+        if (err instanceof ApiError && err.isUnauthorized) onSessionExpired();
+        else if (err instanceof ApiError && err.status === 404) setStatus("off");
+      });
+    return () => {
+      current = false;
+    };
+  }, [notes, onSessionExpired]);
+
+  async function disconnect() {
+    setConfirmingDisconnect(false);
+    setBusy(true);
+    setError(undefined);
+    try {
+      setStatus(await api.googleDisconnect());
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) return onSessionExpired();
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status === undefined || status === "off") return null;
+  return (
+    <section className="google-calendar">
+      <h2>Google Calendar</h2>
+      {result && (
+        <p className={result.error ? "save-error" : "hint"} role="status">
+          {result.text}
+        </p>
+      )}
+      {status.connected ? (
+        <>
+          <p>
+            Connected. Notes with a due date are in the <strong>nwsnotes</strong> calendar in your Google account, and
+            events you add to it become notes. Their alerts come from Google Calendar.
+          </p>
+          <p>
+            To give an event tags, put hashtags on the first line of its description, or in its title, e.g. #Shopping
+            (with _ for a space: #Garden_ideas).
+          </p>
+          {status.problem && (
+            <p className="save-error" role="alert">
+              {status.problem}
+            </p>
+          )}
+          <div className="form-buttons">
+            {status.problem && (
+              <a className="button primary" href={GOOGLE_CONNECT_PATH}>
+                Connect again
+              </a>
+            )}
+            <button type="button" className="button" disabled={busy} onClick={() => setConfirmingDisconnect(true)}>
+              Disconnect
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p>
+            Show your notes with a due date in Google Calendar, and add notes from it. nwsnotes makes a calendar called
+            "nwsnotes" in your Google account.
+          </p>
+          <a className="button" href={GOOGLE_CONNECT_PATH}>
+            Connect Google Calendar
+          </a>
+        </>
+      )}
+      {error && (
+        <p className="save-error" role="alert">
+          {error}
+        </p>
+      )}
+      {confirmingDisconnect && (
+        <ConfirmDialog
+          message="Disconnect Google Calendar? The nwsnotes calendar stays in your Google account, but stops being updated."
+          confirmLabel="Disconnect"
+          onConfirm={() => void disconnect()}
+          onCancel={() => setConfirmingDisconnect(false)}
         />
       )}
     </section>

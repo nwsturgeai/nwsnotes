@@ -19,4 +19,6 @@ When a due time arrives, the app can send a notification to your devices, saying
 
 To turn this on for a device, go to **Settings**, then **Reminders**, and tap **Turn on**. Your browser will ask whether to allow notifications: say yes. **Send test** checks it works.
 
+If you've connected [Google Calendar](google-calendar.md), notes in it get Google Calendar's alert instead.
+
 Turn it on on each device you'd like reminders on. On an Android phone or tablet, reminders work best with the app installed (see [Offline use and installing the app](offline.md)).

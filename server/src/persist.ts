@@ -110,6 +110,10 @@ const TABLES = [
   // New category ids too, so a deleted category's id is never given to another (older ones count up from 1 in
   // each notebook, and can be the same in two notebooks, which is fine: categories are only ever per user).
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.category_ids",
+  // Google Calendar (see google.ts): each connected user's account (its refresh token, the calendar and how
+  // far it has been read), and each synced note's event as it was last written or read. Not in the History.
+  "CREATE TABLE IF NOT EXISTS nwsnotes.google_accounts (user_id integer PRIMARY KEY, data jsonb NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS nwsnotes.google_events (user_id integer NOT NULL, note_id integer NOT NULL, data jsonb NOT NULL, PRIMARY KEY (user_id, note_id))",
 ];
 
 /**

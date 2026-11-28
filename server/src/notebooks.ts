@@ -19,6 +19,8 @@ export class Notebooks {
   private readonly stores = new Map<number, Promise<NoteStore>>();
   /** Called after any notebook saves a change, with whose notebook it is (to tell the pages of users it's shared with). */
   onNotebookSaved?: (userId: number) => void;
+  /** Also called after any notebook saves a change (Google Calendar's sync). */
+  private readonly savedListeners: ((userId: number) => void)[] = [];
 
   constructor(
     private readonly db: Db,
@@ -55,12 +57,20 @@ export class Notebooks {
     return path.join(this.dataDir, "backups", String(userId));
   }
 
+  /** Calls `listener` with the notebook's user after every change saved to any notebook. */
+  addSavedListener(listener: (userId: number) => void): void {
+    this.savedListeners.push(listener);
+  }
+
   /** The user's notebook, loaded from the database the first time. */
   for(userId: number): Promise<NoteStore> {
     let store = this.stores.get(userId);
     if (!store) {
       const made = new NoteStore(this.db, userId);
-      made.onSaved = () => this.onNotebookSaved?.(userId);
+      made.onSaved = () => {
+        this.onNotebookSaved?.(userId);
+        for (const listener of this.savedListeners) listener(userId);
+      };
       store = made.load().then(() => made);
       this.stores.set(userId, store);
       // If it couldn't be loaded (e.g. the database is unreachable), the next request tries again.

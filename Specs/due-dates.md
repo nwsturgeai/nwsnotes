@@ -79,6 +79,7 @@ A note is due
   - In development there's no service worker, so it says "Reminders aren't available in development." The server side still works there.
 - **Sending:** the server checks every minute.
   - A reminder goes out for each New, Active or Waiting note whose due date has passed. Archived and Bin notes get none.
+  - A note with its own event in Google Calendar gets Google's alert instead, and no reminder from nwsnotes (it's still recorded as reminded). See [google-calendar.md](google-calendar.md).
   - Each note gets one reminder per due date. The note stores `reminderSentFor`, the due date its reminder was sent for, in the save-files.
   - Changing the due date allows a new reminder at the new time. Saving a due date that's already past counts as already reminded, since it didn't just pass.
   - If the server was down when a note fell due, the reminder is sent once it's back, but only if it's less than 24 hours late.
