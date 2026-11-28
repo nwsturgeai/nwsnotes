@@ -1,0 +1,76 @@
+/*
+ * A fake Alexa for development and the tests (see "Tests" in Specs/alexa.md): a certificate authority
+ * made only for the tests, trusted in place of Amazon's, and two certificates it signed, served by this
+ * server at ALEXA_TEST_CERT_PATH. One names echo-api.amazon.com, as Amazon's does; the other names
+ * someone else, to check it's refused. Their private keys are in e2e/tests/alexaKeys.ts, so the tests can
+ * sign requests as Alexa does. None of this is used in production.
+ */
+
+/** Where this server serves the test certificates (development and the tests only). */
+export const ALEXA_TEST_CERT_PATH = "/api/test/alexa-certs";
+
+/** The tests' own certificate authority, trusted instead of the usual roots outside production. */
+export const ALEXA_TEST_ROOT = `-----BEGIN CERTIFICATE-----
+MIIDRzCCAi+gAwIBAgIUXunt0DAKEyDNWj1l02rV2+qvowEwDQYJKoZIhvcNAQEL
+BQAwKjEoMCYGA1UEAwwfbndzbm90ZXMgdGVzdCByb290ICh0ZXN0cyBvbmx5KTAg
+Fw0yNjExMjgxMDA3MDBaGA8yMTI2MTEwNDEwMDcwMFowKjEoMCYGA1UEAwwfbndz
+bm90ZXMgdGVzdCByb290ICh0ZXN0cyBvbmx5KTCCASIwDQYJKoZIhvcNAQEBBQAD
+ggEPADCCAQoCggEBAObXfeZzj0u2yjXq8WLD5xyqg/Nx45gzsYNLMz/L3E4KadYV
+MPLH1De5IwXJAiz3q9LOoHvrkUkuDP7cEeb+PTHZUlgl9EuJ8S49/OdPlKLUqs+R
+9jw61EL3dyta9HdLMVd9UgBA53bjRk+nA8zdnhnio+HM/pLq6pLxlmiKOSttUaWT
+IjEXGzVTaOjH3wRcA8TG6d2GRNhYeUFhOh1TVoNksm1E5zjjvm9ABW1AjfZUsOrs
+ICpblrUOvxUttAbxA8KRfc5ICZDm3MXLf84lP5HLkxAmwR+V6LraQ1lUq4wwle7K
+CeSJI81DHWw0C9gy1tbg/jyh4kCq1PAq7fbYEtECAwEAAaNjMGEwHQYDVR0OBBYE
+FJuLESN3WhGKUKCduSUI58tv1+peMB8GA1UdIwQYMBaAFJuLESN3WhGKUKCduSUI
+58tv1+peMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3
+DQEBCwUAA4IBAQBnNnDfpakhWysm4x7cDqxmwV0UAda8kKyp/k7fo3NlL5jcKXYA
+NfqCvfhe787C3i5nuCorZkTq/yj87kLY7SU9WQyfYlZsRPstfoviGcu/kpyhfhTz
+FVfsHcw71uvXxsuwxOi8X503NThYdTz/8wY8BZQNBtZC93mXG2i/0oRQY7Hrs84r
+ZCAm/3i4zB/6lv3cm8z1t/+9P5jHfaLB7R+vwCRonYF2i/qMv7erYb9Z92K/xya3
+8Fpg9gOlHCdvlG9OXZvHnR3s86ZUUyakEygbUscvvC885UQLGSVej3mLjN05LzB1
+0c2YdYpjirl1eCp2YOhif8Kb2DXb8TaPUeR4
+-----END CERTIFICATE-----`;
+
+/** The test certificates, by file name: as Amazon's ("echo-api.pem"), and one naming another site. */
+export const ALEXA_TEST_CERTS: Record<string, string> = {
+  "echo-api.pem": `-----BEGIN CERTIFICATE-----
+MIIDUjCCAjqgAwIBAgIUDFlHn9DAZIVOMot3N2CsUFF3YSQwDQYJKoZIhvcNAQEL
+BQAwKjEoMCYGA1UEAwwfbndzbm90ZXMgdGVzdCByb290ICh0ZXN0cyBvbmx5KTAg
+Fw0yNjExMjgxMDA3MDBaGA8yMTI2MTEwNDEwMDcwMFowHjEcMBoGA1UEAwwTZWNo
+by1hcGkuYW1hem9uLmNvbTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
+ANE1gc18lhw9ep3Vr0E4HxdE4SW3r13zcmYf2gOfrRjyWpnbr7oonkYdMTSY/6Zs
+HH9Lo9XbJH2JBxcr/7r+St5Ok9dmXlVAXBungG/xNQR7f5QRdTZ+oqD0ANI38jX3
+QQrSdf3Mpmo09wOkw1c/OmqnjITl+n6/HnDU5MXxVfMDHLzX0SKWTpXZHrnTlZBY
+Ck9pypEWxX4do8Wdmo29pm8XDuowodjlsP3ZvkPcIjPoCuzGA+dy7ersWQG8TL5p
+4DZwnGamKRuIPqQIfxoiceBkWmysP9sEuJO6+Zq6rp6ksVVOwjU2JVNAt8gG0Vlj
+i6b27cjwbaJ+RvEaH2qfvmcCAwEAAaN6MHgwHgYDVR0RBBcwFYITZWNoby1hcGku
+YW1hem9uLmNvbTAJBgNVHRMEAjAAMAsGA1UdDwQEAwIHgDAdBgNVHQ4EFgQUlikq
+L0Venfvu/y0kwnrE0FF25OYwHwYDVR0jBBgwFoAUm4sRI3daEYpQoJ25JQjny2/X
+6l4wDQYJKoZIhvcNAQELBQADggEBAE8jnZiKcTmqR27pqsoPm2RyOkdn47Mh5HGg
+TLhcRNcfSGMxTPUlYJPLdKzWNsL2waByFhGEtn2nIogcOj3hdPXRBq4jhz8XLgoM
+dK6FnjltWryLWno8nFaG7lKoWf81iouNJIkWi2eFzLBYvKpnWzifnVtjqiAEToNQ
+i/4fsIiGidE0m7vk2Ao/ISAy0KhJwoB1bnZ+H1dew1GMf+0+MgfI9hfGdKJeud7C
+efdvOXJwDXzkhDurOOrzjWk1I1UvxNYT2GIK9wkWf6NarnpG7+0Y1Nagk3PHoU0N
+nM8b1iU1NjodlC/xQFxMgGGekB8gjiPudmaGfnvGVIBAQ03wieQ=
+-----END CERTIFICATE-----\n`,
+  "someone-else.pem": `-----BEGIN CERTIFICATE-----
+MIIDRDCCAiygAwIBAgIUDFlHn9DAZIVOMot3N2CsUFF3YSUwDQYJKoZIhvcNAQEL
+BQAwKjEoMCYGA1UEAwwfbndzbm90ZXMgdGVzdCByb290ICh0ZXN0cyBvbmx5KTAg
+Fw0yNjExMjgxMDA3MDBaGA8yMTI2MTEwNDEwMDcwMFowIzEhMB8GA1UEAwwYc29t
+ZW9uZS1lbHNlLmV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
+CgKCAQEAzTzyhdhPFtUX8r1MyMH5x7y7hBvyiHQwmbPKs8BEBOQlkl4lZoENGj7M
+Cb3Ob5T9+xYINLnYTvZl60Nmv2Xvkw0eOPGbtXTSuMb5buG/374UlmkV5vkI/A1K
+xaKdvjDpMUDZ3MW4bZUw9tXyyFJHQclhN1zjh3yCpldsOL5gxU6kF8DRjKhYWVGJ
+htLcLsGHQmiHjeimh/XvI4vdXHvglB8Ch/MsrUn9ZCaii0VI3R1KwoADGW9pAvq3
+cncN2Qyu2DOj93wFjKs5GSifyunGwEavP3Y5iGQcPRPWoOU0xkShUq2OpYfxKyqP
+4kVe401UUKkWHyYKrBLdvWiySOz9wQIDAQABo2cwZTAjBgNVHREEHDAaghhzb21l
+b25lLWVsc2UuZXhhbXBsZS5jb20wHQYDVR0OBBYEFFiyFvsuNG9ioDK+3/O2SjDT
+ygtkMB8GA1UdIwQYMBaAFJuLESN3WhGKUKCduSUI58tv1+peMA0GCSqGSIb3DQEB
+CwUAA4IBAQAaHsfibe78Hes0P5U12Y/mYJvLD5Lomo+ko/8PtKGY7h8Q3i55cT76
+D5ibOu/7O9Ox+GpbzQLN90HgcDU0HTSrVIUN8Q7QOR6v8w1srXXRVCbSaszINeHP
+esIEHDK/8lZ3geAiKFjlH7czdHYET4wXxsfG8CoU1v+xORoSJLmjxCsJEYZ12i+i
+/hmiQ5SETX4lKGZMGGm2LR31fEKZFw6zcK5RxZyqDHLMSlwvqWqOVfByqf+B5Mc1
+faXcm/vA/4D0Vfn8VJdcXsLu8JbUY166YHdCodURiS5dGNcHiJK6bFX9nKlJLpvD
+lgjlB6OsV9p39xtCOumqUOzXCBUYNz/1
+-----END CERTIFICATE-----\n`,
+};

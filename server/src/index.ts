@@ -11,6 +11,9 @@ import { Sharing } from "./sharing.js";
 import { Notebooks } from "./notebooks.js";
 import { Mailer } from "./email.js";
 import { SmsNotes } from "./sms.js";
+import { AlexaNotes } from "./alexa.js";
+import { AlexaVerifier } from "./alexaVerify.js";
+import { DictatedCommands } from "./dictation.js";
 import { GoogleCalendar } from "./google.js";
 import { FakeGoogle } from "./fakeGoogle.js";
 import { Users } from "./users.js";
@@ -70,15 +73,20 @@ async function main() {
   const live = new LiveUpdates(users, config.sessionSecret);
   const mailer = new Mailer(config.email, !config.production);
   if (config.email) console.log(`Emails are sent from ${config.email.from}, through Brevo.`);
-  const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, mailer, sharing);
+  // Texts and Alexa carry out the same commands.
+  const commands = new DictatedCommands(notebooks, live, mailer, sharing, config.sms?.publicUrl ?? config.alexa?.publicUrl ?? "");
+  const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, commands);
   if (config.sms) console.log(`Notes can be texted to ${config.sms.number}.`);
+  const alexa =
+    config.alexa && new AlexaNotes(config.alexa, notebooks, live, push, config.sessionSecret, commands, new AlexaVerifier(config.alexa));
+  if (config.alexa) console.log(`Notes can be added by Alexa, from the skill ${config.alexa.skillId}.`);
   const google = config.google && new GoogleCalendar(config.google, db, notebooks, push, live);
   if (google) {
     await google.init();
     push.alertsElsewhere = (userId, noteId) => google.alertsInGoogle(userId, noteId);
   }
   const fakeGoogle = config.production ? undefined : new FakeGoogle();
-  const app = createApp(config, notebooks, live, push, db, sharing, sms, mailer, google, fakeGoogle);
+  const app = createApp(config, notebooks, live, push, db, sharing, sms, mailer, google, fakeGoogle, alexa, commands);
 
   if (!config.production) {
     http.createServer(app).on("upgrade", live.handleUpgrade).listen(config.httpPort, () => {
