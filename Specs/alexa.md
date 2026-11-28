@@ -4,44 +4,49 @@ A proposal for review. The requirements and technical decisions below are sugges
 
 ## Requirements
 
-People want to add notes by voice at home, without picking up a phone: standing in the kitchen, they say "Alexa, ask nwsnotes to add Shopping oat milk and bin bags", and the note "Oat milk and bin bags" is added to their own notebook, with the Shopping tab's tags. Alexa says "Saved to Shopping."
+People want to add notes by voice at home, without picking up a phone: standing in the kitchen, they say "Alexa, ask Nick Notes to add Shopping oat milk and bin bags", and the note "Oat milk and bin bags" is added to their own notebook, with the Shopping tab's tags. Alexa says "Saved to Shopping: oat milk and bin bags."
 
 This works like adding notes by text message (see [text-messages.md](text-messages.md)): the same command words, the same way of choosing a tab, the same spoken names for tabs. What's different is that Alexa always answers out loud, for free, so there's no need for texts back or the admin's confirmations setting.
 
 ### A private skill, not a published one
 - nwsnotes has its own Alexa skill, made by the admin in Amazon's Alexa developer console. It's never published in the Alexa skill store, so Amazon never reviews it, and nobody outside nwsnotes can find or use it.
 - **On the admin's own Amazon account,** the skill works on every Echo registered to that account, as long as it stays in development mode.
-- **For other nwsnotes users** with their own Amazon accounts, the admin invites their Amazon email address to the skill's beta test (see "Questions to decide": a beta test lasts at most 90 days).
+- **For other nwsnotes users** with their own Amazon accounts, the admin invites their Amazon email address to the skill's beta test. A beta test lasts at most 90 days and can't be extended, so the admin starts a new one every 90 days and testers accept it again (see "The beta test" below, and "Questions to decide").
+
+### Its name: "Nick Notes"
+- People talk to the skill as "Nick Notes": "Alexa, ask Nick Notes to …". Alexa can't say "nwsnotes", so the skill's spoken name (Amazon calls it the "invocation name") is different from the app's name. Everywhere else, the app is still called nwsnotes.
+- **It can be changed later,** as the skill is never published: Amazon only fixes the name once a skill is certified and published. Changing it means editing `invocationName` in `deploy/alexa-model.json`, pasting that into the console and pressing "Build" (it works a minute or so later), then changing `ALEXA_NAME` (see the technical decisions) so the app's wording matches. Nobody needs to link again.
 - It costs nothing: there's no charge for the skill, and Alexa sends each request straight to the nwsnotes server, so there's no AWS Lambda.
 
 ### Linking Alexa
-- Settings has an "Alexa" section under "Text messages". While not linked, it has a "Link Alexa" button. That shows a code and: "Say "Alexa, ask nwsnotes to link <code>"." Once Alexa has heard it, the page shows "Linked to Alexa" with an "Unlink" button.
-- Each nwsnotes user can link one Alexa account, and each Alexa account can be linked to only one nwsnotes user (see "Questions to decide" for a household sharing one Echo).
+- Settings has an "Alexa" section under "Text messages". While not linked, it has a "Link Alexa" button. That shows a code and: "Say "Alexa, ask Nick Notes to link <code>"." Once Alexa has heard it, the page shows "Linked to Alexa" with an "Unlink" button.
+- Each nwsnotes user can link one Alexa account, and each Alexa account can be linked to only one nwsnotes user (a household sharing one Echo is for later; see "Later, not now").
 - If Alexa hears something with no linked account, it says: "This Alexa isn't linked to nwsnotes yet. In nwsnotes, go to Settings, Alexa, and press Link Alexa."
 
 ### What to say
-- **One go:** "Alexa, ask nwsnotes to <command>" (or "tell nwsnotes to", or "ask nwsnotes", without "to"). Alexa does it, answers and stops listening.
-- **Several in a row:** "Alexa, open nwsnotes". Alexa says "What would you like to add?" and keeps listening after each answer ("Saved to Shopping. Anything else?"), so commands can follow without "Alexa, ask nwsnotes" each time. Saying "stop", "no" or "that's all", or saying nothing, ends it.
+- **One go:** "Alexa, ask Nick Notes to <command>" (or "tell Nick Notes to", or "ask Nick Notes", without "to"). Alexa does it, answers and stops listening.
+- **Several in a row:** "Alexa, open Nick Notes". Alexa says "What would you like to add?" and keeps listening after each answer ("Saved to Shopping: oat milk and bin bags. Anything else?"), so commands can follow without "Alexa, ask Nick Notes" each time. Saying "stop", "no" or "that's all", or saying nothing, ends it.
 - **The commands** are the ones texts use:
   - **Add <tab name> <title>:** a note in the named tab (by its name or spoken name), with the tab's tags. If no tab matches, everything after "add" is the title, with no tags.
-  - **New <title>,** or **Note <title>:** a note with no tags, so it shows in All. ("Ask nwsnotes to note call the plumber" sounds natural.)
-  - **Due <when>:** sets the due date of the note just added, as by text: "Alexa, ask nwsnotes, due tomorrow at 3pm".
+  - **New <title>,** or **Note <title>:** a note with no tags, so it shows in All. ("Ask Nick Notes to note call the plumber" sounds natural.)
+  - **Due <when>:** sets the due date of the note just added, as by text: "Alexa, ask Nick Notes, due tomorrow at 3pm".
   - **Reset New:** every New note becomes Active.
   - **Email tab <tab name>:** emails a summary of that tab.
-- **Every command needs its command word.** Alexa can only pass on free speech after a fixed word, so "Alexa, ask nwsnotes oat milk" isn't understood. Alexa says: "Sorry, I didn't catch that. Start with add, new, due, reset new or email tab. For example: add Shopping oat milk."
+- **Every command needs its command word.** Alexa can only pass on free speech after a fixed word, so "Alexa, ask Nick Notes oat milk" isn't understood. Alexa says: "Sorry, I didn't catch that. Start with add, new, due, reset new or email tab. For example: add Shopping oat milk."
 - **"Help"** gets the same examples.
 
 ### What Alexa says
-- **A saved note:** "Saved to <tab name>." or "Saved to All." Then, when they apply: "No tab matched, so it has no tags." / "That tab doesn't show New notes." / "It was too long, so I cut it short."
-- **A due date set:** "Due <when, spoken: e.g. Tuesday 25th November at 3pm>."
+- **Every answer about a note reads it back in full,** so a mishearing is caught straight away, while the person is still there to say it again.
+- **A saved note:** "Saved to <tab name>: <title>." or "Saved to All: <title>." Then, when they apply: "No tab matched, so it has no tags." / "That tab doesn't show New notes." / "It was too long, so I cut it short."
+- **A due date set:** "<title>, due <when, spoken: e.g. Tuesday 25th November at 3pm>."
 - **Reset New:** "<n> notes made Active." or "There were no New notes."
 - **A tab email:** "Emailing <tab name>." (The result comes as a notification; see the technical decisions.)
-- **Failures** say why, with the same reasons as texts, worded to be heard rather than read: e.g. "Not saved: you've reached your limit of 1000 notes." or "Not saved: nwsnotes can't save right now. Please try again later."
-- **Alexa doesn't read the note back,** so answers stay short. The Alexa app on the person's phone shows what Alexa heard, if they want to check.
+- **Failures** read back what was heard and say why, with the same reasons as texts, worded to be heard rather than read: e.g. "Not saved: <what was heard>. You've reached your limit of 1000 notes." or "Not saved: <what was heard>. nwsnotes can't save right now. Please try again later."
+- **The title is read in full,** however long. The Alexa app on the person's phone also shows what Alexa heard.
 
 ### Notifications
 - **Failures are also a notification,** with the heading "Not saved" and what Alexa heard, so the note can be added by hand later. Unlike a text, a spoken note isn't kept anywhere else.
-- **Saved notes get no notification,** as Alexa has already said so (see "Questions to decide").
+- **Nothing else gets a notification:** not saved notes, due dates, Reset New or linking, as Alexa has already said so out loud. (The tab email's result is the exception, as Alexa answers before it's sent; see the technical decisions.)
 
 ### Spoken names for tabs
 - A tab's spoken name (see [text-messages.md](text-messages.md)) works for Alexa as for texts. The tab editor's hint becomes: "An easier name to say when adding notes by text message or Alexa, e.g. "do it yourself" for "DIY"."
@@ -71,8 +76,15 @@ Amazon requires every self-hosted skill to check each request, and its certifica
 
 ### Answering
 - **Alexa's JSON format:** `{ version: "1.0", response: { outputSpeech: { type: "PlainText", text }, shouldEndSession } }`, with a `reprompt` when the session stays open ("Anything else?").
-- **One go or several:** a `LaunchRequest` ("open nwsnotes") opens a session. An `IntentRequest` with `session.new` true is a one-go command and ends the session; one inside an open session keeps it open. `SessionEndedRequest` gets an empty answer.
+- **One go or several:** a `LaunchRequest` ("open Nick Notes") opens a session. An `IntentRequest` with `session.new` true is a one-go command and ends the session; one inside an open session keeps it open. `SessionEndedRequest` gets an empty answer.
 - **Within 8 seconds:** Alexa gives up after 8. So the tab email is answered "Emailing <tab name>." as soon as the tab is found, and sent after the answer; whether it was sent comes as the notification texts already get ("Emailed <tab name>" or "Not emailed").
+
+### The name in the code
+- **One constant,** `ALEXA_NAME = "Nick Notes"` in `shared/src/alexa.ts`, used in everything the app says or shows about the skill (Settings, help, what Alexa says, the help page). Changing the name is that constant plus `invocationName` in `deploy/alexa-model.json` (lower case there, "nick notes", as Amazon requires).
+
+### Reading back
+- **The title as saved,** after the tab's words and any punctuation in front are removed, so "Saved to Shopping: oat milk and bin bags", not "…Shopping oat milk…". It's spoken as plain text, without formatting markers.
+- **Failures** read back the whole of what was heard after the command word.
 
 ### Reusing the text-message code
 - **The words become a text:** each intent's fixed word and its `words` slot are put back together ("add" + "shopping oat milk" → "add shopping oat milk") and handled by the same code as a text, from `readSmsCommand` on: the tab matching, spoken names, `readSpokenDue`, Reset New and tab emails all come for free.
@@ -84,11 +96,23 @@ Amazon requires every self-hosted skill to check each request, and its certifica
 
 ### Linking
 - **Stored with the user,** in the `users` table's `data`: `alexaUserId` (Alexa's `context.System.user.userId`) and `alexaLinkedDateTime`, as for phones: not in the History, backups or save-files; linking an Alexa account takes it from anyone else it was linked to.
-- **Codes:** "Link Alexa" calls `POST /api/me/alexa/link-code`, which returns a 6-digit code, made, kept and expired as text-message codes are (15 minutes, memory only, works once). `LinkIntent` with that code links the Alexa account, says "Linked. You can now add notes to nwsnotes." and sends the "Alexa linked" notification.
+- **Codes:** "Link Alexa" calls `POST /api/me/alexa/link-code`, which returns a 6-digit code, made, kept and expired as text-message codes are (15 minutes, memory only, works once). `LinkIntent` with that code links the Alexa account, says "Linked. You can now add notes to nwsnotes." and the Settings page changes to "Linked to Alexa" through the usual live updates.
 - **Guessing codes:** after 5 wrong codes from one Alexa account in 15 minutes, `LinkIntent` stops checking for that account until the 15 minutes are up ("Too many wrong codes. Wait a few minutes and make a new one in Settings.").
 - **Showing it:** `GET /api/me/alexa` returns `{ linked: false }` or `{ linked: true, linkedDateTime }`. "Unlink", after "Unlink Alexa? It will no longer add notes.", calls `DELETE /api/me/alexa`.
-- **A new userId:** Alexa gives an account a new `userId` if the skill is turned off and on again in the Alexa app, so it needs linking again. Settings says so under "Linked to Alexa".
+- **A new userId:** Alexa gives an account a new `userId` if the skill is turned off and on again in the Alexa app, so it needs linking again. This may also happen to beta testers when a new beta test starts (to check when it's built). Either way, Alexa answers "This Alexa isn't linked to nwsnotes yet…", and Settings says under "Linked to Alexa": "If Alexa says it isn't linked, press Link Alexa again."
 - **The users page** shows an "Alexa" label on the rows of users who have linked it. `UserSummary` gains `alexaLinked`.
+
+### The beta test (for other people's Amazon accounts)
+Amazon's own steps are in "Skill Beta Testing for Alexa Skills" in its developer documentation; `README.md` ("Adding notes by Alexa") gives them for nwsnotes. In short:
+- **Once, before the first beta test,** the console needs more than development mode does:
+  - **Distribution > Skill Preview:** a public name ("Nick Notes"), a one-line and a full description, example phrases (e.g. "Alexa, ask Nick Notes to add Shopping oat milk"), a small and a large icon (108 × 108 and 512 × 512 pixels, PNG), a category ("Productivity"), and a privacy policy URL. A new public help page, `https://nwsnotes.com/docs/alexa-privacy` (see [docs.md](docs.md)), says what the skill keeps (the notes said to it, and the Alexa account it's linked to) and that it's for nwsnotes users only.
+  - **Distribution > Privacy & Compliance:** the yes/no questions (no purchases, collects no personal information beyond the notes, not for children, no advertising, export compliance).
+  - **Certification > Validation** must pass. This is a check run in the console, not a review by Amazon, and it includes sending the endpoint badly signed requests, which is why the server checks them (see "Checking it's Alexa").
+- **Starting a test:** Distribution > Availability > Beta Test: enter the admin's email as the administrator, add each tester's email (the one on the Amazon account their Echo uses), and enable the test.
+- **Inviting testers:** Amazon no longer emails testers itself. The admin copies the invitation link from the Beta Test section ("Copy link") and sends it to each tester. On their phone, the tester opens the link, signs in to their Amazon account, accepts the beta terms, and enables "Nick Notes" in the Alexa app. Then they link it in nwsnotes Settings as usual.
+- **Adding someone later:** testers can be added or removed while a test is running, with the same link sent to the new tester.
+- **Renewing, every 90 days:** a test ends 90 days after it starts and can't be extended; when it ends, testers lose the skill (the admin's own account keeps it, as development mode isn't a beta test). To carry on, the admin starts a new test in the same place, adds the testers' emails again, and sends them the new link; each tester accepts and enables it again, and links it again in nwsnotes if Alexa says it isn't linked. The admin's own account is never affected.
+- **A reminder for the admin:** `deploy/set-alexa.sh` also asks for the date the current beta test started (optional) and stores it as `alexaBetaStarted`. From 80 days after it, the users page shows the admin "The Alexa beta test ends on <date>. Start a new one in the Alexa developer console and send testers the new link." Running `set-alexa.sh` again after renewing updates the date.
 
 ### Logging
 - **One line in the server's log for each request,** like texts: e.g. `Alexa …4f2a: AddIntent, saved as user 1's note 42, in tab 3.` The outcomes: refused (naming which check failed), not linked, linked, a wrong code, too many codes, too many commands, a turned-off account, and each command's outcomes as for texts.
@@ -96,19 +120,15 @@ Amazon requires every self-hosted skill to check each request, and its certifica
 
 ### Tests
 - **A fake Alexa:** in test mode the route is on, with a test skill ID, and trusts a test certificate made for the tests instead of Amazon's: requests are signed with its key, and its `SignatureCertChainUrl` is served by the test server itself. Every other check is the same.
-- **New `alexa.spec.ts`:** linking from Settings (a wrong, expired or reused code; too many wrong codes); unlinking; an unlinked account gets the "isn't linked" answer and adds nothing; each command (add to a tab, by spoken name, no match, new, note, due, reset new, email tab) with what Alexa says and the History entry; a session opened with "open nwsnotes" staying open, and a one-go command ending; help and fallback; the failure answers and their notifications; the rate limit; and refusals for a wrong signature, a certificate URL that isn't Amazon's, an old timestamp and another skill's ID.
+- **New `alexa.spec.ts`:** linking from Settings (a wrong, expired or reused code; too many wrong codes); unlinking; an unlinked account gets the "isn't linked" answer and adds nothing; each command (add to a tab, by spoken name, no match, new, note, due, reset new, email tab) with what Alexa says and the History entry; a session opened with "open Nick Notes" staying open, and a one-go command ending; help and fallback; the failure answers and their notifications; the rate limit; and refusals for a wrong signature, a certificate URL that isn't Amazon's, an old timestamp and another skill's ID.
 - **Unit tests** for the certificate URL rules and for putting the intent's words back together.
 - **`text-messages.spec.ts`** is run after the shared core is moved, to show texts are unchanged.
 
 ### Later, not now
-- Asking Alexa what's in a tab ("Alexa, ask nwsnotes what's on Shopping"), read out loud.
-- Telling apart the people in a household who share one Echo by their Alexa voice profiles (see "Questions to decide").
+- Asking Alexa what's in a tab ("Alexa, ask Nick Notes what's on Shopping"), read out loud.
+- Telling apart the people in a household who share one Echo, by their Alexa voice profiles: Alexa can say which profile is speaking (`context.System.person.personId`), so each profile could be linked to its own nwsnotes user. Until then, everyone using an Echo shares its Amazon account's link.
 - Reminders spoken by the Echo when a note is due.
 
 ## Questions to decide
 
-1. **The skill's name.** Alexa only answers to a name it can pronounce, and "nwsnotes" isn't a word. The choices are spelling it out, "n. w. s. notes" (said "en double-you ess notes"), or a different spoken name such as "my notebook". Which is easier to say every day?
-2. **Other people's Amazon accounts.** A beta test lasts at most 90 days, after which the admin has to start a new one and invite people again. Is it enough that only the admin's account (and so the Echos in the admin's home) can use it? Or should other users be invited, accepting the renewal every 90 days?
-3. **A household sharing one Echo.** Everyone talking to the admin's Echo has the same Alexa account, so all their notes would go to one nwsnotes user. If each person has an Alexa voice profile, Alexa can say who's speaking (`context.System.person.personId`), and each voice profile could be linked to its own nwsnotes user instead. Is that needed now, or later?
-4. **A notification for each saved note,** as texts get. The proposal is none, since Alexa has already said it was saved. Would one be useful anyway, to check afterwards what Alexa heard?
-5. **Reading the note back.** "Saved to Shopping: oat milk and bin bags" catches mishearing straight away, but makes every answer longer. Read it back, or not?
+1. **Other people's Amazon accounts.** Is it enough that only the admin's own Amazon account (and so the Echos in the admin's home) can use the skill? If so, no beta test is needed: none of the Skill Preview, privacy policy or validation steps, and no renewing. Or should other users be invited, with the beta test renewed every 90 days?
