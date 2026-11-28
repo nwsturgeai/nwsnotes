@@ -87,6 +87,7 @@ import type { Page } from "./route";
 import { LeftTabStrip, LeftTabsToggle, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
+import { extendUndo, offerUndo } from "./undo";
 import { columnCount, useFilterRowCollapsed, useFullTagList, useLeftTabsHidden, type ColumnsChoice } from "./stylusMode";
 
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
@@ -141,6 +142,8 @@ interface Props {
   onBulkChange: (active: boolean) => void;
   /** Whether there's unsaved work on the page (an edit, a long-form note, a title being written), which hides "Reload". */
   onUnsavedChange: (unsaved: boolean) => void;
+  /** Whether the header's Undo button is greyed out: while a note or long-form note is open, or in multi-select. */
+  onUndoBlockedChange: (blocked: boolean) => void;
   /** Whether the note being edited can't be saved by using another control (no title, or saving). */
   onEditLockChange: (locked: boolean) => void;
   /** The server can't be reached: bulk tag updates, note ordering and resetting New aren't available. */
@@ -197,6 +200,7 @@ export function NotesPage({
   onNoteOrderChanged,
   onBulkChange,
   onUnsavedChange,
+  onUndoBlockedChange,
   onEditLockChange,
   offline,
   pendingIds,
@@ -301,6 +305,11 @@ export function NotesPage({
   onUnsavedChangeRef.current = onUnsavedChange;
   useEffect(() => onUnsavedChangeRef.current(unsaved), [unsaved]);
   useEffect(() => () => onUnsavedChangeRef.current(false), []);
+  const undoBlocked = editingNote !== undefined || longForm !== undefined || bulkActive;
+  const onUndoBlockedChangeRef = useRef(onUndoBlockedChange);
+  onUndoBlockedChangeRef.current = onUndoBlockedChange;
+  useEffect(() => onUndoBlockedChangeRef.current(undoBlocked), [undoBlocked]);
+  useEffect(() => () => onUndoBlockedChangeRef.current(false), []);
 
   /** The new-note dropdowns as they were when the long-form editor opened (and on which tab), to put back when it closes. */
   const selectionBeforeLongForm = useRef<{ tabId: number | undefined; selection: TagSelection }>(undefined);
@@ -676,7 +685,7 @@ export function NotesPage({
     const next = [...order.slice(0, at), noteId, ...order.slice(at)];
     onNoteOrderChanged(next);
     try {
-      await api.setNoteOrder({ noteOrder: next });
+      offerUndo(await api.setNoteOrder({ noteOrder: next }));
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -739,7 +748,7 @@ export function NotesPage({
     const next = [...order.slice(0, at), note.id, ...order.slice(at)];
     scrollToTop.current = true;
     onNoteOrderChanged(next);
-    api.setNoteOrder({ noteOrder: next }).catch((error: unknown) => {
+    api.setNoteOrder({ noteOrder: next }).then((saved) => extendUndo(note, saved), (error: unknown) => {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
         return;
@@ -866,8 +875,9 @@ export function NotesPage({
     setConfirmResetNew(false);
     setResettingNew(true);
     try {
-      const { count } = await api.bulkLifetime("reset-new");
-      if (count > 0) onNotesChanged();
+      const result = await api.bulkLifetime("reset-new");
+      offerUndo(result);
+      if (result.count > 0) onNotesChanged();
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -889,8 +899,9 @@ export function NotesPage({
     if (listLifetimeBusy || noteIds.length === 0) return;
     setListLifetimeBusy(true);
     try {
-      const { count } = await api.bulkLifetime(action, noteIds);
-      if (count > 0) onNotesChanged();
+      const result = await api.bulkLifetime(action, noteIds);
+      offerUndo(result);
+      if (result.count > 0) onNotesChanged();
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -907,7 +918,9 @@ export function NotesPage({
     if (busyNoteId !== undefined) return;
     setBusyNoteId(note.id);
     try {
-      onNoteUpdated(await offlineApi.setLifetime(note.id, lifetime));
+      const updated = await offlineApi.setLifetime(note.id, lifetime);
+      offerUndo(updated);
+      onNoteUpdated(updated);
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -930,9 +943,9 @@ export function NotesPage({
     try {
       const noteTitle: NoteTitle = note.titleImage !== undefined ? { titleImage: note.titleImage } : { titleText: note.titleText ?? "" };
       const base = isWaiting(note.id) ? undefined : note.lastModifiedDateTime;
-      onNoteUpdated(
-        await offlineApi.updateNote(note.id, { ...noteTitle, tagIds: note.tagIds, ...(dueDateTime && { dueDateTime }) }, base),
-      );
+      const updated = await offlineApi.updateNote(note.id, { ...noteTitle, tagIds: note.tagIds, ...(dueDateTime && { dueDateTime }) }, base);
+      offerUndo(updated);
+      onNoteUpdated(updated);
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -997,6 +1010,7 @@ export function NotesPage({
         { titleText: check.title, tagIds, ...details, parentId: editParent ?? null },
         editBase.current,
       );
+      offerUndo(note);
       onNoteUpdated(note);
       finishEdit();
       openLongForm(note, true);
@@ -1023,13 +1037,13 @@ export function NotesPage({
     setSaveError(undefined);
     try {
       const tagIds = selectedTagIds(userCategories, editSelection);
-      onNoteUpdated(
-        await offlineApi.updateNote(
-          editingNote.id,
-          { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }), parentId: editParent ?? null },
-          editBase.current,
-        ),
+      const updated = await offlineApi.updateNote(
+        editingNote.id,
+        { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }), parentId: editParent ?? null },
+        editBase.current,
       );
+      offerUndo(updated);
+      onNoteUpdated(updated);
       finishEdit();
       return true;
     } catch (error) {
@@ -1087,6 +1101,7 @@ export function NotesPage({
           ...(parentId !== undefined && { parentId }),
           ...(dueDate && { dueDateTime: dueDate }),
         });
+        offerUndo(note);
         // The due date doesn't carry over to the next note (unlike the tags).
         setDueDate(undefined);
         // A note added offline (a temporary id) can't be ordered yet.
@@ -1238,6 +1253,7 @@ export function NotesPage({
         addTagIds: changes.filter(([, chosen]) => chosen).map(([id]) => id),
         removeTagIds: changes.filter(([, chosen]) => !chosen).map(([id]) => id),
       });
+      offerUndo(updated);
       for (const note of updated) onNoteUpdated(note);
       setBulk(undefined);
       setNotice({ text: `Tags updated on ${updated.length} ${updated.length === 1 ? "note" : "notes"}.` });

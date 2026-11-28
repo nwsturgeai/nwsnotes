@@ -40,8 +40,13 @@ import { RequestError } from "./errors.js";
 import {
   emptyNotebook,
   idList,
+  changesById,
   idsOfOtherUsers,
+  itemsBefore,
+  itemsTouchedAfter,
   listChanges,
+  NOTE_ORDER_ID,
+  readOrder,
   loadSnapshot,
   markSetUp,
   nextNoteId,
@@ -376,6 +381,78 @@ export class NoteStore {
         },
       });
       return { undone: result.undone };
+    });
+  }
+
+  /**
+   * Undo (and Redo) on the notes page: puts back how the notes (and their order) were before these
+   * changes, which `actingUserId` made together, as a new change. Refused if a change since has touched
+   * the same notes (or, for a change only to the order, the order), or if they changed anything else.
+   * `check` (for someone a tag is shared with) is given each note as it is now and as it would be, and
+   * throws if they may not make that change. Returns the new change's summary.
+   */
+  undoChanges(
+    changeIds: number[],
+    actingUserId: number,
+    check?: (notes: { now?: Note; after?: Note }[]) => Promise<void>,
+  ): Promise<string> {
+    return this.enqueue(async () => {
+      const changes = await changesById(this.db, this.userId, changeIds);
+      if (changes.length !== changeIds.length) {
+        throw new RequestError(404, `That change is no longer in the History (it may be over ${HISTORY_DAYS} days old).`);
+      }
+      if (changes.some((change) => (change.madeBy ?? this.userId) !== actingUserId)) {
+        throw new RequestError(403, "Only the person who made a change can undo it here. Use History instead.");
+      }
+      const items = await itemsBefore(this.db, changeIds);
+      const isOrder = (item: { kind: string; id: number }) => item.kind === "setting" && item.id === NOTE_ORDER_ID;
+      if (items.some((item) => item.kind !== "note" && !isOrder(item))) {
+        throw new RequestError(400, "Only changes to notes can be undone here. Use History instead.");
+      }
+      const onlyOrder = items.every(isOrder);
+      const touched = await itemsTouchedAfter(this.db, this.userId, Math.min(...changeIds), changeIds);
+      const orderTouched = touched.has(`setting:${NOTE_ORDER_ID}`);
+      const changedNotes = items.filter((item) => item.kind === "note" && touched.has(`note:${item.id}`));
+      if (changedNotes.length > 0 || (onlyOrder && orderTouched)) {
+        const what = onlyOrder ? "The order of the notes has" : changedNotes.length === 1 && items.length === 1 ? "That note has" : "A note it changed has";
+        throw new RequestError(409, `${what} changed since, so it can't be undone here. Use History to go back further.`);
+      }
+
+      const current = new Map(this.notes.map((note) => [note.id, note]));
+      const notes = new Map(current);
+      for (const item of items) {
+        if (item.kind !== "note") continue;
+        if (item.before === null) notes.delete(item.id);
+        else notes.set(item.id, item.before as Note);
+      }
+      // A reminder already sent for a note's due date isn't sent again because of the undo.
+      for (const [id, note] of notes) {
+        const sent = current.get(id)?.reminderSentFor;
+        if (sent !== undefined && note.dueDateTime === sent && note.reminderSentFor !== sent) notes.set(id, { ...note, reminderSentFor: sent });
+      }
+      if (check) {
+        const ids = items.filter((item) => item.kind === "note").map((item) => item.id);
+        await check(ids.map((id) => ({ now: current.get(id), after: notes.get(id) })));
+      }
+
+      // The order: as it was, unless it has changed since; then the current one, with notes that come
+      // back put where they were among the others. Notes that go are taken out of it either way.
+      const orderItem = items.find(isOrder);
+      const beforeOrder = orderItem ? readOrder((orderItem.before as { value: unknown } | null)?.value) : undefined;
+      const gone = new Set([...current.keys()].filter((id) => !notes.has(id)));
+      const back = new Set([...notes.keys()].filter((id) => !current.has(id)));
+      let noteOrder = (beforeOrder && !orderTouched ? beforeOrder : this.noteOrder).filter((id) => !gone.has(id));
+      if (beforeOrder && back.size > 0) {
+        const placed = new Set(noteOrder);
+        noteOrder = mergeNoteOrders([noteOrder, beforeOrder.filter((id) => placed.has(id) || back.has(id))]);
+      }
+
+      const summary = changes[0]!.summary;
+      const what = summary.replace(/ \(by [^)]*\)$/, "").replace(/^(Undid|Redid): /, "");
+      const undid = /^Undid: /.test(summary) ? "Redid" : "Undid";
+      const record = `${undid}: ${what}`;
+      await this.save(this.nextSaveTime(), { notes: [...notes.values()].sort((a, b) => a.id - b.id), noteOrder }, { record: { summary: record } });
+      return record;
     });
   }
 
@@ -1102,6 +1179,7 @@ export class NoteStore {
   private async save(now: Date, change: Partial<Snapshot>, options: SaveOptions = {}): Promise<void> {
     // A change made by someone a tag is shared with says who, in this notebook's History.
     const acting = actingUser.getStore();
+    const baseSummary = options.record?.summary;
     if (options.record && acting && acting.userId !== this.userId) {
       options = { ...options, record: { ...options.record, summary: `${options.record.summary} (by ${acting.displayName})` } };
     }
@@ -1109,6 +1187,7 @@ export class NoteStore {
     const after: Snapshot = { ...before, ...change };
     // Only the same person's autosaves join: someone else's start a change of their own.
     const actingId = acting?.userId ?? this.userId;
+    if (options.record) options = { ...options, record: { ...options.record, madeBy: actingId } };
     const join =
       options.longFormUpdateId !== undefined &&
       this.lastLongFormUpdate?.noteId === options.longFormUpdateId &&
@@ -1117,6 +1196,10 @@ export class NoteStore {
         : undefined;
     const changeId = await writeChange(this.db, this.userId, before, after, now, options.record, join);
     this.apply(after);
+    // The request learns which change it made, for the notes page's Undo (with its summary, without "by <name>").
+    if (changeId !== undefined && baseSummary !== undefined && acting?.madeChanges && !acting.madeChanges.some((made) => made.id === changeId)) {
+      acting.madeChanges.push({ id: changeId, summary: baseSummary });
+    }
     this.lastSaveMs = now.getTime();
     this.lastLongFormUpdate =
       options.longFormUpdateId !== undefined && changeId !== undefined ? { noteId: options.longFormUpdateId, changeId, userId: actingId } : undefined;

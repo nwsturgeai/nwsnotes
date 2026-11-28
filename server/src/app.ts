@@ -4,11 +4,13 @@ import express, { type NextFunction, type Request, type Response } from "express
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import {
+  CHANGES_HEADER,
   CONNECTION_ID_HEADER,
   validateDueDate,
   validateNoteDetails,
   validateNoteTitle,
   type LoginRequest,
+  type UndoReply,
 } from "@nwsnotes/shared";
 import { RequestError } from "./errors.js";
 import { DEV_ADMIN_LOGIN_NAME, DEV_PASSWORD } from "./config.js";
@@ -24,7 +26,7 @@ import { EmailChanges } from "./emailChange.js";
 import { ShareInvites } from "./shareInvite.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
-import { actingUser } from "./context.js";
+import { actingUser, type ActingUser } from "./context.js";
 import type { NoteStore } from "./store.js";
 import type { Sharing } from "./sharing.js";
 import { ADMIN_ID, noteStatsOf, type User } from "./users.js";
@@ -56,7 +58,14 @@ export function createApp(
   const withNotebook = async (req: Request, res: Response, next: NextFunction) => {
     res.locals.notebook = await notebooks.for(userOf(res).id);
     const user = userOf(res);
-    actingUser.run({ userId: user.id, displayName: user.displayName, senderId: req.get(CONNECTION_ID_HEADER) }, next);
+    const acting: ActingUser = { userId: user.id, displayName: user.displayName, senderId: req.get(CONNECTION_ID_HEADER), madeChanges: [] };
+    // The reply says which History changes the request made, for the notes page's Undo.
+    const json = res.json.bind(res);
+    res.json = (body) => {
+      if (acting.madeChanges!.length > 0) res.set(CHANGES_HEADER, encodeURIComponent(JSON.stringify(acting.madeChanges)));
+      return json(body);
+    };
+    actingUser.run(acting, next);
   };
   /** Tells the user's other pages to reload, after a change. */
   const notifyChanged = (req: { get(name: string): string | undefined }, res: Response) => live.notifyChanged(userOf(res).id, req.get(CONNECTION_ID_HEADER));
@@ -644,6 +653,14 @@ export function createApp(
     // Going back past a tag's creation ends its shares.
     notifyUsers(await sharing.pruneDeletedTags(userOf(res).id));
     res.json(result);
+  });
+
+  // Undo and Redo on the notes page: undoes changes this user made together (see Specs/undo.md).
+  historyRouter.post("/undo", async (req, res) => {
+    await sharing.undo(userOf(res), req.body);
+    notifyChanged(req, res);
+    const reply: UndoReply = { changes: actingUser.getStore()?.madeChanges ?? [] };
+    res.json(reply);
   });
 
   app.use("/api/history", historyRouter);

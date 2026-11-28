@@ -6,6 +6,7 @@ import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
 import { SharingIcons, tabSharedOut } from "./sharingIcons";
 import { useLeftTabsHidden } from "./stylusMode";
+import { useUndoButton } from "./UndoButton";
 
 interface Props {
   page: Page;
@@ -42,6 +43,11 @@ interface Props {
   showUpdateNotice: boolean;
   /** Admins only: account requests waiting to be confirmed. Above 0, a warning icon links to the users page. */
   accountsWaiting?: number;
+  /** The Undo button is greyed out: a note (or long-form note) is being edited, or notes are being selected. */
+  undoBlocked: boolean;
+  /** After Undo or Redo: the notes have changed, so reload them. */
+  onUndone: () => void;
+  onSessionExpired: () => void;
 }
 
 /** Why the tabs and the cog can't be used while a note is being edited. */
@@ -68,7 +74,11 @@ export function Header({
   pendingCount,
   showUpdateNotice,
   accountsWaiting = 0,
+  undoBlocked,
+  onUndone,
+  onSessionExpired,
 }: Props) {
+  const undo = useUndoButton({ blocked: undoBlocked, onUndone, onSessionExpired });
   const cogBlocked = editing || offline;
   const [leftTabsHidden] = useLeftTabsHidden();
   const offlineTitle =
@@ -134,6 +144,8 @@ export function Header({
               <FontAwesomeIcon icon={faSignature} />
             </span>
           )}
+          {/* Only on the notes page, and not offline (see Specs/undo.md). */}
+          {page.name === "notes" && !offline && undo.button}
           {page.name === "notes" && (
             <a
               href="/settings"
@@ -157,6 +169,7 @@ export function Header({
           </button>
         </div>
       )}
+      {page.name === "notes" && undo.notice}
       {showUpdateNotice && (
         <div className="update-notice" role="status">
           <span>A new version is ready.</span>

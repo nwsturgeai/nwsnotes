@@ -660,6 +660,29 @@ export const CONNECTION_ID_HEADER = "X-Connection-Id";
  * can't show or change the other person's notes as if they were its own.
  */
 export const USER_ID_HEADER = "X-User-Id";
+
+/**
+ * Header on the reply to a change: the History changes it made (usually one; a change touching notes in
+ * two notebooks, such as Reset New with notes shared with you, makes one in each), as URI-encoded JSON
+ * (`MadeChange[]`). The notes page keeps them so its Undo button can undo them (see Specs/undo.md).
+ */
+export const CHANGES_HEADER = "X-Changes";
+
+/** A change in the History made by a request (see CHANGES_HEADER), with its summary (without "by <name>"). */
+export interface MadeChange {
+  id: number;
+  summary: string;
+}
+
+/** POST /api/history/undo: undoes these changes, made together by this user (Undo, and Redo, on the notes page). */
+export interface UndoRequest {
+  changeIds: number[];
+}
+
+/** The reply: the changes the undo made, which undo it in turn (Redo). */
+export interface UndoReply {
+  changes: MadeChange[];
+}
 export const OTHER_USER_LOGGED_IN = "Someone else has logged in in another tab of this browser.";
 
 /**
