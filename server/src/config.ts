@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { hashPassword } from "./auth.js";
 import type { EmailConfig } from "./email.js";
+import { ALEXA_TEST_CERT_PATH, ALEXA_TEST_ROOT } from "./fakeAlexa.js";
 
 export interface Config {
   /** True on the VM; false when running locally with `npm run dev`. */
@@ -50,6 +51,8 @@ export interface Config {
   databaseCaFile?: string;
   /** Adding notes by text message (Twilio). Missing: turned off. */
   sms?: SmsConfig;
+  /** Adding notes by Alexa (development and the tests: a fake Alexa, signed with test certificates). Missing: turned off. */
+  alexa?: AlexaConfig;
   /** Sending email through Brevo (production only; development and the tests keep emails in memory). Missing: turned off. */
   email?: EmailConfig;
   /** Syncing notes with Google Calendar (development and the tests: a fake Google, in this server). Missing: turned off. */
@@ -104,6 +107,22 @@ export interface SmsConfig {
   publicUrl: string;
 }
 
+/** The Alexa skill that sends requests here (see Specs/alexa.md). */
+export interface AlexaConfig {
+  /** The skill's ID in Alexa's developer console (e.g. "amzn1.ask.skill.…"): requests from any other skill are refused. */
+  skillId: string;
+  /** The site's address (e.g. "https://nwsnotes.com"), for links in tab emails. */
+  publicUrl: string;
+  /**
+   * Development and the tests only: certificates are also accepted from this address (this server's own
+   * test certificates, see fakeAlexa.ts), and trusted when signed by this root instead of the usual ones.
+   */
+  test?: { certUrlPrefix: string; rootPem: string };
+}
+
+/** Development and the tests: a made-up skill ID, which the tests' requests use. */
+export const TEST_ALEXA_SKILL_ID = "amzn1.ask.skill.00000000-0000-0000-0000-000000000000";
+
 /** Development and the tests: a made-up number, and a known token so the tests can sign their texts. */
 export const TEST_SMS = { authToken: "test-twilio-auth-token", number: "+447700900000" };
 
@@ -153,6 +172,12 @@ export function loadConfig(): Config {
       sms: { ...TEST_SMS, publicUrl: `http://localhost:${process.env.PORT ?? 3000}` },
       // A fake Google Calendar, in this server: connecting and syncing work without a Google account.
       google: fakeGoogleConfig(process.env.PORT ?? 3000),
+      // A fake Alexa: requests are posted by the tests, signed with test certificates this server serves.
+      alexa: {
+        skillId: TEST_ALEXA_SKILL_ID,
+        publicUrl: `http://localhost:${process.env.PORT ?? 3000}`,
+        test: { certUrlPrefix: `http://localhost:${process.env.PORT ?? 3000}${ALEXA_TEST_CERT_PATH}/`, rootPem: ALEXA_TEST_ROOT },
+      },
     };
   }
 
@@ -166,6 +191,7 @@ export function loadConfig(): Config {
     emailFromName?: string;
     googleClientId?: string;
     googleClientSecret?: string;
+    alexaSkillId?: string;
   };
   const smsKeys = ["twilioAuthToken", "smsNumber", "publicUrl"] as const;
   const smsSet = smsKeys.filter((key) => raw[key]);
@@ -180,6 +206,9 @@ export function loadConfig(): Config {
   }
   if (raw.smsNumber && !/^\+[1-9]\d{6,14}$/.test(raw.smsNumber)) {
     throw new Error(`${file}: "smsNumber" must be in international form, e.g. "+447700900123".`);
+  }
+  if (raw.alexaSkillId && !/^amzn1\.ask\.skill\.[0-9a-f-]+$/.test(raw.alexaSkillId)) {
+    throw new Error(`${file}: "alexaSkillId" must be the skill's ID from Alexa's developer console, e.g. "amzn1.ask.skill.1a2b3c4d-…".`);
   }
   for (const key of ["sessionSecret", "databaseUrl"] as const) {
     if (!raw[key]) throw new Error(`${file} is missing "${key}"`);
@@ -208,6 +237,9 @@ export function loadConfig(): Config {
       raw.publicUrl && {
         google: { clientId: raw.googleClientId, clientSecret: raw.googleClientSecret, publicUrl: raw.publicUrl.replace(/\/+$/, ""), ...GOOGLE_URLS },
       }),
+    ...(raw.alexaSkillId && {
+      alexa: { skillId: raw.alexaSkillId, publicUrl: (raw.publicUrl ?? `https://${raw.siteHost ?? DEFAULT_SITE_HOST}`).replace(/\/+$/, "") },
+    }),
     ...(raw.brevoApiKey && {
       email: { brevoApiKey: raw.brevoApiKey, from: raw.emailFrom ?? DEFAULT_EMAIL_FROM, fromName: raw.emailFromName ?? DEFAULT_EMAIL_FROM_NAME },
     }),

@@ -33,6 +33,8 @@ import {
   type NoteOrderRequest,
   type NoteStats,
   type GoogleStatus,
+  type AlexaLinkCode,
+  type AlexaStatus,
   type SmsLinkCode,
   type SmsStatus,
   type TabRequest,
@@ -211,6 +213,10 @@ export const api = {
   smsStatus: () => request<SmsStatus>("GET", "/api/me/sms"),
   smsLinkCode: () => request<SmsLinkCode>("POST", "/api/me/sms/link-code"),
   smsUnlink: () => request<SmsStatus>("DELETE", "/api/me/sms"),
+  /** Adding notes by Alexa: whether it's linked, a code to link it, and unlinking it. */
+  alexaStatus: () => request<AlexaStatus>("GET", "/api/me/alexa"),
+  alexaLinkCode: () => request<AlexaLinkCode>("POST", "/api/me/alexa/link-code"),
+  alexaUnlink: () => request<AlexaStatus>("DELETE", "/api/me/alexa"),
   /** Google Calendar: whether it's connected, and disconnecting it (connecting is a visit to GOOGLE_CONNECT_PATH). */
   googleStatus: () => request<GoogleStatus>("GET", "/api/google"),
   googleDisconnect: () => request<GoogleStatus>("POST", "/api/google/disconnect"),

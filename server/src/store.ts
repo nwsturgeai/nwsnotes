@@ -146,8 +146,8 @@ function dueDateFields(dueDateTime: string | undefined, existing: Note | undefin
 }
 
 /** Where a change came from, for the History: texted in, or from Google Calendar. */
-type ChangeSource = "sms" | "calendar";
-const SOURCE_SUFFIX: Record<ChangeSource, string> = { sms: " by text message", calendar: " from Google Calendar" };
+type ChangeSource = "sms" | "alexa" | "calendar";
+const SOURCE_SUFFIX: Record<ChangeSource, string> = { sms: " by text message", alexa: " by Alexa", calendar: " from Google Calendar" };
 const sourceSuffix = (source: ChangeSource | undefined) => (source ? SOURCE_SUFFIX[source] : "");
 
 /** What a change from Google Calendar does to a note (see calendarUpdate). */

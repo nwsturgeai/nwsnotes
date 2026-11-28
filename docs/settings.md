@@ -18,6 +18,7 @@ These are kept separately on each of your devices, so your phone and tablet can 
 - **Categories** and **Tabs:** see [Tags and Categories](tags-and-categories.md) and [Tabs](tabs.md).
 - **Reminders:** see [Due dates and reminders](due-dates.md).
 - **Text messages:** link your phone, to add notes by text, even by voice from the car. See [Texting notes in, from the car](text-messages.md).
+- **Alexa:** link an Echo, to add notes by saying them. See [Adding notes by Alexa](alexa.md).
 - **Google Calendar:** connect your Google account, so notes with a due date show in Google Calendar and events you add there become notes. See [Google Calendar](google-calendar.md).
 - **Backup:** **Download backup** saves a copy of all your notes, Categories and tabs to a file.
 

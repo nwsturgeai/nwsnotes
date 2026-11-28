@@ -3339,7 +3339,8 @@ body:has(.dragging) {
   color: var(--muted);
   font-size: 0.9rem;
 }
-.sms-code-digits {
+.sms-code-digits,
+.alexa-code-digits {
   font-size: 1.3rem;
   letter-spacing: 0.15em;
 }

@@ -42,7 +42,7 @@ People want to add notes by voice while driving. Their Android phone connects to
 ### Spoken names for tabs
 - Each tab can have an optional extra name, its "spoken name", which is easier to say or which dictation gets right more often than the tab's own name: e.g. a tab "DIY" with the spoken name "do it yourself", or "Kids' stuff" with "kids".
 - "Add" and "Email tab" can be followed by either the tab's name or its spoken name.
-- The spoken name is only used for text messages. It isn't shown on the notes page.
+- The spoken name is only used for text messages (and Alexa, see [alexa.md](alexa.md)). It isn't shown on the notes page.
 
 ### Costs
 - Twilio charges in US dollars: about $2.50 a month for the UK mobile number, about $0.0075 for each text received, and about $0.05 for each text sent. So the cost is mostly the number, plus under 1 cent per note, plus 5 cents per failure reply (and per confirmation, for people the admin has turned them on for). Notifications are free.
@@ -201,7 +201,7 @@ People want to add notes by voice while driving. Their Android phone connects to
 - **Stored on the tab:** a new optional `spokenName` field on `Tab`, sent and checked with the tab's name, filters and placement (`POST` and `PUT /api/tabs`). Tabs without it have no spoken name.
 - **Rules:** trimmed; empty means none; at most 40 characters; it must have at least one letter or digit. Normalised as above, it can't be the same as "all", as "tab", as its own tab's name, or as any other tab's name or spoken name. Error: "Another tab already uses that name." (or "…can't be "All"").
 - **The same check for names:** a tab's name now also can't be the same as another tab's spoken name once normalised, so a text can never match two tabs exactly.
-- **In the tab editor,** under the name box: a "Spoken name (optional)" box, with the hint "An easier name to say when sending notes by text message, e.g. "do it yourself" for "DIY"." It's shown whether or not text messages are set up, as it's harmless.
+- **In the tab editor,** under the name box: a "Spoken name (optional)" box, with the hint "An easier name to say when adding notes by text message or Alexa, e.g. "do it yourself" for "DIY"." It's shown whether or not text messages are set up, as it's harmless.
 - **In Settings,** the tab list shows the spoken name in grey after the tab's name, e.g. "DIY (do it yourself)".
 - **History:** changing it is part of saving the tab, so it's undone with it.
 

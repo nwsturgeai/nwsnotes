@@ -24,6 +24,9 @@ import { EmailChanges } from "./emailChange.js";
 import { ShareInvites } from "./shareInvite.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
+import type { AlexaNotes } from "./alexa.js";
+import type { DictatedCommands } from "./dictation.js";
+import { ALEXA_TEST_CERTS, ALEXA_TEST_CERT_PATH } from "./fakeAlexa.js";
 import type { GoogleCalendar } from "./google.js";
 import type { FakeGoogle } from "./fakeGoogle.js";
 import { actingUser } from "./context.js";
@@ -49,6 +52,8 @@ export function createApp(
   mailer?: Mailer,
   google?: GoogleCalendar,
   fakeGoogle?: FakeGoogle,
+  alexa?: AlexaNotes,
+  commands?: DictatedCommands,
 ) {
   const users = notebooks.users;
 
@@ -80,6 +85,20 @@ export function createApp(
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(redirectToSiteHost(config));
+  // --- Adding notes by Alexa (only when it's set up) ------------------------
+  // Before the JSON parser: Alexa's signature is of the body exactly as it arrived.
+
+  const alexaRouters = alexa?.routers();
+  if (alexaRouters) app.use(alexaRouters.webhook);
+  // Outside production, the fake Alexa's test certificates, which the tests' requests name.
+  if (alexa && !config.production) {
+    app.get(`${ALEXA_TEST_CERT_PATH}/:name`, (req, res) => {
+      const pem = ALEXA_TEST_CERTS[req.params.name];
+      if (pem === undefined) res.status(404).type("text").send("No such test certificate.");
+      else res.type("application/x-pem-file").send(pem);
+    });
+  }
+
   // Large enough for a long-form note's handwritten details: up to 10 pages of up to 2 MB each.
   app.use(express.json({ limit: "24mb" }));
 
@@ -174,6 +193,7 @@ export function createApp(
     app.use(webhook);
     app.use("/api/me/sms", me);
   }
+  if (alexaRouters) app.use("/api/me/alexa", alexaRouters.me);
 
   // --- Google Calendar (only when it's set up) ------------------------------
 
@@ -699,6 +719,8 @@ export function createApp(
       await (await notebooks.for(ADMIN_ID)).resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
       sms?.resetForTests();
+      await alexa?.resetForTests();
+      commands?.resetForTests();
       mailer?.resetForTests();
       await google?.resetForTests();
       fakeGoogle?.reset();
