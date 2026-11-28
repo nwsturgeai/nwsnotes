@@ -22,6 +22,8 @@ New notes added while a tab is open get its Tags automatically, so they appear i
 
 If you have lots of tabs, some can go in a narrow strip down the left of the screen instead. Open the tab in Settings and switch it to **Left**. "All" can go on the left too.
 
+To make more room for your notes, tap the **‹** button at the bottom of the strip to hide it. The button stays in the bottom-left corner of the list as **›**: tap it to bring the strip back. Each device remembers whether the strip is hidden.
+
 ## Too many tabs to fit
 
 When the tabs don't all fit across the top, the last few go into a **…** menu at the end.

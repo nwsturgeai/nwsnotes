@@ -10,6 +10,7 @@ import {
   LIFETIME_NEW,
   LIFETIME_WAITING,
   LIFETIME_ARCHIVED,
+  LIFETIME_BIN,
   SHARE_PERMISSIONS,
   SHARED_CATEGORY_ID,
   SHARED_CATEGORY_NAME,
@@ -27,6 +28,7 @@ import {
   type TagShare,
 } from "@nwsnotes/shared";
 import type { Db } from "./db.js";
+import { changeOwners } from "./persist.js";
 import { RequestError } from "./errors.js";
 import type { Notebooks } from "./notebooks.js";
 import type { NoteStore } from "./store.js";
@@ -449,6 +451,45 @@ export class Sharing {
     if (resolved.kind === "own") return resolved.store.setLifetime(id, raw, rawTagsChanged);
     this.require(resolved, raw === "Bin" ? "delete" : "edit");
     return this.viewAfter(user.id, await resolved.store.setLifetime(id, raw, rawTagsChanged));
+  }
+
+  /**
+   * Undo (and Redo) on the notes page: undoes changes the user made together, in whichever notebooks
+   * they're in (their own, or the owner's for notes shared with them, as their permission now allows).
+   * Returns the changes the undo made.
+   */
+  async undo(user: User, raw: unknown): Promise<string[]> {
+    const ids = (raw as { changeIds?: unknown } | undefined)?.changeIds;
+    if (!Array.isArray(ids) || ids.length === 0 || ids.length > 10 || !ids.every((id) => Number.isInteger(id))) {
+      throw new RequestError(400, '"changeIds" must be a list of change ids.');
+    }
+    const owners = await changeOwners(this.db, ids as number[]);
+    if (owners.size !== new Set(ids).size) throw new RequestError(404, "That change is no longer in the History (it may be over 30 days old).");
+    const byOwner = new Map<number, number[]>();
+    for (const [id, ownerId] of owners) byOwner.set(ownerId, [...(byOwner.get(ownerId) ?? []), id]);
+    const summaries: string[] = [];
+    for (const [ownerId, changeIds] of byOwner) {
+      if (ownerId === user.id) {
+        summaries.push(await (await this.notebooks.for(user.id)).undoChanges(changeIds, user.id));
+        continue;
+      }
+      const { notebooks } = await this.sharedWith(user.id);
+      const shared = notebooks.find((notebook) => notebook.owner.id === ownerId);
+      if (!shared) throw new RequestError(403, "Those notes are no longer shared with you, so the change can't be undone.");
+      const check = async (notes: { now?: Note; after?: Note }[]) => {
+        for (const { now, after } of notes) {
+          const views = [now, after].filter((note) => note !== undefined).map((note) => this.present(note, shared));
+          if (views.some((view) => !view)) throw new RequestError(403, "That note is no longer shared with you, so the change can't be undone.");
+          const binned = [now, after].some((note) => note && lifetimeOf(note) === LIFETIME_BIN);
+          const needed: SharePermission = binned ? "delete" : "edit";
+          if (!views.every((view) => allows(view!.shared!.permission, needed))) {
+            throw new RequestError(403, `${shared.owner.displayName} no longer lets you make that change, so it can't be undone.`);
+          }
+        }
+      };
+      summaries.push(await shared.store.undoChanges(changeIds, user.id, check));
+    }
+    return summaries;
   }
 
   /** Dragging a note onto another tab: only the user's own notes' tags can be changed. */

@@ -88,9 +88,10 @@ import { ParentDialog, ParentPill } from "./ParentDialog";
 import type { ExtraPill } from "./TagPills";
 import { LongFormEditor } from "./LongFormEditor";
 import type { Page } from "./route";
-import { LeftTabStrip, type TabEntry } from "./Header";
+import { LeftTabStrip, LeftTabsToggle, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
+import { extendUndo, offerUndo } from "./undo";
 import { columnCount, useFilterRowCollapsed, useFullTagList, useLeftTabsHidden, type ColumnsChoice } from "./stylusMode";
 
 const LONG_FORM_TITLE_FIRST = "Set the long-form note's title first";
@@ -147,6 +148,8 @@ interface Props {
   onBulkChange: (active: boolean) => void;
   /** Whether there's unsaved work on the page (an edit, a long-form note, a title being written), which hides "Reload". */
   onUnsavedChange: (unsaved: boolean) => void;
+  /** Whether the header's Undo button is greyed out: while a note or long-form note is open, or in multi-select. */
+  onUndoBlockedChange: (blocked: boolean) => void;
   /** Whether the note being edited can't be saved by using another control (no title, or saving). */
   onEditLockChange: (locked: boolean) => void;
   /** The server can't be reached: bulk tag updates, note ordering and resetting New aren't available. */
@@ -204,6 +207,7 @@ export function NotesPage({
   onNoteOrderChanged,
   onBulkChange,
   onUnsavedChange,
+  onUndoBlockedChange,
   onEditLockChange,
   offline,
   pendingIds,
@@ -308,6 +312,11 @@ export function NotesPage({
   onUnsavedChangeRef.current = onUnsavedChange;
   useEffect(() => onUnsavedChangeRef.current(unsaved), [unsaved]);
   useEffect(() => () => onUnsavedChangeRef.current(false), []);
+  const undoBlocked = editingNote !== undefined || longForm !== undefined || bulkActive;
+  const onUndoBlockedChangeRef = useRef(onUndoBlockedChange);
+  onUndoBlockedChangeRef.current = onUndoBlockedChange;
+  useEffect(() => onUndoBlockedChangeRef.current(undoBlocked), [undoBlocked]);
+  useEffect(() => () => onUndoBlockedChangeRef.current(false), []);
 
   /** The new-note dropdowns as they were when the long-form editor opened (and on which tab), to put back when it closes. */
   const selectionBeforeLongForm = useRef<{ tabId: number | undefined; selection: TagSelection }>(undefined);
@@ -687,7 +696,7 @@ export function NotesPage({
     const next = [...order.slice(0, at), noteId, ...order.slice(at)];
     onNoteOrderChanged(next);
     try {
-      await api.setNoteOrder({ noteOrder: next });
+      offerUndo(await api.setNoteOrder({ noteOrder: next }));
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -728,9 +737,9 @@ export function NotesPage({
   async function moveNoteToTab(note: Note, to: Tab, changes: TabMoveChange[], auto: boolean) {
     setBusyNoteId(note.id);
     try {
-      onNoteUpdated(
-        await api.moveNoteToTab(note.id, { toTabId: to.id, fromTabId: selectedTab?.id, baseModifiedDateTime: note.lastModifiedDateTime }),
-      );
+      const moved = await api.moveNoteToTab(note.id, { toTabId: to.id, fromTabId: selectedTab?.id, baseModifiedDateTime: note.lastModifiedDateTime });
+      offerUndo(moved);
+      onNoteUpdated(moved);
       // Without the dialog, a notice says what changed.
       if (auto) setNotice({ text: `Moved to "${to.name}": ${changes.map((change) => describeTabMoveChange(change, categories)).join("; ")}` });
     } catch (error) {
@@ -798,7 +807,7 @@ export function NotesPage({
     const next = [...order.slice(0, at), note.id, ...order.slice(at)];
     scrollToTop.current = true;
     onNoteOrderChanged(next);
-    api.setNoteOrder({ noteOrder: next }).catch((error: unknown) => {
+    api.setNoteOrder({ noteOrder: next }).then((saved) => extendUndo(note, saved), (error: unknown) => {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
         return;
@@ -933,8 +942,9 @@ export function NotesPage({
     setConfirmResetNew(false);
     setResettingNew(true);
     try {
-      const { count } = await api.bulkLifetime("reset-new");
-      if (count > 0) onNotesChanged();
+      const result = await api.bulkLifetime("reset-new");
+      offerUndo(result);
+      if (result.count > 0) onNotesChanged();
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -966,8 +976,9 @@ export function NotesPage({
     if (listLifetimeBusy || noteIds.length === 0) return;
     setListLifetimeBusy(true);
     try {
-      const { count } = await api.bulkLifetime(action, noteIds);
-      if (count > 0) onNotesChanged();
+      const result = await api.bulkLifetime(action, noteIds);
+      offerUndo(result);
+      if (result.count > 0) onNotesChanged();
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -984,7 +995,9 @@ export function NotesPage({
     if (busyNoteId !== undefined) return;
     setBusyNoteId(note.id);
     try {
-      onNoteUpdated(await offlineApi.setLifetime(note.id, lifetime));
+      const updated = await offlineApi.setLifetime(note.id, lifetime);
+      offerUndo(updated);
+      onNoteUpdated(updated);
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -1014,9 +1027,9 @@ export function NotesPage({
           : note.detailsText !== undefined
             ? { detailsText: note.detailsText }
             : undefined;
-      onNoteUpdated(
-        await offlineApi.updateNote(note.id, { ...noteTitle, ...details, tagIds: note.tagIds, ...dueRequest(due) }, base),
-      );
+      const updated = await offlineApi.updateNote(note.id, { ...noteTitle, ...details, tagIds: note.tagIds, ...dueRequest(due) }, base);
+      offerUndo(updated);
+      onNoteUpdated(updated);
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         onSessionExpired();
@@ -1081,6 +1094,7 @@ export function NotesPage({
         { titleText: check.title, tagIds, ...details, ...dueRequest(dueDate), parentId: editParent ?? null },
         editBase.current,
       );
+      offerUndo(note);
       onNoteUpdated(note);
       finishEdit();
       openLongForm(note, true);
@@ -1107,13 +1121,13 @@ export function NotesPage({
     setSaveError(undefined);
     try {
       const tagIds = selectedTagIds(userCategories, editSelection);
-      onNoteUpdated(
-        await offlineApi.updateNote(
-          editingNote.id,
-          { ...noteTitle, tagIds, ...dueRequest(dueDate), parentId: editParent ?? null },
-          editBase.current,
-        ),
+      const updated = await offlineApi.updateNote(
+        editingNote.id,
+        { ...noteTitle, tagIds, ...dueRequest(dueDate), parentId: editParent ?? null },
+        editBase.current,
       );
+      offerUndo(updated);
+      onNoteUpdated(updated);
       finishEdit();
       return true;
     } catch (error) {
@@ -1171,6 +1185,7 @@ export function NotesPage({
           ...(parentId !== undefined && { parentId }),
           ...dueRequest(dueDate),
         });
+        offerUndo(note);
         // The due date doesn't carry over to the next note (unlike the tags).
         setDueDate(undefined);
         // A note added offline (a temporary id) can't be ordered yet.
@@ -1243,15 +1258,24 @@ export function NotesPage({
       event.stopPropagation();
       void saveEditRef.current().then((saved) => {
         if (!saved) return;
-        requestAnimationFrame(() => {
-          if (!control.isConnected) return;
-          replayingClick.current = true;
-          try {
-            control.click();
-          } finally {
-            replayingClick.current = false;
-          }
-        });
+        // The control is greyed out (aria-disabled) while the edit is being saved, and its click does
+        // nothing until the page has redrawn with the edit finished, which can take a few frames (e.g.
+        // while the header's Undo button appears): wait for that, then click it.
+        const replay = (framesLeft: number) =>
+          requestAnimationFrame(() => {
+            if (!control.isConnected) return;
+            if (control.getAttribute("aria-disabled") === "true" && framesLeft > 0) {
+              replay(framesLeft - 1);
+              return;
+            }
+            replayingClick.current = true;
+            try {
+              control.click();
+            } finally {
+              replayingClick.current = false;
+            }
+          });
+        replay(30);
       });
     };
     // On the document, before the page's own handlers.
@@ -1322,6 +1346,7 @@ export function NotesPage({
         addTagIds: changes.filter(([, chosen]) => chosen).map(([id]) => id),
         removeTagIds: changes.filter(([, chosen]) => !chosen).map(([id]) => id),
       });
+      offerUndo(updated);
       for (const note of updated) onNoteUpdated(note);
       setBulk(undefined);
       setNotice({ text: `Tags updated on ${updated.length} ${updated.length === 1 ? "note" : "notes"}.` });
@@ -1468,10 +1493,12 @@ export function NotesPage({
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
       {/* The left tab strip (if any tabs are set to "Left") beside the filter row and the list. */}
-      <div className="notes-body">
+      <div className={leftTabs.length > 0 && leftTabsHidden ? "notes-body left-tabs-hidden" : "notes-body"}>
         {leftTabs.length > 0 && !leftTabsHidden && (
           <LeftTabStrip tabs={leftTabs} selectedTabId={selectedTab?.id} onSelectTab={onSelectTab} editing={tabsBlocked} />
         )}
+        {/* While the strip is hidden, the button that shows it again stays, over the list's bottom-left corner. */}
+        {leftTabs.length > 0 && leftTabsHidden && <LeftTabsToggle />}
         <div className="notes-main">
           {/* Yellow while any of its dropdowns has something ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
           <div

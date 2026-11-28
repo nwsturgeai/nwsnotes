@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCloud, faEllipsis, faEye, faEyeSlash, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { faChevronLeft, faChevronRight, faCloud, faEllipsis, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { ALL_TAB_NAME, type Category, type SharePermission, type Tab } from "@nwsnotes/shared";
 import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
 import { SharingIcons, tabSharedOut } from "./sharingIcons";
 import { useLeftTabsHidden } from "./stylusMode";
+import { useUndoButton } from "./UndoButton";
 
 interface Props {
   page: Page;
@@ -42,6 +43,11 @@ interface Props {
   showUpdateNotice: boolean;
   /** Admins only: account requests waiting to be confirmed. Above 0, a warning icon links to the users page. */
   accountsWaiting?: number;
+  /** The Undo button is greyed out: a note (or long-form note) is being edited, or notes are being selected. */
+  undoBlocked: boolean;
+  /** After Undo or Redo: the notes have changed, so reload them. */
+  onUndone: () => void;
+  onSessionExpired: () => void;
 }
 
 /** Why the tabs and the cog can't be used while a note is being edited. */
@@ -68,9 +74,13 @@ export function Header({
   pendingCount,
   showUpdateNotice,
   accountsWaiting = 0,
+  undoBlocked,
+  onUndone,
+  onSessionExpired,
 }: Props) {
+  const undo = useUndoButton({ blocked: undoBlocked, onUndone, onSessionExpired });
   const cogBlocked = editing || offline;
-  const [leftTabsHidden, setLeftTabsHidden] = useLeftTabsHidden();
+  const [leftTabsHidden] = useLeftTabsHidden();
   const offlineTitle =
     pendingCount === 0 ? "Offline" : `Offline: ${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting`;
   const waitingTitle = `${accountsWaiting} ${accountsWaiting === 1 ? "account is" : "accounts are"} waiting to be confirmed`;
@@ -88,20 +98,7 @@ export function Header({
 
   return (
     <>
-      <header className={page.name === "notes" && leftStrip ? "app-header with-left-tabs" : "app-header"}>
-        {/* Above the left strip, the strip's width and half the header's height: hides or shows the strip. */}
-        {page.name === "notes" && leftStrip && (
-          <button
-            type="button"
-            className="left-tabs-toggle"
-            aria-label={leftTabsHidden ? "Show left tabs" : "Hide left tabs"}
-            aria-pressed={leftTabsHidden}
-            title={leftTabsHidden ? "Show left tabs" : "Hide left tabs"}
-            onClick={() => setLeftTabsHidden(!leftTabsHidden)}
-          >
-            <FontAwesomeIcon icon={leftTabsHidden ? faEye : faEyeSlash} />
-          </button>
-        )}
+      <header className={page.name === "notes" && leftStrip && !leftTabsHidden ? "app-header with-left-tabs" : "app-header"}>
         {page.name === "notes" && (
           <TabStrip
             tabs={tabs}
@@ -147,6 +144,8 @@ export function Header({
               <FontAwesomeIcon icon={faSignature} />
             </span>
           )}
+          {/* Only on the notes page, and not offline (see Specs/undo.md). */}
+          {page.name === "notes" && !offline && undo.button}
           {page.name === "notes" && (
             <a
               href="/settings"
@@ -170,6 +169,7 @@ export function Header({
           </button>
         </div>
       )}
+      {page.name === "notes" && undo.notice}
       {showUpdateNotice && (
         <div className="update-notice" role="status">
           <span>A new version is ready.</span>
@@ -224,6 +224,8 @@ export function LeftTabStrip({
   editing: boolean;
 }) {
   return (
+    // The tabs (scrolling when they don't fit), with the button that hides them at the bottom.
+    <div className="left-tabs-column">
     <div className="left-tabs" role="tablist" aria-label="Left tabs" aria-orientation="vertical" data-saves-edit>
       {tabs.map((tab) => {
         const selected = tab.id === selectedTabId;
@@ -249,6 +251,29 @@ export function LeftTabStrip({
         );
       })}
     </div>
+    <LeftTabsToggle />
+    </div>
+  );
+}
+
+/**
+ * Hides the left tab strip (a chevron pointing left, at the strip's bottom) or, while it's hidden,
+ * shows it again (a chevron pointing right, floating over the bottom-left corner of the notes list).
+ */
+export function LeftTabsToggle() {
+  const [hidden, setHidden] = useLeftTabsHidden();
+  const label = hidden ? "Show left tabs" : "Hide left tabs";
+  return (
+    <button
+      type="button"
+      className={hidden ? "left-tabs-toggle floating" : "left-tabs-toggle"}
+      aria-label={label}
+      aria-pressed={hidden}
+      title={label}
+      onClick={() => setHidden(!hidden)}
+    >
+      <FontAwesomeIcon icon={hidden ? faChevronRight : faChevronLeft} />
+    </button>
   );
 }
 

@@ -15,6 +15,7 @@ requirements first, then the "Agreed technical decisions" for that area.
 | [lifetime.md](lifetime.md) | Lifetime: New, Active, Waiting, Archived, Bin |
 | [due-dates.md](due-dates.md) | Due dates and reminders |
 | [offline-and-updates.md](offline-and-updates.md) | Offline use, live updates, the Android app, app updates |
+| [undo.md](undo.md) | The Undo / Redo button on the notes page |
 | [data.md](data.md) | The API, the database (Supabase), history and revert, backups, save files |
 | [users.md](users.md) | Several users with separate notebooks: accounts, logging in, forgotten passwords, the users page, per-user data |
 | [server-errors.md](server-errors.md) | The admin's view of the server's recent errors and warnings |

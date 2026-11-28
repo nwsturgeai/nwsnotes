@@ -1,3 +1,4 @@
+import { forgetUndoFor, offerUndo } from "./undo";
 import {
   useEffect,
   useLayoutEffect,
@@ -250,6 +251,7 @@ export function LongFormEditor({
   /** Saves the note as it is now; the server's reply is the version later saves start from. */
   async function sendUpdate(id: number, titleText: string): Promise<void> {
     const saved = await offlineApi.updateNote(id, request(titleText), base.current);
+    offerUndo(saved, { longFormNoteId: id });
     base.current = isWaiting(saved.id) ? undefined : saved.lastModifiedDateTime;
     onSaved(saved, false);
   }
@@ -480,6 +482,7 @@ export function LongFormEditor({
       // Tag changes made while editing the title are saved with it.
       if (noteId === undefined) {
         const created = await offlineApi.addNote(request(check.title, false));
+        offerUndo(created, { longFormNoteId: created.id });
         base.current = isWaiting(created.id) ? undefined : created.lastModifiedDateTime;
         setNoteId(created.id);
         onSaved(created, true);
@@ -776,6 +779,8 @@ export function LongFormEditor({
     if (noteId !== undefined) {
       try {
         await offlineApi.deleteNote(noteId);
+        // Cancelled: there's nothing of it left to undo.
+        forgetUndoFor(noteId);
       } catch (err) {
         failed(err, "The note wasn't deleted");
         setBusy(false);

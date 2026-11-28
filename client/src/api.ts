@@ -1,4 +1,5 @@
 import {
+  CHANGES_HEADER,
   CONNECTION_ID_HEADER,
   NOTE_CHANGED_STATUS,
   USER_ID_HEADER,
@@ -10,6 +11,8 @@ import {
   type Category,
   type CategoryRequest,
   type HistoryPage,
+  type MadeChange,
+  type UndoReply,
   type LifetimeChange,
   type LifetimeRequest,
   type TabMoveRequest,
@@ -86,6 +89,22 @@ const CHANGE_TIMEOUT_MS = 10_000;
 /** Who this page is showing, once it knows: sent with every request (see USER_ID_HEADER). */
 let pageUserId: number | undefined;
 
+/** Who this page is showing (see setPageUser). */
+export function pageUser(): number | undefined {
+  return pageUserId;
+}
+
+/** The History changes each reply (by its parsed body) says its request made: see changesMadeBy. */
+const madeChanges = new WeakMap<object, MadeChange[]>();
+
+/**
+ * The History changes a change's reply said it made, for Undo. Only a reply straight from the server has
+ * them: a change queued while offline (whose result is made on this device) has none.
+ */
+export function changesMadeBy(result: unknown): MadeChange[] | undefined {
+  return typeof result === "object" && result !== null ? madeChanges.get(result) : undefined;
+}
+
 /** Who this page now shows (undefined: nobody, e.g. after logging out). Set by `offline.ts`, which keeps each user's copy apart. */
 export function setPageUser(id: number | undefined) {
   pageUserId = id;
@@ -129,11 +148,21 @@ async function request<T>(method: string, url: string, body?: unknown, extraHead
 
   // An answer with nothing to say (204).
   if (text === "") return undefined as T;
+  let parsed: T;
   try {
-    return JSON.parse(text) as T;
+    parsed = JSON.parse(text) as T;
   } catch (error) {
     throw new ApiError("The server sent a response that isn't valid JSON.", method, url, response.status, response.statusText, text, error);
   }
+  const made = response.headers.get(CHANGES_HEADER);
+  if (made && typeof parsed === "object" && parsed !== null) {
+    try {
+      madeChanges.set(parsed, JSON.parse(decodeURIComponent(made)) as MadeChange[]);
+    } catch {
+      // Not readable: the change just can't be undone from the notes page.
+    }
+  }
+  return parsed;
 }
 
 /** Changes send this page's connection id, so the server doesn't notify this page about them. */
@@ -193,6 +222,7 @@ export const api = {
   deleteTab: (id: number) => request<{ ok: true }>("DELETE", `/api/tabs/${id}`, undefined, changeHeaders()),
   /** Reminders: the server's public push key, and registering or forgetting this device. */
   history: (before?: number) => request<HistoryPage>("GET", `/api/history${before === undefined ? "" : `?before=${before}`}`),
+  undo: (changeIds: number[]) => request<UndoReply>("POST", "/api/history/undo", { changeIds }, changeHeaders()),
   revert: (toChangeId: number) => request<{ undone: number }>("POST", "/api/history/revert", { toChangeId }, changeHeaders()),
 
   pushKey: () => request<{ publicKey: string }>("GET", "/api/push/key"),

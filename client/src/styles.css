@@ -159,38 +159,6 @@ body:has(.app) {
   margin-left: auto;
 }
 
-/*
- * Hides or shows the left tab strip: the strip's width (40px), half the header's height, at the bottom
- * of the header straight above the strip (where the header is otherwise empty).
- */
-.left-tabs-toggle {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Outlined like a tab half the usual height: 2px from the window's edge and 2px from the first top tab. */
-  margin-left: 2px;
-  width: 35px;
-  height: 20px;
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  background: none;
-  color: var(--muted);
-  font-size: 0.8rem;
-  cursor: pointer;
-}
-
-.left-tabs-toggle:hover {
-  border-color: var(--muted);
-  color: var(--text);
-}
-
 /* ---- Tabs in the header, styled like a browser's ----------------------- */
 
 .tab-strip {
@@ -364,6 +332,7 @@ body:has(.app) {
 }
 
 .cog,
+.undo-button,
 .stylus-indicator {
   display: grid;
   place-items: center;
@@ -431,9 +400,27 @@ body:has(.app) {
   margin-right: 0.25rem;
 }
 
-.cog:hover:not(.blocked) {
+.cog:hover:not(.blocked),
+.undo-button:hover:not(.blocked) {
   color: var(--text);
   background: var(--bg);
+}
+
+/* Undo (or Redo), left of the cog: the same size, as a button. */
+.undo-button {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.undo-button.blocked {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 a:focus-visible {
@@ -442,7 +429,8 @@ a:focus-visible {
 }
 
 .refresh-error,
-.update-notice {
+.update-notice,
+.undo-notice {
   display: flex;
   flex: none;
   align-items: center;
@@ -460,8 +448,20 @@ a:focus-visible {
   color: var(--accent);
 }
 
+/* After Undo or Redo: the green strip, as for a new version; red if it couldn't be done. */
+.undo-notice {
+  background: var(--pill-bg);
+  color: var(--accent);
+}
+
+.undo-notice.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
 .refresh-error button,
-.update-notice button {
+.update-notice button,
+.undo-notice button {
   flex: none;
   padding: 0;
   border: none;
@@ -485,6 +485,7 @@ a:focus-visible {
 
 /* The left tab strip (when any tabs are set to "Left"), then the filter row and the list to its right. */
 .notes-body {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -502,9 +503,21 @@ a:focus-visible {
  * Tabs set to "Left": narrow, stacked from the top, names reading from bottom to top (normal text
  * turned 90 degrees to the left). Like the top tabs, the selected one joins the list, on its right.
  */
-.left-tabs {
+/* The left tabs, with the button that hides them at the bottom. */
+.left-tabs-column {
   display: flex;
   flex: none;
+  flex-direction: column;
+  width: 40px;
+  /* The line between the strip and the list, drawn inside it, so the selected tab can cover it. */
+  box-shadow: inset -1px 0 0 var(--line);
+  background: var(--bg);
+}
+
+.left-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
   flex-direction: column;
   gap: 0.15rem;
   /* The same as the header's height: 36px tabs with a 4px gap on their left, as above the top tabs. */
@@ -516,9 +529,42 @@ a:focus-visible {
   overscroll-behavior: contain;
   /* When the tabs don't fit, a thin scrollbar, so it doesn't take up much of the narrow strip. */
   scrollbar-width: thin;
-  /* The line between the strip and the list, drawn inside it, so the selected tab can cover it. */
-  box-shadow: inset -1px 0 0 var(--line);
-  background: var(--bg);
+}
+
+/*
+ * Hides the left strip: a square at the strip's bottom, the width of its tabs. While the strip is
+ * hidden, the same square stays in the same place, floating over the notes in the list's bottom-left corner.
+ */
+.left-tabs-toggle {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 0;
+  min-height: 0;
+  margin: 4px 0 4px 4px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.left-tabs-toggle:hover {
+  border-color: var(--muted);
+  color: var(--text);
+}
+
+.left-tabs-toggle.floating {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
 }
 
 .left-tab {

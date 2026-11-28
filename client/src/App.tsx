@@ -83,6 +83,8 @@ export function App() {
   const [bulkActive, setBulkActive] = useState(false);
   /** The notes page has unsaved work, so the "new version" notice (whose Reload would lose it) is hidden. */
   const [notesUnsaved, setNotesUnsaved] = useState(false);
+  /** A note or long-form note is open, or notes are being selected: the Undo button is greyed out. */
+  const [undoBlocked, setUndoBlocked] = useState(false);
   /** The note being edited has no title (or is being saved), so nothing else can be used until it's finished. */
   const [editLocked, setEditLocked] = useState(false);
   /** The tabs and cog are blocked: while an edit can't be saved by using them (see NotesPage), or in multi-select. */
@@ -369,6 +371,9 @@ export function App() {
             pendingCount={offlineState.pendingCount}
             showUpdateNotice={updateReady && !notesUnsaved}
             accountsWaiting={state.me.admin ? state.me.accountsWaiting : undefined}
+            undoBlocked={undoBlocked}
+            onUndone={() => void refreshNotes()}
+            onSessionExpired={sessionExpired}
           />
           {offlineState.offline && page.name !== "notes" ? (
             // Settings (and category and tab editing) need the server.
@@ -523,6 +528,7 @@ export function App() {
               onNoteOrderChanged={(noteOrder) => applySaved((data) => ({ ...data, noteOrder }))}
               onBulkChange={setBulkActive}
               onUnsavedChange={setNotesUnsaved}
+              onUndoBlockedChange={setUndoBlocked}
               offline={offlineState.offline}
               pendingIds={offlineState.pendingIds}
               syncNotice={syncNotice}

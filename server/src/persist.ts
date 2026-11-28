@@ -23,11 +23,11 @@ export interface Snapshot {
 }
 
 /** "setting": a small setting such as the All tab's placement (item id 1) or the note order (2), kept in `meta`. */
-type Kind = "note" | "category" | "tab" | "setting";
+export type Kind = "note" | "category" | "tab" | "setting";
 
 /** The settings kept in `meta` that the history covers, with their item ids. */
 const ALL_TAB_PLACEMENT_ID = 1;
-const NOTE_ORDER_ID = 2;
+export const NOTE_ORDER_ID = 2;
 
 /** Tabs once kept their own note order (`noteOrder`); it's no longer part of a tab. */
 export function withoutNoteOrder(tab: Tab): Tab {
@@ -45,12 +45,12 @@ export function oldTabOrders(tabs: Tab[]): number[][] {
 }
 
 /** A stored note order, keeping only whole numbers. */
-function readOrder(value: unknown): number[] {
+export function readOrder(value: unknown): number[] {
   return Array.isArray(value) ? value.filter((id): id is number => Number.isInteger(id)) : [];
 }
 
 /** An item as stored in the history: a note's JSON, or a category's or tab's position and JSON. */
-type Copy = Note | { position: number; data: Category | Tab } | { value: unknown };
+export type Copy = Note | { position: number; data: Category | Tab } | { value: unknown };
 
 /** One history entry, as the API sends it. */
 export type ChangeSummary = HistoryChange;
@@ -60,6 +60,8 @@ export interface ChangeRecord {
   summary: string;
   revertedTo?: string;
   undone?: number;
+  /** Who made it: the notebook's owner, or someone a tag is shared with. Only they can Undo it from the notes page. */
+  madeBy?: number;
 }
 
 /** The tables, as they are now: every notebook's rows carry their user's id. */
@@ -104,6 +106,8 @@ const TABLES = [
   // A share waiting for its recipient to accept it (they'd never been linked with the owner by sharing):
   // it gives them nothing until they do. Added after the table, so older databases get it here.
   "ALTER TABLE nwsnotes.shares ADD COLUMN IF NOT EXISTS pending boolean NOT NULL DEFAULT false",
+  // Who made each change (for Undo on the notes page). Added later: older changes have none.
+  "ALTER TABLE nwsnotes.changes ADD COLUMN IF NOT EXISTS made_by integer",
   // Note ids and tag ids are unique across all users, and never reused: new ones come from these.
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.note_ids",
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.tag_ids",
@@ -428,8 +432,8 @@ export async function writeChange(
     }
     if (!record || befores.length === 0) return undefined;
     const [change] = await query<{ id: number }>(
-      `INSERT INTO nwsnotes.changes (user_id, time, summary, item_count, reverted_to, undone) VALUES ($6, $1, $2, $3, $4, $5) RETURNING id`,
-      [time.toISOString(), record.summary, befores.length, record.revertedTo ?? null, record.undone ?? null, userId],
+      `INSERT INTO nwsnotes.changes (user_id, time, summary, item_count, reverted_to, undone, made_by) VALUES ($6, $1, $2, $3, $4, $5, $7) RETURNING id`,
+      [time.toISOString(), record.summary, befores.length, record.revertedTo ?? null, record.undone ?? null, userId, record.madeBy ?? null],
     );
     await query(
       `INSERT INTO nwsnotes.change_items (change_id, kind, item_id, "before")
@@ -528,6 +532,46 @@ export async function revertedSnapshot(db: Db, userId: number, toId: number, cur
       noteOrder: noteOrder.filter((id) => notes.has(id)),
     },
   };
+}
+
+/** Which notebook each of these changes is in (changes no longer in the History are left out). */
+export async function changeOwners(db: Db, ids: number[]): Promise<Map<number, number>> {
+  const rows = await db.query<{ id: number; user_id: number }>(
+    "SELECT id, user_id FROM nwsnotes.changes WHERE id IN (SELECT (jsonb_array_elements_text($1::jsonb))::int)",
+    [JSON.stringify(ids)],
+  );
+  return new Map(rows.map((row) => [Number(row.id), Number(row.user_id)]));
+}
+
+/** These changes in one notebook, oldest first, with their summaries and who made them (undefined for older changes). */
+export async function changesById(db: Db, userId: number, ids: number[]): Promise<{ id: number; summary: string; madeBy?: number }[]> {
+  const rows = await db.query<{ id: number; summary: string; made_by: number | null }>(
+    `SELECT id, summary, made_by FROM nwsnotes.changes
+     WHERE user_id = $2 AND id IN (SELECT (jsonb_array_elements_text($1::jsonb))::int) ORDER BY id`,
+    [JSON.stringify(ids), userId],
+  );
+  return rows.map((row) => ({ id: Number(row.id), summary: row.summary, ...(row.made_by !== null && { madeBy: Number(row.made_by) }) }));
+}
+
+/** Every item these changes touched, with its copy from the earliest of them: how it was before them all. */
+export async function itemsBefore(db: Db, ids: number[]): Promise<{ kind: Kind; id: number; before: Copy | null }[]> {
+  const rows = await db.query<{ kind: Kind; item_id: number; before: Copy | null }>(
+    `SELECT DISTINCT ON (kind, item_id) kind, item_id, "before" FROM nwsnotes.change_items
+     WHERE change_id IN (SELECT (jsonb_array_elements_text($1::jsonb))::int) ORDER BY kind, item_id, change_id`,
+    [JSON.stringify(ids)],
+  );
+  return rows.map((row) => ({ kind: row.kind, id: Number(row.item_id), before: row.before }));
+}
+
+/** The items (as "kind:id") that this notebook's changes after `afterId`, apart from `except`, touched. */
+export async function itemsTouchedAfter(db: Db, userId: number, afterId: number, except: number[]): Promise<Set<string>> {
+  const rows = await db.query<{ kind: Kind; item_id: number }>(
+    `SELECT DISTINCT kind, item_id FROM nwsnotes.change_items WHERE change_id IN (
+       SELECT id FROM nwsnotes.changes WHERE user_id = $1 AND id > $2 AND id NOT IN (SELECT (jsonb_array_elements_text($3::jsonb))::int)
+     )`,
+    [userId, afterId, JSON.stringify(except)],
+  );
+  return new Set(rows.map((row) => `${row.kind}:${Number(row.item_id)}`));
 }
 
 /** Deletes every user's changes older than `days` days. */
