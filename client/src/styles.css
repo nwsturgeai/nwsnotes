@@ -587,6 +587,14 @@ a:focus-visible {
   gap: 0.35rem;
 }
 
+/* In place of Archived → Bin when none of the listed Archived notes may be binned: plain text, the button's height. */
+.list-lifetime-note {
+  padding: 0.3rem 0;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* Small text buttons, the height of the filter dropdowns. */
 .small-button {
   padding: 0.3rem 0.75rem;

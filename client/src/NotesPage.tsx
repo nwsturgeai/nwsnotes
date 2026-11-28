@@ -946,9 +946,19 @@ export function NotesPage({
     }
   }
 
-  /** Edit-order mode's lifetime buttons: the listed notes that are Waiting, and those that are Archived. */
-  const listedWaiting = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_WAITING).map((note) => note.id);
-  const listedArchived = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED).map((note) => note.id);
+  /**
+   * Edit-order mode's lifetime buttons: the listed notes that are Waiting and may be archived, and those that
+   * are Archived and may be binned. Notes shared with you count only if their owner lets you do that (as on
+   * the server); `anyListedArchived` says whether there are Archived notes at all, binnable or not.
+   */
+  const mayChange = (note: Note, needed: "edit" | "delete") => !note.shared || allows(note.shared.permission, needed);
+  const listedWaiting = visibleNotes
+    .filter((note) => lifetimeOf(note) === LIFETIME_WAITING && mayChange(note, "edit"))
+    .map((note) => note.id);
+  const anyListedArchived = visibleNotes.some((note) => lifetimeOf(note) === LIFETIME_ARCHIVED);
+  const listedArchived = visibleNotes
+    .filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED && mayChange(note, "delete"))
+    .map((note) => note.id);
   const [listLifetimeBusy, setListLifetimeBusy] = useState(false);
 
   /** Moves the listed Waiting notes to Archived, or the listed Archived ones to the Bin, in one save. */
@@ -1511,7 +1521,7 @@ export function NotesPage({
                     Waiting → Archive ({listedWaiting.length})
                   </button>
                 )}
-                {listedArchived.length > 0 && (
+                {listedArchived.length > 0 ? (
                   <button
                     type="button"
                     className="small-button"
@@ -1521,6 +1531,8 @@ export function NotesPage({
                   >
                     Archived → Bin ({listedArchived.length})
                   </button>
+                ) : (
+                  anyListedArchived && <span className="list-lifetime-note">No permission to move to bin</span>
                 )}
               </div>
             ) : (
