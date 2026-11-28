@@ -35,7 +35,7 @@ test("with no tabs set to Left there's no left strip", async ({ page }) => {
   expect((await topTabs(page).first().boundingBox())!.x).toBe(12);
 });
 
-test("an eye button above the left strip hides and shows it, remembered for every tab", async ({ page }) => {
+test("a chevron button at the bottom of the left strip hides it, and floats over the list to show it again, remembered for every tab", async ({ page }) => {
   const hide = page.getByRole("button", { name: "Hide left tabs" });
   const show = page.getByRole("button", { name: "Show left tabs" });
   // No left tabs, no button.
@@ -47,23 +47,31 @@ test("an eye button above the left strip hides and shows it, remembered for ever
   await page.getByRole("link", { name: "← Notes" }).click();
   await expect(leftStrip(page)).toBeVisible();
 
-  // An eye with a slash while the strip shows: the strip's width (2px gap each side), half the header's
-  // height, at the bottom of the header, just left of the first top tab.
-  await expect(hide.locator("svg")).toHaveAttribute("data-icon", "eye-slash");
+  // A chevron pointing left, a 32px square at the bottom of the strip, below its tabs, 4px in from the
+  // edge and 4px above the new-note area.
+  await expect(hide.locator("svg")).toHaveAttribute("data-icon", "chevron-left");
   const button = (await hide.boundingBox())!;
-  const header = (await page.locator(".app-header").boundingBox())!;
-  const firstTab = (await topTabs(page).first().boundingBox())!;
-  expect(button.x).toBe(2);
-  expect(firstTab.x - (button.x + button.width)).toBe(2);
-  expect(button.height).toBe(header.height / 2);
-  // It stands on the header's 1px bottom line.
-  expect(button.y + button.height).toBe(header.y + header.height - 1);
+  const strip = (await leftStrip(page).boundingBox())!;
+  const addArea = (await page.locator(".new-note").boundingBox())!;
+  expect(button.width).toBe(32);
+  expect(button.height).toBe(32);
+  expect(button.x).toBe(4);
+  expect(button.y).toBeGreaterThanOrEqual(strip.y + strip.height);
+  expect(Math.abs(addArea.y - (button.y + button.height) - 4)).toBeLessThan(2);
+  // The top tabs line up with the strip.
+  expect((await topTabs(page).first().boundingBox())!.x).toBe(39);
 
-  // Hidden: the strip goes, the list uses the full width, and the button shows an eye.
+  // Hidden: the strip goes, the list uses the full width, the top tabs start 12px in, and the button
+  // stays in the same place, over the list, pointing right.
   await hide.click();
   await expect(leftStrip(page)).toHaveCount(0);
-  await expect(show.locator("svg")).toHaveAttribute("data-icon", "eye");
+  await expect(show.locator("svg")).toHaveAttribute("data-icon", "chevron-right");
   expect((await page.locator(".filter-row").boundingBox())!.x).toBeLessThan(2);
+  expect((await topTabs(page).first().boundingBox())!.x).toBe(12);
+  expect(await show.boundingBox()).toEqual(button);
+  const list = (await page.locator(".note-list").boundingBox())!;
+  expect(button.x).toBeGreaterThanOrEqual(list.x);
+  expect(button.y + button.height).toBeLessThanOrEqual(list.y + list.height);
 
   // It stays hidden on other tabs and after a reload.
   await topTabs(page).filter({ hasText: "Work" }).click();
@@ -110,7 +118,8 @@ test("tabs set to Left show in the left strip, in order, and can be chosen there
   expect(cog.x + cog.width).toBe(page.viewportSize()!.width);
   expect(row.x).toBeGreaterThanOrEqual(strip.x + strip.width - 1);
   expect(Math.abs(strip.y - row.y)).toBeLessThan(2);
-  expect(Math.abs(strip.y + strip.height - addArea.y)).toBeLessThan(2);
+  const column = (await page.locator(".left-tabs-column").boundingBox())!;
+  expect(Math.abs(column.y + column.height - addArea.y)).toBeLessThan(2);
 
   // The names read from bottom to top: normal text turned 90 degrees to the left.
   const name = leftTabs(page).first().locator(".left-tab-name");
