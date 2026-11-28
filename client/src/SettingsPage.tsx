@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faArrowDown, faArrowUp } from "@fortawesome/free-solid-svg-icons";
 import { formatBytes } from "./sizes";
 import {
+  ALEXA_NAME,
   ALL_TAB_NAME,
   formatPhoneNumber,
   lifetimeOf,
@@ -19,6 +20,8 @@ import {
   type Note,
   type NoteStats,
   type SmsLinkCode,
+  type AlexaLinkCode,
+  type AlexaStatus,
   type GoogleStatus,
   type SmsStatus,
   type Tab,
@@ -707,6 +710,8 @@ export function SettingsPage({
 
       <TextMessages notes={notes} tabs={tabs} onSessionExpired={onSessionExpired} />
 
+      <Alexa notes={notes} tabs={tabs} onSessionExpired={onSessionExpired} />
+
       <GoogleCalendarSection notes={notes} onSessionExpired={onSessionExpired} />
 
       {me.admin && (
@@ -945,6 +950,122 @@ function TextMessages({ notes, tabs, onSessionExpired }: { notes: Note[]; tabs: 
           onConfirm={() => {
             setConfirmingUnlink(false);
             void run(async () => setStatus(await api.smsUnlink()));
+          }}
+          onCancel={() => setConfirmingUnlink(false)}
+        />
+      )}
+    </section>
+  );
+}
+
+/**
+ * Adding notes by Alexa (see Specs/alexa.md): link this person's Alexa account to their nwsnotes account
+ * with a code said to Alexa. Hidden when the server doesn't have Alexa set up (it answers 404).
+ */
+function Alexa({ notes, tabs, onSessionExpired }: { notes: Note[]; tabs: Tab[]; onSessionExpired: () => void }) {
+  const [status, setStatus] = useState<AlexaStatus | "off">();
+  const [code, setCode] = useState<AlexaLinkCode>();
+  const [confirmingUnlink, setConfirmingUnlink] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+
+  // Fetched when the page opens, and again whenever the notes change: Alexa being linked tells this page
+  // to reload (a live update), so it then shows as linked.
+  useEffect(() => {
+    let current = true;
+    api
+      .alexaStatus()
+      .then((found) => {
+        if (!current) return;
+        setStatus(found);
+        if (found.linked) setCode(undefined);
+      })
+      .catch((err: unknown) => {
+        if (!current) return;
+        if (err instanceof ApiError && err.isUnauthorized) onSessionExpired();
+        else if (err instanceof ApiError && err.status === 404) setStatus("off");
+      });
+    return () => {
+      current = false;
+    };
+  }, [notes, onSessionExpired]);
+
+  async function run(action: () => Promise<void>) {
+    setBusy(true);
+    setError(undefined);
+    try {
+      await action();
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status === undefined || status === "off") return null;
+  const exampleTab = tabs[0]?.spokenName ?? tabs[0]?.name ?? "Shopping";
+
+  return (
+    <section className="alexa">
+      <h2>Alexa</h2>
+      <p>
+        Add notes by saying them to an Echo, e.g. "Alexa, ask {ALEXA_NAME} to add {exampleTab} oat milk". Start with
+        "add" and a tab's name (or its spoken name) to put the note in that tab, or with "new" for a note with no tags.
+        Alexa reads each note back.
+      </p>
+      {status.linked ? (
+        <>
+          <p>
+            Linked to Alexa. If Alexa says it isn't linked, press Link Alexa again.
+          </p>
+          <div className="lifetime-buttons">
+            <button
+              type="button"
+              className="button"
+              disabled={busy}
+              onClick={() => void run(async () => setCode(await api.alexaLinkCode()))}
+            >
+              Link Alexa
+            </button>
+            <button type="button" className="button" disabled={busy} onClick={() => setConfirmingUnlink(true)}>
+              Unlink
+            </button>
+          </div>
+        </>
+      ) : (
+        !code && (
+          <button
+            type="button"
+            className="button"
+            disabled={busy}
+            onClick={() => void run(async () => setCode(await api.alexaLinkCode()))}
+          >
+            Link Alexa
+          </button>
+        )
+      )}
+      {code && (
+        <p className="alexa-code" role="status">
+          Say "Alexa, ask {ALEXA_NAME} to link <strong className="alexa-code-digits">{code.code}</strong>". The code
+          works for 15 minutes.
+        </p>
+      )}
+      {error && (
+        <p className="save-error" role="alert">
+          {error}
+        </p>
+      )}
+      {confirmingUnlink && status.linked && (
+        <ConfirmDialog
+          message="Unlink Alexa? It will no longer add notes."
+          confirmLabel="Unlink"
+          onConfirm={() => {
+            setConfirmingUnlink(false);
+            void run(async () => setStatus(await api.alexaUnlink()));
           }}
           onCancel={() => setConfirmingUnlink(false)}
         />

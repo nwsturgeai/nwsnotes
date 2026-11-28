@@ -171,6 +171,27 @@ Lets nwsnotes send email, e.g. a summary of a tab when someone texts "Email tab 
 
 Emails go to each person's login email. Each person can have at most 10 tab emails a day, so everyone together stays within the free plan.
 
+### 9. Adding notes by Alexa (optional)
+
+Lets you say notes to an Echo: "Alexa, ask Nick Notes to add Shopping oat milk" (see [Specs/alexa.md](Specs/alexa.md)). The skill is private: it's never published, and only works on Echos signed in to your own Amazon account. Without it, the app works as before, and Settings has no "Alexa" section. It's free.
+
+1. At https://developer.amazon.com/alexa/console/ask, sign in with the Amazon account your Echo uses, and tap **Create Skill**.
+2. Name it "Nick Notes", choose **English (UK)**, the **Other** experience, the **Custom** model and **Provision your own** hosting, then **Start from Scratch**.
+3. Under **Build → Interaction Model → JSON Editor**, replace everything with the contents of `deploy/alexa-model.json`, tap **Save** and then **Build skill**.
+4. Under **Build → Endpoint**, choose **HTTPS**, enter `https://nwsnotes.com/api/alexa` as the **Default Region**, and choose **My development endpoint has a certificate from a trusted certificate authority**. Tap **Save**.
+5. Under **Test**, change **Skill testing is enabled in** to **Development**. This turns the skill on for your Echos.
+6. Copy the skill's ID (the skills list → **Copy Skill ID**, `amzn1.ask.skill.…`). Copy the script to the VM and run it; it asks for the ID, then restarts the app:
+
+   ```bash
+   scp deploy/set-alexa.sh root@nwsnotes.com:
+   ssh root@nwsnotes.com
+   sudo bash set-alexa.sh
+   ```
+
+7. In nwsnotes, open Settings → **Alexa** → **Link Alexa**, and say "Alexa, ask Nick Notes to link" and the code shown.
+
+To change the name you say, edit `invocationName` in `deploy/alexa-model.json` (in lower case), paste it in again and build, then change `ALEXA_NAME` in `shared/src/alexa.ts` and the help page `docs/alexa.md` to match.
+
 ## Moving from nwsnotes.duckdns.org to nwsnotes.com (once)
 
 If the VM was set up when the site was at nwsnotes.duckdns.org:

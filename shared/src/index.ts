@@ -3,6 +3,7 @@ import { nameClashesWithSpokenName, spokenNameError } from "./sms";
 export * from "./sms";
 export * from "./spokenDue";
 export * from "./calendarText";
+export * from "./alexa";
 
 /** A single note, as stored on the server and sent to the website. */
 export interface Note {
@@ -627,6 +628,8 @@ export interface UserSummary extends Me {
   smsLinked: boolean;
   /** Whether each text they send that works gets a text back confirming it (set by the admin). */
   smsConfirmations: boolean;
+  /** Whether they've linked an Alexa account for adding notes by Alexa. */
+  alexaLinked: boolean;
   /**
    * How many changes they've made today and in the 6 days before (as their History lists them), counted from
    * the `changesSince` GET /api/users is given. `more` when their History has already dropped some of those

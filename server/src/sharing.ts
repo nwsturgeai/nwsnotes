@@ -306,7 +306,15 @@ export class Sharing {
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { dueDateTime?: string; noReminder?: boolean; returnWhenDue?: boolean; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown; source?: "sms" },
+    options: {
+      dueDateTime?: string;
+      noReminder?: boolean;
+      returnWhenDue?: boolean;
+      clientId?: unknown;
+      createdDateTime?: unknown;
+      tagsChangedDateTime?: unknown;
+      source?: "sms" | "alexa";
+    },
   ): Promise<{ note: Note; created: boolean; ownerId?: number }> {
     const { category, notebooks } = await this.sharedWith(user.id);
     const sharedTags = category?.tags ?? [];

@@ -59,7 +59,7 @@ A note is due
 - **No reminder is sent** for it (see "Sending" below). Turning the reminder back on after the due time has passed doesn't send one late; turning it on before then gives the usual reminder at the due time.
 - **In the list:** a crossed-out bell (`fa-bell-slash`, outline) before "Due …", and " (no reminder)" at the end of the date's tooltip. The due-date button's tooltip (e.g. "Due 12/11 20:00 (no reminder)") and the date's accessible label say so too.
 - **Shared notes:** only the owner turns it on or off. Someone a tag is shared with who edits the note keeps the owner's choice; sending a different one is refused, as for the due date ("Only <owner> can change the due dates of their notes.").
-- **By text message:** "Due <when>" always sets a due date with a reminder (it turns the reminder back on).
+- **By text message or Alexa:** "Due <when>" always sets a due date with a reminder (it turns the reminder back on).
 - **History:** an edit that only turns the reminder off or on is "Turned off the reminder for "<title>"" (or "Turned on …").
 - **Google Calendar:** the note's event has no alert. See [google-calendar.md](google-calendar.md).
 
@@ -75,7 +75,7 @@ A note is due
 - **In the list:** a Waiting note with it, whose due date is still to come, has a `fa-rotate-left` icon before "Due …", and " (returns from Waiting)" at the end of the date's tooltip and accessible label. Other notes show nothing for it.
 - **It's independent of the reminder:** a note can have either, both or neither.
 - **Shared notes:** only the owner turns it on or off, as for the due date.
-- **By text message:** "Due <when>" sets a due date without it (turning it off if it was on). Due dates from Google Calendar don't have it, and changes made in Google keep it as it is.
+- **By text message or Alexa:** "Due <when>" sets a due date without it (turning it off if it was on). Due dates from Google Calendar don't have it, and changes made in Google keep it as it is.
 
 ### Long-form notes
 - **The button:** in the long-form editor's bottom row, an `fa-alarm-clock` button (outline, 40px like the row's other buttons), just after Export (4px) for handwritten details, or in Export's place for typed ones, then the usual 24px gap before Cancel and Finish. Its accessible label is "Set the long-form note's due date", or "Change the long-form note's due date" while it has one. Like the regular button, it's filled in green while the note has a due date, with the tooltip e.g. "Due 12/11 20:00", otherwise "Set due date". It opens the same "Due date" pop-up.
