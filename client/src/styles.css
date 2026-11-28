@@ -1689,9 +1689,9 @@ body:has(.note-list li.dragging) {
   }
 }
 
-/* Narrower still (a phone), the pen-thickness buttons go too (Settings has them), so Cancel and Finish stay on the screen. */
+/* Narrower still (a phone), the pen-thickness button goes too (Settings has the thicknesses), so Cancel and Finish stay on the screen. */
 @container (max-width: 440px) {
-  .lf-finish .lf-pen-widths {
+  .lf-finish .lf-pen-menu {
     display: none;
   }
 }
@@ -1710,11 +1710,14 @@ body:has(.note-list li.dragging) {
   background: none;
 }
 
-/* A wider gap between the eraser and the pen thicknesses. */
-.lf-pen-widths {
-  display: flex;
-  gap: 4px;
+/* A wider gap between the eraser and the pen-thickness button. */
+.lf-pen-menu {
   margin-left: 12px;
+}
+
+/* The pen-thickness menu opens above its button. */
+.lf-pen-menu-list {
+  min-width: 9rem;
 }
 
 /* Export, pushed over to the right: a 24px gap (with the row's own 4px) before Cancel and Finish. */
@@ -1728,26 +1731,23 @@ body:has(.note-list li.dragging) {
   margin-left: 0;
 }
 
-/* Each pen button: a short line at its thickness, with its size in small text underneath. */
-.lf-pen-widths .icon-button {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+/* Each thickness in the menu: a tick if it's the one chosen, a short line at that thickness, then its size. */
+.lf-pen-check {
+  display: inline-flex;
   justify-content: center;
-  gap: 4px;
+  width: 1em;
 }
 
-/* The sample line, in the icon's colour (light when chosen). */
 .lf-pen-sample {
   display: block;
-  width: 22px;
+  flex: none;
+  width: 32px;
   border-radius: 999px;
   background: currentColor;
 }
 
 .lf-pen-size {
-  font-size: 0.6rem;
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Cancel (when shown) and Finish, at the right-hand end. */

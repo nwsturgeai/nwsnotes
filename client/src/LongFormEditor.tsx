@@ -203,6 +203,10 @@ export function LongFormEditor({
   const [pageMenu, setPageMenu] = useState<{ bottom: number; left: number }>();
   const pageMenuRef = useRef<HTMLDivElement>(null);
   const pageMenuButton = useRef<HTMLButtonElement>(null);
+  /** Where the open pen-thickness menu sits on the window (above its button), if it's open. */
+  const [penMenu, setPenMenu] = useState<{ bottom: number; left: number }>();
+  const penMenuRef = useRef<HTMLDivElement>(null);
+  const penMenuButton = useRef<HTMLButtonElement>(null);
   /** "Next page" on the last page asks whether to add one. */
   const [confirmingAddPage, setConfirmingAddPage] = useState(false);
   const [confirmingDeletePage, setConfirmingDeletePage] = useState(false);
@@ -574,11 +578,21 @@ export function LongFormEditor({
     setErasing(!erasing);
   }
 
-  /** A pen-thickness button: chooses it (for every canvas on this device) and turns the eraser off. */
+  function togglePenMenu(event: ReactMouseEvent) {
+    if (ignoredTap(stylusMode, event)) return;
+    const rect = penMenuButton.current?.getBoundingClientRect();
+    if (penMenu || !rect) setPenMenu(undefined);
+    else setPenMenu({ bottom: window.innerHeight - rect.top + 4, left: rect.left });
+  }
+
+  useCloseOnOutside(penMenu !== undefined, penMenuRef, () => setPenMenu(undefined));
+
+  /** A pen-thickness menu item: chooses it (for every canvas on this device), turns the eraser off and closes the menu. */
   function onPenWidthClick(event: ReactMouseEvent, width: number) {
     if (ignoredTap(stylusMode, event)) return;
     setPenWidth(width);
     setErasing(false);
+    setPenMenu(undefined);
   }
 
   /** Turns to another page (the menu closes). */
@@ -633,25 +647,7 @@ export function LongFormEditor({
     else setPageMenu({ bottom: window.innerHeight - rect.top + 4, left: rect.left });
   }
 
-  // The page menu closes when clicking elsewhere, pressing Escape or resizing.
-  useEffect(() => {
-    if (!pageMenu) return;
-    const close = () => setPageMenu(undefined);
-    const onPointerDown = (event: PointerEvent) => {
-      if (!pageMenuRef.current?.contains(event.target as Node)) close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", close);
-    };
-  }, [pageMenu]);
+  useCloseOnOutside(pageMenu !== undefined, pageMenuRef, () => setPageMenu(undefined));
 
   /** A page menu item: ignores finger taps in stylus mode, like the buttons. */
   function menuAction(action: () => void) {
@@ -940,23 +936,42 @@ export function LongFormEditor({
           >
             <FontAwesomeIcon icon={faEraser} />
           </button>
-          <div className="lf-pen-widths" role="radiogroup" aria-label="Pen thickness">
-            {PEN_WIDTHS.map((width) => (
-              <button
-                key={width}
-                type="button"
-                role="radio"
-                aria-checked={penWidth === width}
-                aria-label={`Pen thickness ${width}px`}
-                title={`Pen thickness ${width}px`}
-                className={penWidth === width ? "icon-button primary" : "icon-button"}
-                disabled={busy || !detailsEditable}
-                onClick={(event) => onPenWidthClick(event, width)}
-              >
-                <span className="lf-pen-sample" style={{ height: width }} />
-                <span className="lf-pen-size">{width}px</span>
-              </button>
-            ))}
+          {/* One button (a scribble) that opens a menu of the pen thicknesses, above it. */}
+          <div className="lf-pen-menu" ref={penMenuRef}>
+            <button
+              ref={penMenuButton}
+              type="button"
+              className="icon-button"
+              aria-label="Pen thickness"
+              title={`Pen thickness: ${penWidth}px`}
+              aria-haspopup="menu"
+              aria-expanded={penMenu !== undefined}
+              disabled={busy || !detailsEditable}
+              onClick={togglePenMenu}
+            >
+              <ScribbleIcon />
+            </button>
+            {penMenu && (
+              <div className="tag-dropdown-list lf-pen-menu-list" role="menu" aria-label="Pen thickness" style={penMenu}>
+                {PEN_WIDTHS.map((width) => (
+                  <button
+                    key={width}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={penWidth === width}
+                    aria-label={`Pen thickness ${width}px`}
+                    className={penWidth === width ? "tag-option chosen" : "tag-option"}
+                    onClick={(event) => onPenWidthClick(event, width)}
+                  >
+                    <span className="lf-pen-check" aria-hidden>
+                      {penWidth === width && <FontAwesomeIcon icon={faCheck} />}
+                    </span>
+                    <span className="lf-pen-sample" style={{ height: width }} />
+                    <span className="lf-pen-size">{width}px</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="lf-pages" role="group" aria-label="Pages">
             <span className="lf-page-count" title={`Page ${pageIndex + 1} of ${pages.length}`}>
@@ -1151,4 +1166,47 @@ function exportFileName(title: string, now = new Date()): string {
   // Characters that file names can't have (on Windows, the strictest), and control characters.
   const safe = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 80).trim();
   return `${safe ? `${safe} ` : ""}${date}.png`;
+}
+
+/** While a menu is open, it closes on a click outside `ref`, on Escape, or when the window is resized. */
+function useCloseOnOutside(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void) {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    const onClose = () => closeRef.current();
+    const onPointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [open, ref]);
+}
+
+/**
+ * A scribble (like Font Awesome Pro's fa-scribble, which the free icons don't have): one rounded line
+ * with two loops, rising from the bottom left and ending at the right. Sized like a Font Awesome icon.
+ */
+function ScribbleIcon() {
+  return (
+    <svg className="svg-inline--fa" viewBox="0 0 512 512" aria-hidden focusable="false">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={44}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M40 400C110 360 190 250 190 150C190 70 110 90 120 190C130 300 230 380 300 300C350 240 340 150 290 170C240 190 280 330 360 360C420 380 450 330 472 300"
+      />
+    </svg>
+  );
 }
