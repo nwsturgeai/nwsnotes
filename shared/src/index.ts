@@ -2,6 +2,7 @@ import { nameClashesWithSpokenName, spokenNameError } from "./sms";
 
 export * from "./sms";
 export * from "./spokenDue";
+export * from "./calendarText";
 
 /** A single note, as stored on the server and sent to the website. */
 export interface Note {
@@ -46,6 +47,11 @@ export interface Note {
   createdByUserId?: number;
   /** ISO 8601, UTC: when the note is due. Regular and long-form notes. */
   dueDateTime?: string;
+  /**
+   * From an all-day event in Google Calendar (see Specs/google-calendar.md): its event stays all-day
+   * while the note is due at 20:00 (UK time). Set by the server, and dropped when the time changes.
+   */
+  allDay?: true;
   /** The due date a reminder has been sent for (or that was already past when set), so it's sent once. Set by the server. */
   reminderSentFor?: string;
   /**

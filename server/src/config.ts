@@ -52,6 +52,46 @@ export interface Config {
   sms?: SmsConfig;
   /** Sending email through Brevo (production only; development and the tests keep emails in memory). Missing: turned off. */
   email?: EmailConfig;
+  /** Syncing notes with Google Calendar (development and the tests: a fake Google, in this server). Missing: turned off. */
+  google?: GoogleConfig;
+}
+
+/** The Google Cloud project's OAuth client, and where Google's services are (the fake one's, outside production). */
+export interface GoogleConfig {
+  clientId: string;
+  clientSecret: string;
+  /** The site's address as Google sees it (e.g. "https://nwsnotes.com"): for the sign-in's return address and the webhook. */
+  publicUrl: string;
+  /** Google's sign-in page. */
+  authUrl: string;
+  /** Exchanges a sign-in's code for tokens, and refreshes them. */
+  tokenUrl: string;
+  /** Revokes a token (disconnecting). */
+  revokeUrl: string;
+  /** The Calendar API, e.g. "https://www.googleapis.com/calendar/v3". */
+  calendarApi: string;
+}
+
+/** Google's real addresses, in production. */
+const GOOGLE_URLS = {
+  authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenUrl: "https://oauth2.googleapis.com/token",
+  revokeUrl: "https://oauth2.googleapis.com/revoke",
+  calendarApi: "https://www.googleapis.com/calendar/v3",
+};
+
+/** Development and the tests: the fake Google served by this server (see fakeGoogle.ts). */
+export function fakeGoogleConfig(port: number | string): GoogleConfig {
+  const base = `http://localhost:${port}/api/test/google`;
+  return {
+    clientId: "fake-client-id",
+    clientSecret: "fake-client-secret",
+    publicUrl: `http://localhost:${port}`,
+    authUrl: `${base}/oauth/auth`,
+    tokenUrl: `${base}/oauth/token`,
+    revokeUrl: `${base}/oauth/revoke`,
+    calendarApi: `${base}/calendar/v3`,
+  };
 }
 
 /** The Twilio number that texts are sent to, and what's needed to check that requests come from Twilio. */
@@ -111,6 +151,8 @@ export function loadConfig(): Config {
       databaseUrl: process.env.NWSNOTES_DATABASE_URL,
       // A fake Twilio: texts are posted to the server by the tests (or by hand), signed with the test token.
       sms: { ...TEST_SMS, publicUrl: `http://localhost:${process.env.PORT ?? 3000}` },
+      // A fake Google Calendar, in this server: connecting and syncing work without a Google account.
+      google: fakeGoogleConfig(process.env.PORT ?? 3000),
     };
   }
 
@@ -122,11 +164,16 @@ export function loadConfig(): Config {
     brevoApiKey?: string;
     emailFrom?: string;
     emailFromName?: string;
+    googleClientId?: string;
+    googleClientSecret?: string;
   };
   const smsKeys = ["twilioAuthToken", "smsNumber", "publicUrl"] as const;
   const smsSet = smsKeys.filter((key) => raw[key]);
   if (smsSet.length > 0 && smsSet.length < smsKeys.length) {
     throw new Error(`${file} needs all of ${smsKeys.map((key) => `"${key}"`).join(", ")} for text messages, or none of them.`);
+  }
+  if ((raw.googleClientId || raw.googleClientSecret) && !(raw.googleClientId && raw.googleClientSecret && raw.publicUrl)) {
+    throw new Error(`${file} needs all of "googleClientId", "googleClientSecret" and "publicUrl" for Google Calendar, or neither Google one.`);
   }
   if (raw.emailFrom && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(raw.emailFrom)) {
     throw new Error(`${file}: "emailFrom" must be an email address, e.g. "noreply@nwsnotes.com".`);
@@ -156,6 +203,11 @@ export function loadConfig(): Config {
     ...(raw.twilioAuthToken &&
       raw.smsNumber &&
       raw.publicUrl && { sms: { authToken: raw.twilioAuthToken, number: raw.smsNumber, publicUrl: raw.publicUrl.replace(/\/+$/, "") } }),
+    ...(raw.googleClientId &&
+      raw.googleClientSecret &&
+      raw.publicUrl && {
+        google: { clientId: raw.googleClientId, clientSecret: raw.googleClientSecret, publicUrl: raw.publicUrl.replace(/\/+$/, ""), ...GOOGLE_URLS },
+      }),
     ...(raw.brevoApiKey && {
       email: { brevoApiKey: raw.brevoApiKey, from: raw.emailFrom ?? DEFAULT_EMAIL_FROM, fromName: raw.emailFromName ?? DEFAULT_EMAIL_FROM_NAME },
     }),

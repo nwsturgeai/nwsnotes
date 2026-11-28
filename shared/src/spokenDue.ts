@@ -16,7 +16,7 @@ const PART_OF_DAY_HOURS = { morning: 9, afternoon: 15, evening: 20 } as const;
 // ---- UK time ------------------------------------------------------------------
 
 /** A date and time as a clock in the UK shows it. Months are 1–12; weekdays 0 (Sunday) to 6. */
-interface WallClock {
+export interface WallClock {
   year: number;
   month: number;
   day: number;
@@ -30,7 +30,7 @@ const WEEKDAY_NUMBERS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3
 let wallClockFormat: Intl.DateTimeFormat | undefined;
 
 /** What a clock in the UK shows at this moment. */
-function ukClock(instant: Date): WallClock {
+export function ukClock(instant: Date): WallClock {
   wallClockFormat ??= new Intl.DateTimeFormat("en-GB", {
     timeZone: SPOKEN_TIME_ZONE,
     year: "numeric",
@@ -53,7 +53,7 @@ function ukClock(instant: Date): WallClock {
 }
 
 /** The moment a UK clock shows this date and time (GMT or BST, whichever is in force then). */
-function fromUkClock(year: number, month: number, day: number, hour: number, minute: number): Date {
+export function fromUkClock(year: number, month: number, day: number, hour: number, minute: number): Date {
   const asUtc = Date.UTC(year, month - 1, day, hour, minute);
   const offsetAt = (time: number) => {
     const clock = ukClock(new Date(time));
@@ -65,7 +65,7 @@ function fromUkClock(year: number, month: number, day: number, hour: number, min
 }
 
 /** A calendar date some days after another (months and years rolling over as needed). */
-function addDays(date: { year: number; month: number; day: number }, days: number): { year: number; month: number; day: number } {
+export function addDays(date: { year: number; month: number; day: number }, days: number): { year: number; month: number; day: number } {
   const moved = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
   return { year: moved.getUTCFullYear(), month: moved.getUTCMonth() + 1, day: moved.getUTCDate() };
 }

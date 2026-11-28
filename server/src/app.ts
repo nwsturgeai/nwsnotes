@@ -24,6 +24,8 @@ import { EmailChanges } from "./emailChange.js";
 import { ShareInvites } from "./shareInvite.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
+import type { GoogleCalendar } from "./google.js";
+import type { FakeGoogle } from "./fakeGoogle.js";
 import { actingUser } from "./context.js";
 import type { NoteStore } from "./store.js";
 import type { Sharing } from "./sharing.js";
@@ -45,6 +47,8 @@ export function createApp(
   sharing: Sharing,
   sms?: SmsNotes,
   mailer?: Mailer,
+  google?: GoogleCalendar,
+  fakeGoogle?: FakeGoogle,
 ) {
   const users = notebooks.users;
 
@@ -170,6 +174,12 @@ export function createApp(
     app.use(webhook);
     app.use("/api/me/sms", me);
   }
+
+  // --- Google Calendar (only when it's set up) ------------------------------
+
+  if (google) app.use("/api/google", google.router(requireSession(users, config.sessionSecret)));
+  // Outside production, a fake Google, so connecting works without a Google account (see fakeGoogle.ts).
+  if (fakeGoogle && !config.production) app.use("/api/test/google", fakeGoogle.router());
 
   // --- The logged-in user ---------------------------------------------------
 
@@ -690,6 +700,8 @@ export function createApp(
       await push.forgetAllDevices();
       sms?.resetForTests();
       mailer?.resetForTests();
+      await google?.resetForTests();
+      fakeGoogle?.reset();
       passwordResets.resetForTests();
       serverLog.clear();
       res.json({ ok: true });
@@ -725,6 +737,20 @@ export function createApp(
     // Loads the data again from the database, as a restart would.
     app.post("/api/test/reload", ...testSession, async (_req, res) => {
       await notebookOf(res).reloadForTests();
+      res.json({ ok: true });
+    });
+    // Sends the reminders of notes that have fallen due now, rather than at the next minute's check.
+    app.post("/api/test/check-reminders", async (_req, res) => {
+      await push.checkDueForTests();
+      res.json({ ok: true });
+    });
+    // Google Calendar: syncs the logged-in user now (as the 5-minute check would), and waits until no sync is running.
+    app.post("/api/test/google-sync", ...testSession, async (_req, res) => {
+      await google?.syncNowForTests(userOf(res).id);
+      res.json({ ok: true });
+    });
+    app.post("/api/test/google-idle", async (_req, res) => {
+      await google?.idle();
       res.json({ ok: true });
     });
     // Makes the database unreachable (or reachable again), to test what the app does then.

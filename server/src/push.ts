@@ -29,6 +29,8 @@ export class PushReminders {
   private subscriptions: Device[] = [];
   private keys = { publicKey: "", privateKey: "" };
   private checking = false;
+  /** Whether a note's alert comes from elsewhere (its Google Calendar event), so nwsnotes sends no reminder for it. */
+  alertsElsewhere?: (userId: number, noteId: number) => boolean;
   /** End-to-end tests only: what would have been sent, as push services can't be reached from the tests. */
   private sentForTests: (PushMessage & { userId: number; devices: number })[] = [];
 
@@ -98,6 +100,11 @@ export class PushReminders {
     return this.sentForTests.filter((sent) => sent.userId === userId).map(({ userId: _user, ...sent }) => sent);
   }
 
+  /** End-to-end tests only: looks for notes that have fallen due now, rather than at the next minute. */
+  checkDueForTests(): Promise<void> {
+    return this.checkDue();
+  }
+
   /** A notification to every device of the user that has reminders on. Returns how many it reached. */
   notify(userId: number, message: PushMessage): Promise<number> {
     return this.sendToUser(userId, message);
@@ -163,6 +170,8 @@ export class PushReminders {
           const due = store.dueForReminder(new Date());
           if (due.length === 0) continue;
           for (const note of due) {
+            // Recorded as reminded all the same, so disconnecting doesn't send a late one.
+            if (this.alertsElsewhere?.(userId, note.id)) continue;
             await this.sendToUser(userId, {
               title: note.titleText !== undefined ? `Due: ${withoutMarkers(note.titleText)}` : "A note is due",
               tag: `note-${note.id}`,
