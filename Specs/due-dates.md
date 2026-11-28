@@ -42,6 +42,7 @@ A note is due
   - While the note being added or edited has a due date, the button is filled in green, like an active button. Its tooltip then says e.g. "Due 12/11 20:00"; otherwise "Set due date".
 - **The dialog:** the app's own pop-up, titled "Due date", with a date box and a time box (the device's own pickers).
   - With no due date yet, it starts at 20:00 today, or tomorrow if it's already 20:00 or later.
+  - Below the date and time, a "Remind me?" tickbox: ticked for a new due date, otherwise as the note has it. Unticked, the note has a due date but no reminder (see "No reminder" below).
   - Buttons: "Cancel", "Clear Due Date" (only if the note has a due date) and "Set Due Date" (the green main button). Escape counts as Cancel.
 - **Saved with the note:** the chosen date is only saved when Add or Update is tapped. Cancelling an edit drops it.
   - Unlike the tags, it doesn't carry over: after a note is added, the next new note starts with no due date.
@@ -49,6 +50,16 @@ A note is due
   - The year is added when it isn't this year, e.g. "Due 12/01/27 20:00".
   - Still to come: the label and date are in the text colour (black), not the grey of a creation date. Due within the next 7 days: also bold. Already past: bold and red.
   - The list re-checks once a minute, so dates turn bold, then red, without a reload.
+
+### No reminder
+- **Stored on the note:** `noReminder: true`, only while it has a due date and "Remind me?" was unticked. Left out, the note has a reminder, so notes from before it existed have one. It's sent with `dueDateTime` in `POST /api/notes` and `PUT /api/notes/:id`; since a PUT replaces the note, leaving it out turns the reminder on, and clearing the due date clears it too. Anything but true or false is refused.
+  - Every save sends it with the due date, as it is: editing the note, tapping its date in the list, the long-form editor's saves, and changes made offline.
+- **No reminder is sent** for it (see "Sending" below). Turning the reminder back on after the due time has passed doesn't send one late; turning it on before then gives the usual reminder at the due time.
+- **In the list:** a crossed-out bell (`fa-bell-slash`, outline) before "Due …", and " (no reminder)" at the end of the date's tooltip. The due-date button's tooltip (e.g. "Due 12/11 20:00 (no reminder)") and the date's accessible label say so too.
+- **Shared notes:** only the owner turns it on or off. Someone a tag is shared with who edits the note keeps the owner's choice; sending a different one is refused, as for the due date ("Only <owner> can change the due dates of their notes.").
+- **By text message:** "Due <when>" always sets a due date with a reminder (it turns the reminder back on).
+- **History:** an edit that only turns the reminder off or on is "Turned off the reminder for "<title>"" (or "Turned on …").
+- **Google Calendar:** the note's event has no alert. See [google-calendar.md](google-calendar.md).
 
 ### Long-form notes
 - **The button:** in the long-form editor's bottom row, an `fa-alarm-clock` button (outline, 40px like the row's other buttons), just after Export (4px) for handwritten details, or in Export's place for typed ones, then the usual 24px gap before Cancel and Finish. Its accessible label is "Set the long-form note's due date", or "Change the long-form note's due date" while it has one. Like the regular button, it's filled in green while the note has a due date, with the tooltip e.g. "Due 12/11 20:00", otherwise "Set due date". It opens the same "Due date" pop-up.
@@ -78,7 +89,7 @@ A note is due
   - If the browser has blocked notifications for the site, it says so, and that they must be allowed in the browser's site settings.
   - In development there's no service worker, so it says "Reminders aren't available in development." The server side still works there.
 - **Sending:** the server checks every minute.
-  - A reminder goes out for each New, Active or Waiting note whose due date has passed. Archived and Bin notes get none.
+  - A reminder goes out for each New, Active or Waiting note whose due date has passed. Archived and Bin notes get none, nor do notes with "Remind me?" unticked.
   - A note with its own event in Google Calendar gets Google's alert instead, and no reminder from nwsnotes (it's still recorded as reminded). See [google-calendar.md](google-calendar.md).
   - Each note gets one reminder per due date. The note stores `reminderSentFor`, the due date its reminder was sent for, in the save-files.
   - Changing the due date allows a new reminder at the new time. Saving a due date that's already past counts as already reminded, since it didn't just pass.

@@ -47,6 +47,8 @@ export interface Note {
   createdByUserId?: number;
   /** ISO 8601, UTC: when the note is due. Regular and long-form notes. */
   dueDateTime?: string;
+  /** The note has a due date but no reminder ("Remind me?" unticked): no push reminder, and no alert on its Google Calendar event. */
+  noReminder?: true;
   /**
    * From an all-day event in Google Calendar (see Specs/google-calendar.md): its event stays all-day
    * while the note is due at 20:00 (UK time). Set by the server, and dropped when the time changes.
@@ -371,12 +373,14 @@ export type NoteDetails =
  * its parent and leaving it out keeps the parent it has. Also POST only: clientId (see
  * Note), and createdDateTime for a note created offline (used if it's valid and not in the future).
  * Both: tagsChangedDateTime, when the tags were changed offline (used the same way), and
- * dueDateTime (leaving it out of a PUT clears it).
+ * dueDateTime (leaving it out of a PUT clears it), with noReminder: true for a due date without a reminder
+ * (leaving it out of a PUT turns the reminder on).
  */
 export type NewNoteRequest = NoteTitle & {
   tagIds: number[];
   parentId?: number | null;
   dueDateTime?: string;
+  noReminder?: boolean;
   clientId?: string;
   createdDateTime?: string;
   tagsChangedDateTime?: string;
@@ -854,13 +858,19 @@ function checkDetailsPage(raw: unknown, what: string): Check<string> {
   return raw === "" ? { ok: true, value: "" } : validateTitleImage(raw, DETAILS_IMAGE_MAX_LENGTH, what);
 }
 
-/** Checks a note's due date, if any: a valid date-time, returned as ISO 8601 UTC. */
-export function validateDueDate(body: unknown): { ok: true; dueDateTime?: string } | { ok: false; error: string } {
-  const { dueDateTime } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+/**
+ * Checks a note's due date, if any: a valid date-time, returned as ISO 8601 UTC, and whether it has no
+ * reminder (`noReminder: true`; only with a due date).
+ */
+export function validateDueDate(body: unknown): { ok: true; dueDateTime?: string; noReminder?: true } | { ok: false; error: string } {
+  const { dueDateTime, noReminder } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  if (noReminder !== undefined && noReminder !== null && typeof noReminder !== "boolean") {
+    return { ok: false, error: '"noReminder" must be true or false.' };
+  }
   if (dueDateTime === undefined || dueDateTime === null) return { ok: true };
   const ms = typeof dueDateTime === "string" ? Date.parse(dueDateTime) : NaN;
   if (Number.isNaN(ms)) return { ok: false, error: "The due date must be a valid date and time." };
-  return { ok: true, dueDateTime: new Date(ms).toISOString() };
+  return { ok: true, dueDateTime: new Date(ms).toISOString(), ...(noReminder === true && { noReminder: true as const }) };
 }
 
 /** Checks a new note's title: exactly one of typed text or a handwritten image. */

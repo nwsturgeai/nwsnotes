@@ -1,10 +1,38 @@
 import { useEffect, useRef, useState } from "react";
+import type { Note } from "@nwsnotes/shared";
+
+/** A note's due date (ISO), and whether it has no reminder ("Remind me?" unticked). */
+export interface Due {
+  dueDateTime: string;
+  noReminder?: true;
+}
+
+/** A note's due date, if it has one. */
+export function dueOf(note: Note | undefined): Due | undefined {
+  if (note?.dueDateTime === undefined) return undefined;
+  return { dueDateTime: note.dueDateTime, ...(note.noReminder && { noReminder: true as const }) };
+}
+
+/** A due date's part of an add or edit (nothing for none, which clears it). */
+export function dueRequest(due: Due | undefined): { dueDateTime?: string; noReminder?: boolean } {
+  return due ? { dueDateTime: due.dueDateTime, ...(due.noReminder && { noReminder: true }) } : {};
+}
+
+/** Whether two due dates are the same, reminder included. */
+export function sameDue(a: Due | undefined, b: Due | undefined): boolean {
+  return a?.dueDateTime === b?.dueDateTime && (a?.noReminder === true) === (b?.noReminder === true);
+}
+
+/** A due date's tooltip, e.g. "Due 12/11 20:00", or "Due 12/11 20:00 (no reminder)". */
+export function dueTitle(due: Due, allDay = false): string {
+  return `Due ${formatNoteDate(due.dueDateTime, allDay)}${due.noReminder ? " (no reminder)" : ""}`;
+}
 
 interface Props {
-  /** The note's current due date (ISO), if it has one. */
-  dueDate: string | undefined;
-  /** A new due date (ISO), or undefined for "Clear Due Date". */
-  onSet: (dueDate: string | undefined) => void;
+  /** The note's current due date, if it has one. */
+  due: Due | undefined;
+  /** A new due date, or undefined for "Clear Due Date". */
+  onSet: (due: Due | undefined) => void;
   onCancel: () => void;
 }
 
@@ -19,12 +47,14 @@ function defaultDueDate(): Date {
 }
 
 /** The app's own pop-up for choosing a note's due date, with the device's date and time pickers. */
-export function DueDateDialog({ dueDate, onSet, onCancel }: Props) {
+export function DueDateDialog({ due, onSet, onCancel }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
-  const start = dueDate ? new Date(dueDate) : defaultDueDate();
+  const start = due ? new Date(due.dueDateTime) : defaultDueDate();
   // The pickers work in local time: "2026-11-09" and "20:00".
   const [day, setDay] = useState(`${start.getFullYear()}-${two(start.getMonth() + 1)}-${two(start.getDate())}`);
   const [time, setTime] = useState(`${two(start.getHours())}:${two(start.getMinutes())}`);
+  // Ticked for a new due date; otherwise as the note has it.
+  const [remind, setRemind] = useState(due?.noReminder !== true);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -53,11 +83,21 @@ export function DueDateDialog({ dueDate, onSet, onCancel }: Props) {
         <input type="date" aria-label="Due date" value={day} onChange={(event) => setDay(event.target.value)} />
         <input type="time" aria-label="Due time" value={time} onChange={(event) => setTime(event.target.value)} />
       </div>
+      <label className="due-date-remind">
+        <input type="checkbox" checked={remind} onChange={(event) => setRemind(event.target.checked)} />
+        Remind me?
+      </label>
       <div className="form-buttons">
-        <button type="button" className="button primary" disabled={!valid} onClick={() => onSet(chosen.toISOString())} autoFocus>
+        <button
+          type="button"
+          className="button primary"
+          disabled={!valid}
+          onClick={() => onSet({ dueDateTime: chosen.toISOString(), ...(!remind && { noReminder: true as const }) })}
+          autoFocus
+        >
           Set Due Date
         </button>
-        {dueDate && (
+        {due && (
           <button type="button" className="button" onClick={() => onSet(undefined)}>
             Clear Due Date
           </button>

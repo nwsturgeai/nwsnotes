@@ -306,7 +306,7 @@ export class Sharing {
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { dueDateTime?: string; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown; source?: "sms" },
+    options: { dueDateTime?: string; noReminder?: boolean; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown; source?: "sms" },
   ): Promise<{ note: Note; created: boolean; ownerId?: number }> {
     const { category, notebooks } = await this.sharedWith(user.id);
     const sharedTags = category?.tags ?? [];
@@ -373,7 +373,7 @@ export class Sharing {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown; parentId?: number | null },
+    options: { dueDateTime?: string; noReminder?: boolean; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown; parentId?: number | null },
   ): Promise<Note> {
     const resolved = await this.resolve(user.id, id);
     // A note's parent must be in the same notebook: a child note always has the same owner as its parent.
@@ -399,12 +399,13 @@ export class Sharing {
     if (sent && !sameSet(sent, withoutLifetime(resolved.view.tagIds))) {
       throw new RequestError(400, `You can't change the tags of ${owner.displayName}'s notes.`);
     }
-    if (options.dueDateTime !== resolved.note.dueDateTime) {
+    if (options.dueDateTime !== resolved.note.dueDateTime || (options.noReminder === true) !== (resolved.note.noReminder === true)) {
       throw new RequestError(400, `Only ${owner.displayName} can change the due dates of their notes.`);
     }
     const note = await resolved.store.updateNote(id, title, withoutLifetime(resolved.note.tagIds), details, {
-      // It keeps the owner's due date, long-form notes included.
+      // It keeps the owner's due date and reminder, long-form notes included.
       dueDateTime: resolved.note.dueDateTime,
+      noReminder: resolved.note.noReminder === true,
       tagsChangedDateTime: options.tagsChangedDateTime,
       baseModifiedDateTime: options.baseModifiedDateTime,
       stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(owner)),

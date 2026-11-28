@@ -136,6 +136,8 @@ interface Link {
   unknown: string[];
   /** The event carries the note's id (events added in Google get it at the next write). */
   marked?: true;
+  /** nwsnotes last sent the event with no alert (its note has no reminder). Events added in Google keep their own alerts. */
+  noAlert?: true;
 }
 
 /** A user tag that hashtags can name, with its category (tags of single-select categories replace each other). */
@@ -322,8 +324,9 @@ function readEvent(event: Pick<GoogleEvent, "summary" | "description">, tags: Ta
   return { title: title.title, titleTagWords: title.tagWords, tagWords, body };
 }
 
-/** The alert Google shows: one pop-up at the start, or at 09:00 on an all-day event's day. */
-function alertsFor(allDay: boolean) {
+/** The alert Google shows: one pop-up at the start, or at 09:00 on an all-day event's day; none for a note with no reminder. */
+function alertsFor(allDay: boolean, noReminder: boolean) {
+  if (noReminder) return { useDefault: false, overrides: [] };
   // An all-day event "starts" at midnight, so 09:00 that day is 540 minutes after it.
   return { useDefault: false, overrides: [{ method: "popup", minutes: allDay ? -ALL_DAY_ALERT_HOUR * 60 : 0 }] };
 }
@@ -820,6 +823,7 @@ export class GoogleCalendar {
     await this.saveLink(userId, noteId, {
       ...this.linkFrom(event, [...kept, ...added.tags], added.unknown.concat(link.unknown.filter((word) => now.tagWords.includes(word)))),
       ...(link.recurring && { recurring: true as const }),
+      ...(link.noAlert && { noAlert: true as const }),
     });
     if (Object.keys(change).length > 0) await store.calendarUpdate(noteId, change);
   }
@@ -875,13 +879,19 @@ export class GoogleCalendar {
           description: wanted.description,
           start: wanted.start,
           end: wanted.end,
-          reminders: alertsFor(wanted.allDay),
+          reminders: alertsFor(wanted.allDay, note.noReminder === true),
           extendedProperties: { private: { [NOTE_ID_PROPERTY]: String(note.id) } },
         });
         continue;
       }
       const timeChanged = !sameTime(wanted.start, link.start) || !sameTime(wanted.end, link.end);
-      const patch = { ...this.textPatch(note, link, wanted), ...(timeChanged && { start: wanted.start, end: wanted.end, reminders: alertsFor(wanted.allDay) }) };
+      // The reminder turned off or on in nwsnotes: the alert follows.
+      const alertChanged = (link.noAlert === true) !== (note.noReminder === true);
+      const patch = {
+        ...this.textPatch(note, link, wanted),
+        ...(timeChanged && { start: wanted.start, end: wanted.end }),
+        ...((timeChanged || alertChanged) && { reminders: alertsFor(wanted.allDay, note.noReminder === true) }),
+      };
       if (Object.keys(patch).length > 0) await this.writeEvent(userId, note, link, wanted, patch);
     }
   }
@@ -944,7 +954,8 @@ export class GoogleCalendar {
   /** Makes (no link) or changes an event, keeping what Google answers as the note's link. */
   private async writeEvent(userId: number, note: Note, link: Link | undefined, wanted: WantedEvent, body: Record<string, unknown>): Promise<void> {
     let sent = body;
-    if (this.allDayAlertRefused && wanted.allDay && body.reminders) sent = { ...body, reminders: { useDefault: true } };
+    const noAlert = body.reminders ? note.noReminder === true : link?.noAlert === true;
+    if (this.allDayAlertRefused && wanted.allDay && body.reminders && !noAlert) sent = { ...body, reminders: { useDefault: true } };
     let event: GoogleEvent;
     try {
       event = await this.sendEvent(userId, link, sent);
@@ -956,12 +967,16 @@ export class GoogleCalendar {
         return;
       }
       // Google wouldn't take the 09:00 alert on an all-day event: the calendar's own alerts instead, from now on.
-      if (!(error instanceof GoogleError && error.status === 400 && wanted.allDay && sent.reminders)) throw error;
+      if (!(error instanceof GoogleError && error.status === 400 && wanted.allDay && sent.reminders && !noAlert)) throw error;
       console.warn("Google Calendar refused the 09:00 alert on an all-day event; all-day events use the calendar's own alerts.", error.message);
       this.allDayAlertRefused = true;
       event = await this.sendEvent(userId, link, { ...body, reminders: { useDefault: true } });
     }
-    await this.saveLink(userId, note.id, { ...this.linkFrom(event, wanted.tags, wanted.unknown), ...(link?.recurring && { recurring: true as const }) });
+    await this.saveLink(userId, note.id, {
+      ...this.linkFrom(event, wanted.tags, wanted.unknown),
+      ...(link?.recurring && { recurring: true as const }),
+      ...(noAlert && { noAlert: true as const }),
+    });
   }
 
   private sendEvent(userId: number, link: Link | undefined, body: Record<string, unknown>): Promise<GoogleEvent> {

@@ -127,12 +127,20 @@ const REMINDED_LIFETIMES = [LIFETIME_NEW, LIFETIME_ACTIVE, LIFETIME_WAITING];
 
 /**
  * A note's due date and reminder record after an add or edit. An unchanged due date keeps its record;
- * a due date that's already past counts as reminded, since it didn't just pass.
+ * a due date that's already past counts as reminded, since it didn't just pass. So does one whose
+ * reminder is turned back on after it passed: it isn't sent late. `noReminder`: no reminder for it.
  */
-function dueDateFields(dueDateTime: string | undefined, existing: Note | undefined, now: Date, allDay = existing?.allDay === true): Partial<Note> {
+function dueDateFields(
+  dueDateTime: string | undefined,
+  existing: Note | undefined,
+  now: Date,
+  allDay = existing?.allDay === true,
+  noReminder = false,
+): Partial<Note> {
   if (dueDateTime === undefined) return {};
+  const reminderTurnedOn = existing?.noReminder === true && !noReminder;
   const reminderSentFor =
-    existing?.dueDateTime === dueDateTime
+    existing?.dueDateTime === dueDateTime && !reminderTurnedOn
       ? existing.reminderSentFor
       : Date.parse(dueDateTime) <= now.getTime()
         ? dueDateTime
@@ -140,6 +148,7 @@ function dueDateFields(dueDateTime: string | undefined, existing: Note | undefin
   // An all-day note (from Google Calendar) stays all-day only while it's due at the all-day time.
   return {
     dueDateTime,
+    ...(noReminder && { noReminder: true as const }),
     ...(reminderSentFor !== undefined && { reminderSentFor }),
     ...(allDay && isAllDayTime(dueDateTime) && { allDay: true as const }),
   };
@@ -463,6 +472,7 @@ export class NoteStore {
     rawParentId: unknown,
     options: {
       dueDateTime?: string;
+      noReminder?: boolean;
       clientId?: unknown;
       createdDateTime?: unknown;
       tagsChangedDateTime?: unknown;
@@ -513,7 +523,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...dueDateFields(options.dueDateTime, undefined, now, options.allDay === true),
+        ...dueDateFields(options.dueDateTime, undefined, now, options.allDay === true, options.noReminder === true),
         ...(options.createdByUserId !== undefined && { createdByUserId: options.createdByUserId }),
         createdDateTime,
         lastModifiedDateTime: timestamp,
@@ -549,7 +559,7 @@ export class NoteStore {
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
    * If the tags really change, `tagsChangedDateTime` (an offline change's time) or now becomes their
    * changed time. `dueDateTime` (already validated) replaces the note's, so
-   * leaving it out clears it.
+   * leaving it out clears it; likewise `noReminder`, so leaving it out turns the reminder on.
    */
   updateNote(
     id: number,
@@ -558,6 +568,7 @@ export class NoteStore {
     details: NoteDetails | undefined,
     options: {
       dueDateTime?: string;
+      noReminder?: boolean;
       tagsChangedDateTime?: unknown;
       /** The note's lastModifiedDateTime when the edit started: refused (412) if it has changed since. */
       baseModifiedDateTime?: unknown;
@@ -626,7 +637,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...dueDateFields(options.dueDateTime, existing, now),
+        ...dueDateFields(options.dueDateTime, existing, now, undefined, options.noReminder === true),
         ...(existing.createdByUserId !== undefined && { createdByUserId: existing.createdByUserId }),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
@@ -639,8 +650,7 @@ export class NoteStore {
         : details
           ? `Made ${label(note)} a long-form note`
           : `Edited ${label(note)}`;
-      // Only the parent changed (the Parent pop-up, say): just the move.
-      const onlyMoved =
+      const sameContent =
         note.titleText === existing.titleText &&
         note.titleImage === existing.titleImage &&
         note.detailsText === existing.detailsText &&
@@ -648,9 +658,14 @@ export class NoteStore {
         detailsPagesOf(note).join() === detailsPagesOf(existing).join() &&
         note.dueDateTime === existing.dueDateTime &&
         sameTags(note.tagIds, existing.tagIds);
+      const reminderChanged = note.dueDateTime !== undefined && (note.noReminder === true) !== (existing.noReminder === true);
+      // Only the parent changed (the Parent pop-up, say): just the move.
+      const onlyMoved = sameContent && !reminderChanged;
       const summary =
         parentId === existing.parentId
-          ? edited
+          ? sameContent && reminderChanged
+            ? `Turned ${note.noReminder ? "off" : "on"} the reminder for ${label(note)}`
+            : edited
           : onlyMoved
             ? this.moveSummary(label(note), existing.parentId, parentId)
             : `${edited}, and ${this.moveSummary("it", existing.parentId, parentId).replace(/^M|^T/, (first) => first.toLowerCase())}`;
@@ -671,7 +686,8 @@ export class NoteStore {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
       const now = this.nextSaveTime();
-      const { reminderSentFor: _sent, allDay: _allDay, ...rest } = existing;
+      // Always with a reminder (a text can't turn it off).
+      const { reminderSentFor: _sent, allDay: _allDay, noReminder: _noReminder, ...rest } = existing;
       const note: Note = { ...rest, ...dueDateFields(dueDateTime, existing, now), lastModifiedDateTime: now.toISOString() };
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
         record: { summary: `Set the due date of ${label(note)}${sourceSuffix(options.source)}` },
@@ -700,7 +716,7 @@ export class NoteStore {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) return undefined;
       const now = this.nextSaveTime();
-      const { reminderSentFor: _sent, allDay: _allDay, dueDateTime: _due, ...rest } = existing;
+      const { reminderSentFor: _sent, allDay: _allDay, dueDateTime: _due, noReminder: _noReminder, ...rest } = existing;
       let note: Note = { ...rest };
       if (change.titleText !== undefined && existing.titleText !== undefined) note.titleText = change.titleText;
       // Only typed notes take typed details: handwritten details stay as they are.
@@ -708,7 +724,8 @@ export class NoteStore {
         note.detailsText = change.detailsText;
       }
       const due = change.dueDateTime === undefined ? existing.dueDateTime : (change.dueDateTime ?? undefined);
-      note = { ...note, ...dueDateFields(due, existing, now, change.allDay ?? existing.allDay === true) };
+      // A change in Google never turns the reminder on or off: that's only changed in nwsnotes.
+      note = { ...note, ...dueDateFields(due, existing, now, change.allDay ?? existing.allDay === true, existing.noReminder === true) };
       if (change.tagIds !== undefined) {
         const valid = validateTagIds(change.tagIds.filter((tagId) => !isLifetimeTag(tagId)), this.categories);
         if (valid.ok) note.tagIds = [...valid.value, lifetimeOf(existing)];
@@ -911,11 +928,11 @@ export class NoteStore {
 
   /**
    * Notes needing a reminder now: New, Active or Waiting, due at or before `now` (but less than a day
-   * ago), and not yet reminded for this due date.
+   * ago), not yet reminded for this due date, and not set to have no reminder.
    */
   dueForReminder(now: Date): Note[] {
     return this.notes.filter((note) => {
-      if (note.dueDateTime === undefined || note.reminderSentFor === note.dueDateTime) return false;
+      if (note.dueDateTime === undefined || note.reminderSentFor === note.dueDateTime || note.noReminder) return false;
       if (!REMINDED_LIFETIMES.includes(lifetimeOf(note))) return false;
       const late = now.getTime() - Date.parse(note.dueDateTime);
       return late >= 0 && late < REMINDER_LATEST_MS;

@@ -141,6 +141,56 @@ test("tapping a note's date in the list sets, changes or clears its due date", a
   expect(await row.locator(".pills li").allTextContents()).toEqual(pillsBefore);
 });
 
+test("\"Remind me?\" unticked gives a due date with no reminder, shown by a crossed-out bell", async ({ page }) => {
+  await openNotes(page);
+  const row = noteRow(page, "Buy milk");
+  const date = row.locator("time");
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  const remind = dialog.getByRole("checkbox", { name: "Remind me?" });
+  const noReminder = async () => {
+    const { notes } = (await (await page.request.get("/api/notes")).json()) as { notes: { titleText?: string; noReminder?: boolean }[] };
+    return notes.find((note) => note.titleText === "Buy milk")!.noReminder;
+  };
+
+  // A new due date starts with a reminder.
+  await row.getByText("Cr.").click();
+  await expect(remind).toBeChecked();
+  const due = dayFromNow(5);
+  await dialog.getByLabel("Due date").fill(due.input);
+  await dialog.getByLabel("Due time").fill("11:00");
+  await remind.uncheck();
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(date).toHaveText(`Due ${due.shown} 11:00`);
+  await expect(date.locator(".note-no-reminder")).toBeVisible();
+  await expect(date).toHaveAttribute("title", / \(no reminder\)$/);
+  await expect(row.getByRole("button", { name: `Due ${due.shown} 11:00 (no reminder): change due date` })).toBeVisible();
+  expect(await noReminder()).toBe(true);
+
+  // The pop-up starts as the note has it; editing the note keeps it.
+  await page.reload();
+  await date.click();
+  await expect(remind).not.toBeChecked();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await row.getByRole("button", { name: "Edit note" }).click();
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await expect(addArea(page).getByRole("button", { name: "Change due date" })).toHaveAttribute("title", `Due ${due.shown} 11:00 (no reminder)`);
+  await page.getByRole("textbox", { name: "Note title" }).fill("Buy oat milk");
+  await addArea(page).getByRole("button", { name: "Update" }).click();
+  await expect(noteRow(page, "Buy oat milk").locator(".note-no-reminder")).toBeVisible();
+
+  // Ticked again: the reminder is back, and the bell goes.
+  await noteRow(page, "Buy oat milk").locator("time").click();
+  await remind.check();
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(noteRow(page, "Buy oat milk").locator(".note-no-reminder")).toHaveCount(0);
+  await expect(noteRow(page, "Buy oat milk").locator("time")).toHaveText(`Due ${due.shown} 11:00`);
+
+  // Turning the reminder off or on is a change of its own in the History.
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await expect(page.locator(".history-list > li .history-summary").first()).toHaveText('Turned on the reminder for "Buy oat milk"');
+});
+
 test("tapping the date of the note being edited changes the due date saved with the edit", async ({ page }) => {
   await openNotes(page);
   const row = noteRow(page, "Buy milk");

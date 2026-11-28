@@ -303,7 +303,7 @@ function resolve(id: number): number {
   return pending.idMap[id] ?? id;
 }
 
-/** The parts of a note an add or edit sets: title, details and due date (left out: none). */
+/** The parts of a note an add or edit sets: title, details and due date, with or without its reminder (left out: none). */
 function titleAndDetails(body: NewNoteRequest): Partial<Note> {
   return {
     ...(body.titleText !== undefined ? { titleText: body.titleText } : { titleImage: body.titleImage }),
@@ -312,7 +312,7 @@ function titleAndDetails(body: NewNoteRequest): Partial<Note> {
       : body.detailsImage !== undefined
         ? { detailsImage: body.detailsImage, ...(body.detailsMorePages?.length && { detailsMorePages: body.detailsMorePages }) }
         : {}),
-    ...(body.dueDateTime !== undefined && { dueDateTime: body.dueDateTime }),
+    ...(body.dueDateTime !== undefined && { dueDateTime: body.dueDateTime, ...(body.noReminder === true && { noReminder: true as const }) }),
   };
 }
 
@@ -410,8 +410,8 @@ export async function updateNote(id: number, body: NewNoteRequest, startedFrom?:
   const base = localNote(id);
   if (!base) throw notAvailable("PUT", `/api/notes/${id}`);
   const noteId = resolve(id);
-  const { titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime, parentId: oldParent, ...rest } = base;
-  void [titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime];
+  const { titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime, noReminder, parentId: oldParent, ...rest } = base;
+  void [titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime, noReminder];
   // A parent id sets it, null takes it away, and leaving it out keeps the one it has.
   const parentId = body.parentId === undefined ? oldParent : (body.parentId ?? undefined);
   const now = new Date().toISOString();

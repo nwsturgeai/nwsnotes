@@ -368,6 +368,7 @@ export function createApp(
       }
       const { note, created } = await sharing.addNote(userOf(res), check.title, req.body?.tagIds, details.details, req.body?.parentId, {
         dueDateTime: due.dueDateTime,
+        noReminder: due.noReminder,
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
@@ -418,6 +419,7 @@ export function createApp(
     }
     const note = await sharing.updateNote(userOf(res), id, check.title, req.body?.tagIds, details.details, {
       dueDateTime: due.dueDateTime,
+      noReminder: due.noReminder,
       tagsChangedDateTime: req.body?.tagsChangedDateTime,
       baseModifiedDateTime: req.body?.baseModifiedDateTime,
       parentId: parentId as number | null | undefined,
