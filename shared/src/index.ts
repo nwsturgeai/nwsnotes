@@ -44,7 +44,7 @@ export interface Note {
    * the owner's notebook. Set by the server; missing on notes added before it was recorded.
    */
   createdByUserId?: number;
-  /** ISO 8601, UTC: when the note is due. Regular notes only. */
+  /** ISO 8601, UTC: when the note is due. Regular and long-form notes. */
   dueDateTime?: string;
   /** The due date a reminder has been sent for (or that was already past when set), so it's sent once. Set by the server. */
   reminderSentFor?: string;
@@ -365,7 +365,7 @@ export type NoteDetails =
  * its parent and leaving it out keeps the parent it has. Also POST only: clientId (see
  * Note), and createdDateTime for a note created offline (used if it's valid and not in the future).
  * Both: tagsChangedDateTime, when the tags were changed offline (used the same way), and
- * dueDateTime (regular notes only; leaving it out of a PUT clears it).
+ * dueDateTime (leaving it out of a PUT clears it).
  */
 export type NewNoteRequest = NoteTitle & {
   tagIds: number[];

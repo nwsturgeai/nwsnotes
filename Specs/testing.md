@@ -42,7 +42,7 @@ When a test fails, it should be easy to see what went wrong.
   - **formatting:** `*bold*`, `_underline_`, `/italic/`, `-strikethrough-` and `#highlight#` in the list, words like "and/or" left alone, and titles starting `[x]` not shown as tickboxes.
   - **stylus:** drawing a handwritten note, the eraser, and pen width.
   - **settings:** categories (add, rename, reorder, colours, changing to single-select, deleting tags, deleting a category and undoing it, deleting every category, a note sent with a since-deleted tag), tabs (add, edit, reorder, delete), stylus mode and columns.
-  - **due dates:** setting, clearing and the colours over time.
+  - **due dates:** setting, clearing and the colours over time; long-form notes' button in their editor (greyed out until the title is accepted, saved straight away, kept by later saves), their date in the list, and converting a note with one.
   - **offline:** the server is cut off mid-test. Adding and editing still work, the offline icon shows, and the changes sync when the server comes back.
   - **live updates:** two browser windows. A change in one appears in the other.
   - **app updates and reminders:** the settings sections and their buttons. Real push delivery can't be tested, as it needs Google's push service.

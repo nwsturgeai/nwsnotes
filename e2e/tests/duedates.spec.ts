@@ -156,3 +156,98 @@ test("tapping the date of the note being edited changes the due date saved with 
   await addArea(page).getByRole("button", { name: "Update" }).click();
   await expect(row.locator("time")).toHaveText(`Due ${due.shown} 08:30`);
 });
+
+const longFormEditor = (page: Page) => page.getByRole("dialog", { name: "Long-form note" });
+
+/** The note with this title, as the server has it. */
+async function savedNote(page: Page, title: string) {
+  const data = (await (await page.request.get("/api/notes")).json()) as {
+    notes: { titleText?: string; detailsText?: string; dueDateTime?: string }[];
+  };
+  return data.notes.find((note) => note.titleText === title);
+}
+
+/** Fills in and sets the due-date pop-up. */
+async function chooseDue(page: Page, day: string, time: string) {
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  await dialog.getByLabel("Due date").fill(day);
+  await dialog.getByLabel("Due time").fill(time);
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(dialog).toHaveCount(0);
+}
+
+test("a long-form note's due date is set in its editor, saved straight away, and kept by later saves", async ({ page }) => {
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = longFormEditor(page);
+  const setDue = editor.getByRole("button", { name: "Set the long-form note's due date" });
+  const changeDue = editor.getByRole("button", { name: "Change the long-form note's due date" });
+  // Greyed out until the title is accepted (the note doesn't exist yet).
+  await expect(setDue).toBeDisabled();
+  await expect(setDue).toHaveAttribute("title", "Accept the title first");
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Garden plan");
+  await editor.getByRole("textbox", { name: "Long-form note title" }).press("Enter");
+  await expect(setDue).toBeEnabled();
+  await expect(setDue).toHaveAttribute("title", "Set due date");
+
+  // With typed details there's no Export: it's just before Cancel and Finish, 24px from Cancel.
+  const dueBox = (await setDue.boundingBox())!;
+  const cancelBox = (await editor.getByRole("button", { name: "Cancel" }).boundingBox())!;
+  expect(Math.round(cancelBox.x - (dueBox.x + dueBox.width))).toBe(24);
+
+  // Saved as soon as it's set, without waiting for the 30-second window or Finish.
+  const due = dayFromNow(9);
+  await setDue.click();
+  await chooseDue(page, due.input, "19:15");
+  await expect(changeDue).toHaveAttribute("title", `Due ${due.shown} 19:15`);
+  await expect(changeDue).toHaveClass(/primary/);
+  await expect.poll(async () => (await savedNote(page, "Garden plan"))?.dueDateTime).toBeTruthy();
+
+  // Writing the details and finishing keeps it.
+  await editor.getByRole("textbox", { name: "Details" }).fill("Dig the beds");
+  await editor.getByRole("button", { name: "Finish" }).click();
+  await expect(editor).toHaveCount(0);
+  const row = noteRow(page, "Garden plan");
+  await expect(row.locator("time")).toHaveText(`Due ${due.shown} 19:15`);
+  expect(await savedNote(page, "Garden plan")).toMatchObject({ detailsText: "Dig the beds" });
+  expect((await savedNote(page, "Garden plan"))?.dueDateTime).toBeTruthy();
+
+  // Opening it again starts from it; clearing it is saved too.
+  await row.getByRole("button", { name: "Edit note" }).click();
+  await changeDue.click();
+  await expect(page.getByRole("dialog", { name: "Due date" }).getByLabel("Due time")).toHaveValue("19:15");
+  await page.getByRole("dialog", { name: "Due date" }).getByRole("button", { name: "Clear Due Date" }).click();
+  await expect(setDue).toBeVisible();
+  await expect.poll(async () => (await savedNote(page, "Garden plan"))?.dueDateTime).toBeUndefined();
+  await editor.getByRole("button", { name: "Finish" }).click();
+  await expect(row.locator("time")).toHaveText(/^Cr\. /);
+});
+
+test("tapping a long-form note's date in the list sets its due date, keeping its details", async ({ page }) => {
+  await openNotes(page);
+  const row = noteRow(page, /^Holiday plans/);
+  await row.getByText("Cr.").click();
+  const due = dayFromNow(5);
+  await chooseDue(page, due.input, "07:30");
+  await expect(row.locator("time")).toHaveText(`Due ${due.shown} 07:30`);
+  await page.reload();
+  await expect(noteRow(page, /^Holiday plans/).locator("time")).toHaveText(`Due ${due.shown} 07:30`);
+  expect((await savedNote(page, "Holiday plans"))?.detailsText).toBe("Flights\nHotel");
+});
+
+test("converting a note with a due date to long-form keeps the due date", async ({ page }) => {
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await noteRow(page, "Buy milk").getByRole("button", { name: "Edit note" }).click();
+  const due = dayFromNow(4);
+  await setDueDate(page, due.input, "12:00");
+  const convert = addArea(page).getByRole("button", { name: "Convert to long-form note" });
+  await expect(convert).toHaveAttribute("title", "Convert to long-form note");
+  await convert.click();
+  const editor = longFormEditor(page);
+  await expect(editor.getByRole("button", { name: "Change the long-form note's due date" })).toHaveAttribute("title", `Due ${due.shown} 12:00`);
+  await editor.getByRole("textbox", { name: "Details" }).fill("Semi-skimmed");
+  await editor.getByRole("button", { name: "Finish" }).click();
+  await expect(noteRow(page, "Buy milk").locator("time")).toHaveText(`Due ${due.shown} 12:00`);
+});

@@ -612,10 +612,13 @@ test('"Due" gets a text back when it can\'t be set, and sets nothing', async ({ 
   expect((await notifications(page.request)).at(-1)).toEqual(
     expect.objectContaining({ title: "Due date not set", body: "Couldn't understand \"yesterday\" as a date and time." }),
   );
+});
 
-  // A long-form note can't have one.
-  await page.request.post("/api/notes", { data: { titleText: "Trip plans", tagIds: [], detailsText: "" } });
-  expect(reply((await text(page.request, "Due tomorrow")).body)).toBe("Not set: your last note is a long-form note, which can't have a due date.");
+test('"Due" sets the due date of a long-form note just added, keeping its details', async ({ page }) => {
+  await linkPhone(page.request);
+  const note = (await (await page.request.post("/api/notes", { data: { titleText: "Trip plans", tagIds: [], detailsText: "Book ferry" } })).json()) as DueNote;
+  expect(reply((await text(page.request, "Due tomorrow 6pm")).body)).toBeUndefined();
+  expect(await noteById(page.request, note.id)).toMatchObject({ dueDateTime: expectedDue("tomorrow 18:00").dueDateTime, detailsText: "Book ferry" });
 });
 
 test('"Due" only counts the user\'s own note from the last 5 minutes, not one others added to their notebook', async ({ page, browser }) => {

@@ -173,9 +173,11 @@ test("the long-form editor has a pen-thickness menu beside the eraser, sharing t
   const menuBox = (await pages.getByRole("button", { name: "Page options" }).boundingBox())!;
   expect(previousBox.x).toBeLessThan(nextBox.x);
   expect(nextBox.x).toBeLessThan(menuBox.x);
-  // Export is over at the right too, a little way before Cancel.
+  // Export is over at the right too, then the due date just after it, a little way before Cancel.
   const exportBox = (await editor.getByRole("button", { name: "Export as image" }).boundingBox())!;
-  expect(Math.round(cancel.x - (exportBox.x + exportBox.width))).toBe(24);
+  const dueBox = (await editor.getByRole("button", { name: "Set the long-form note's due date" }).boundingBox())!;
+  expect(Math.round(dueBox.x - (exportBox.x + exportBox.width))).toBe(4);
+  expect(Math.round(cancel.x - (dueBox.x + dueBox.width))).toBe(24);
 
   // Choosing a thickness closes the menu, turns the eraser off, and draws at it.
   await eraser.click();

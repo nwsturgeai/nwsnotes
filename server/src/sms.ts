@@ -13,7 +13,6 @@ import {
   fitsOneSms,
   formatPhoneNumber,
   formatSpokenDue,
-  isLongForm,
   isValidLoginName,
   matchSpokenTab,
   notSavedReply,
@@ -496,10 +495,6 @@ export class SmsNotes {
         log(`due date not set: user ${user.id}'s last note ${last.id} is in user ${last.shared.ownerId}'s notebook.`);
         const reply = `Not set: your last note is in ${last.shared.ownerName}'s notebook, so only they can set its due date.`;
         return this.dueNotSet(user.id, fitsOneSms(reply) ? reply : "Not set: your last note is in someone else's notebook, so only they can set its due date.");
-      }
-      if (isLongForm(last)) {
-        log(`due date not set: user ${user.id}'s last note ${last.id} is a long-form note.`);
-        return this.dueNotSet(user.id, "Not set: your last note is a long-form note, which can't have a due date.");
       }
       const read = readSpokenDue(when, now);
       if (!read.ok) {

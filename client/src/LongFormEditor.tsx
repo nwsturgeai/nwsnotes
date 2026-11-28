@@ -19,7 +19,7 @@ import {
   faTags,
   faX,
 } from "@fortawesome/free-solid-svg-icons";
-import { faCopy } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faCopy } from "@fortawesome/free-regular-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   detailsPagesOf,
@@ -37,6 +37,7 @@ import {
 import { ApiError } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { DueDateDialog, formatNoteDate } from "./DueDateDialog";
 import { ParentDialog, ParentPill } from "./ParentDialog";
 import { possibleParents } from "./parents";
 import { FormattedText, TickboxTargets } from "./FormattedText";
@@ -164,6 +165,9 @@ export function LongFormEditor({
   /** The note's parent, saved with the tags (a new note is created with it). */
   const [parentId, setParentId] = useState(initialParentId);
   const [choosingParent, setChoosingParent] = useState(false);
+  /** The note's due date, sent with every save (leaving it out would clear it). Only the owner can change it. */
+  const [dueDate, setDueDate] = useState(note?.dueDateTime);
+  const [choosingDueDate, setChoosingDueDate] = useState(false);
   /** Typed or handwritten details: fixed for an existing note; for a new one, from stylus mode now. */
   const [kind] = useState<"text" | "image">(() =>
     note ? (note.detailsImage !== undefined ? "image" : "text") : stylusMode ? "image" : "text",
@@ -220,8 +224,8 @@ export function LongFormEditor({
   pagesRef.current = pages;
 
   // The latest values, for saves that run from a timer.
-  const latest = useRef({ selection, detailsText, parentId });
-  latest.current = { selection, detailsText, parentId };
+  const latest = useRef({ selection, detailsText, parentId, dueDate });
+  latest.current = { selection, detailsText, parentId, dueDate };
   const dirty = useRef(false);
   const timer = useRef<number>(undefined);
   const saving = useRef<Promise<void>>(Promise.resolve());
@@ -262,11 +266,12 @@ export function LongFormEditor({
 
   /** The note as it is now. An update says the parent either way (null for none); a new note only has one if chosen. */
   function request(titleText: string, update = true) {
-    const parent = latest.current.parentId;
+    const { parentId: parent, dueDate: due } = latest.current;
     return {
       titleText,
       tagIds: selectedTagIds(categories, latest.current.selection),
       ...currentDetails(),
+      ...(due && { dueDateTime: due }),
       ...(update ? { parentId: parent ?? null } : parent !== undefined && { parentId: parent }),
     };
   }
@@ -306,6 +311,16 @@ export function LongFormEditor({
       }
     });
     return saving.current;
+  }
+
+  /** A due date chosen (or cleared, undefined) in the pop-up: saved straight away, not at the end of the window. */
+  function changeDueDate(value: string | undefined) {
+    setChoosingDueDate(false);
+    if (value === latest.current.dueDate) return;
+    setDueDate(value);
+    latest.current.dueDate = value;
+    dirty.current = true;
+    void flush();
   }
 
   /** A details or tag change: save it once the 30-second window ends. */
@@ -935,7 +950,7 @@ export function LongFormEditor({
       )}
 
       <div className="lf-finish">
-        {/* At the far left, then the pen thicknesses and the pages; Export, Cancel and Finish are at the far right. */}
+        {/* At the far left, then the pen thicknesses and the pages; Export, the due date, Cancel and Finish are at the far right. */}
         {kind === "image" && (
           <>
           <button
@@ -1104,6 +1119,19 @@ export function LongFormEditor({
           </button>
           </>
         )}
+        {/* The note's due date: after Export (or in its place, for typed details). Only its owner sets it. */}
+        {!note?.shared && (
+          <button
+            type="button"
+            className={dueDate ? "icon-button primary lf-due" : "icon-button lf-due"}
+            aria-label={dueDate ? "Change the long-form note's due date" : "Set the long-form note's due date"}
+            title={noteId === undefined ? "Accept the title first" : dueDate ? `Due ${formatNoteDate(dueDate)}` : "Set due date"}
+            disabled={busy || noteId === undefined}
+            onClick={() => setChoosingDueDate(true)}
+          >
+            <FontAwesomeIcon icon={faAlarmClock} />
+          </button>
+        )}
         <div className="lf-finish-end">
         {isNew && (
           <button
@@ -1131,6 +1159,9 @@ export function LongFormEditor({
         </div>
       </div>
 
+      {choosingDueDate && (
+        <DueDateDialog dueDate={dueDate} onSet={changeDueDate} onCancel={() => setChoosingDueDate(false)} />
+      )}
       {choosingParent && (
         <ParentDialog
           notes={notes}

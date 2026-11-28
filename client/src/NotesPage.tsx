@@ -58,6 +58,7 @@ import {
   type Category,
   type LifetimeChange,
   type Note,
+  type NoteDetails,
   type NoteTitle,
   type Tab,
   type TabMoveChange,
@@ -67,7 +68,7 @@ import { ApiError, api } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { DueDateDialog } from "./DueDateDialog";
+import { DueDateDialog, formatNoteDate } from "./DueDateDialog";
 import { autoAcceptingTabMoves, describeTabMoveChange, TabMoveDialog } from "./TabMoveDialog";
 import { FormattedText } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
@@ -996,8 +997,15 @@ export function NotesPage({
     try {
       const noteTitle: NoteTitle = note.titleImage !== undefined ? { titleImage: note.titleImage } : { titleText: note.titleText ?? "" };
       const base = isWaiting(note.id) ? undefined : note.lastModifiedDateTime;
+      // A long-form note is updated with its details, as they are.
+      const details: NoteDetails | undefined =
+        note.detailsImage !== undefined
+          ? { detailsImage: note.detailsImage, ...(note.detailsMorePages && { detailsMorePages: note.detailsMorePages }) }
+          : note.detailsText !== undefined
+            ? { detailsText: note.detailsText }
+            : undefined;
       onNoteUpdated(
-        await offlineApi.updateNote(note.id, { ...noteTitle, tagIds: note.tagIds, ...(dueDateTime && { dueDateTime }) }, base),
+        await offlineApi.updateNote(note.id, { ...noteTitle, ...details, tagIds: note.tagIds, ...(dueDateTime && { dueDateTime }) }, base),
       );
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
@@ -1038,8 +1046,7 @@ export function NotesPage({
 
   /** Why the note being edited can't become a long-form note, if it can't (as one couldn't be created that way). */
   const convertHint = editingNote?.titleImage !== undefined ? "Only typed notes can become long-form notes" : undefined;
-  /** Long-form notes can't have a due date, so converting one removes it. */
-  const convertTitle = convertHint ?? (dueDate ? "Convert to long-form note (removes its due date)" : "Convert to long-form note");
+  const convertTitle = convertHint ?? "Convert to long-form note";
 
   /**
    * Turns the note being edited into a long-form note: saved with its title and tags as they are now,
@@ -1060,7 +1067,8 @@ export function NotesPage({
       const details = stylusMode ? { detailsImage: "" } : { detailsText: "" };
       const note = await offlineApi.updateNote(
         editingNote.id,
-        { titleText: check.title, tagIds, ...details, parentId: editParent ?? null },
+        // It keeps its due date.
+        { titleText: check.title, tagIds, ...details, ...(dueDate && { dueDateTime: dueDate }), parentId: editParent ?? null },
         editBase.current,
       );
       onNoteUpdated(note);
@@ -1803,9 +1811,9 @@ export function NotesPage({
                             {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
                           </time>
                         );
-                        // Tapping it sets, changes or clears the due date. Only a note's owner can, and long-form
-                        // notes can't have one; not while selecting notes or ordering them either.
-                        if (note.shared || isLongForm(note) || bulk || ordering) return date;
+                        // Tapping it sets, changes or clears the due date. Only a note's owner can; not while
+                        // selecting notes or ordering them.
+                        if (note.shared || bulk || ordering) return date;
                         return (
                           <button
                             type="button"
@@ -2217,17 +2225,6 @@ function matchesSearch(note: Note, words: string[]): boolean {
   if (note.titleText === undefined) return false;
   const text = `${note.titleText}\n${note.detailsText ?? ""}`.toLowerCase();
   return words.every((word) => text.includes(word));
-}
-
-/**
- * A note's creation or due time in the device's local time, as "dd/MM HH:mm" (e.g. "26/10 14:05"),
- * with the year as "dd/MM/yy" when it isn't this year (e.g. "12/01/27 20:00").
- */
-function formatNoteDate(iso: string): string {
-  const date = new Date(iso);
-  const two = (n: number) => String(n).padStart(2, "0");
-  const year = date.getFullYear() === new Date().getFullYear() ? "" : `/${two(date.getFullYear() % 100)}`;
-  return `${two(date.getDate())}/${two(date.getMonth() + 1)}${year} ${two(date.getHours())}:${two(date.getMinutes())}`;
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;

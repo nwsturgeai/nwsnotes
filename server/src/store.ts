@@ -117,7 +117,6 @@ function inOrder<T extends { id: number }>(raw: unknown, items: T[], kind: strin
   return ordered as T[];
 }
 
-const LONG_FORM_NO_DUE_DATE = "Long-form notes can't have a due date.";
 
 /** A reminder is sent this late at most (e.g. when the server was down as the note fell due). */
 const REMINDER_LATEST_MS = 24 * 60 * 60 * 1000;
@@ -430,7 +429,7 @@ export class NoteStore {
    * note unchanged (a retried add whose reply was lost). A valid `createdDateTime` that isn't in the
    * future (a note written offline) is kept as its created time, and likewise `tagsChangedDateTime`
    * (its tags changed offline before it was sent); without one, its tags were set when it was created.
-   * `dueDateTime` (already validated) is for regular notes only.
+   * `dueDateTime` (already validated) is optional, for any kind of note.
    */
   add(
     title: NoteTitle,
@@ -477,7 +476,6 @@ export class NoteStore {
       if (details && title.titleText === undefined) {
         throw new RequestError(400, "A long-form note's title must be typed text.");
       }
-      if (details && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const parentId = rawParentId === undefined || rawParentId === null ? undefined : this.parentFor(rawParentId);
 
       const now = this.nextSaveTime();
@@ -523,7 +521,7 @@ export class NoteStore {
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
    * If the tags really change, `tagsChangedDateTime` (an offline change's time) or now becomes their
-   * changed time. `dueDateTime` (already validated; regular notes only) replaces the note's, so
+   * changed time. `dueDateTime` (already validated) replaces the note's, so
    * leaving it out clears it.
    */
   updateNote(
@@ -588,7 +586,6 @@ export class NoteStore {
             : "This note's details are typed, so they must be updated with new text, not an image.",
         );
       }
-      if (details !== undefined && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const tagIds = validateTagIds(await this.withoutDeletedTags(withoutLifetime(rawTagIds)), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       // A typed note converted to a long-form note with handwritten details becomes a stylus note.
@@ -639,14 +636,13 @@ export class NoteStore {
   }
 
   /**
-   * Sets a regular note's due date (already validated), keeping everything else about it, and saves.
+   * Sets a note's due date (already validated), keeping everything else about it, and saves.
    * Used by "Due" texts; the page sets due dates with the rest of the note (updateNote).
    */
   setDueDate(id: number, dueDateTime: string, options: { source?: "sms" } = {}): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
-      if (isLongForm(existing)) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const now = this.nextSaveTime();
       const { reminderSentFor: _sent, ...rest } = existing;
       const note: Note = { ...rest, ...dueDateFields(dueDateTime, existing, now), lastModifiedDateTime: now.toISOString() };

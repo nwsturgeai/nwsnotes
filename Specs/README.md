@@ -23,4 +23,5 @@ requirements first, then the "Agreed technical decisions" for that area.
 | [docs.md](docs.md) | Help pages: public static HTML pages written in Markdown, served by the same server |
 | [hosting.md](hosting.md) | The VM and deployment |
 | [testing.md](testing.md) | Automated tests |
+| [google-calendar.md](google-calendar.md) | Proposal, not built: two-way sync with Google Calendar |
 | [icons/](icons/README.md) | Icon designs kept for later, not yet used in the app |
