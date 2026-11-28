@@ -98,7 +98,10 @@ export function Header({
 
   return (
     <>
-      <header className={page.name === "notes" && leftStrip && !leftTabsHidden ? "app-header with-left-tabs" : "app-header"}>
+      <header className={page.name === "notes" ? (leftStrip && !leftTabsHidden ? "app-header notes-header with-left-tabs" : "app-header notes-header") : "app-header"}>
+        {/* The top-left corner, above the left strip when there is one: the Undo button, only on the
+            notes page and not offline (see Specs/undo.md). Kept when empty, so the tabs don't move. */}
+        {page.name === "notes" && <div className="header-corner">{!offline && undo.button}</div>}
         {page.name === "notes" && (
           <TabStrip
             tabs={tabs}
@@ -144,8 +147,6 @@ export function Header({
               <FontAwesomeIcon icon={faSignature} />
             </span>
           )}
-          {/* Only on the notes page, and not offline (see Specs/undo.md). */}
-          {page.name === "notes" && !offline && undo.button}
           {page.name === "notes" && (
             <a
               href="/settings"
@@ -173,7 +174,7 @@ export function Header({
       {showUpdateNotice && (
         <div className="update-notice" role="status">
           <span>A new version is ready.</span>
-          <button type="button" onClick={reloadToUpdate}>
+          <button type="button" onClick={() => void reloadToUpdate()}>
             Reload
           </button>
         </div>

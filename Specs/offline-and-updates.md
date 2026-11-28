@@ -41,7 +41,8 @@ The settings page should show which version is running, and have a button to che
 ### App updates
 - **Why updates were missed:** the app always opens from the copy of its files saved on the tablet. The new version is only downloaded in the background after that, so it showed up one full restart late at best. Force-quitting during the download, or Android keeping the app alive behind the scenes, could hold it back for longer.
 - **Waiting for a tap:** `vite-plugin-pwa` switches from `registerType: "autoUpdate"` to `"prompt"`, and the app registers the service worker itself with `registerSW` from `virtual:pwa-register`, instead of the injected script.
-  - A downloaded new version waits until "Reload" is tapped. The tap tells it to take over, then reloads the page once it has.
+  - A downloaded new version waits until "Reload" is tapped. The tap tells it to take over, then reloads the page once it has (or after 5 seconds if it hasn't, so the tap always does something).
+  - This also works on a page opened with a hard refresh (Ctrl+F5 or Ctrl+Shift+R), which the service worker isn't in charge of: such a page still shows the notice, and "Reload" still switches.
   - If "Reload" is never tapped, the new version still takes over the next time the app is fully closed and opened again, as before.
   - The first time this version reaches a device, the version running there has no "Reload" notice. So this one update only takes over once the app is fully closed and opened again. Later updates show the notice.
 - **The notice:** "A new version is ready" with a "Reload" button, in the same style as the app's other notices. It stays until it's tapped and doesn't fade.

@@ -1296,14 +1296,44 @@ export interface Tickbox {
   ticked: boolean;
 }
 
-const TICKBOX = /^([ \t]*)(\[[ xX]?\])/;
+/**
+ * How the long-form text box holds a ticked box: "[x]" with a no-break space for the "x". It's exactly
+ * as wide as the space in "[ ]", so ticking and unticking there don't move the text after the box. It's
+ * only ever in the text box: the details are saved (and shown everywhere else) with "[x]".
+ */
+export const TICKED_IN_TEXT_BOX = "\u00a0";
+
+const TICKBOX = /^([ \t]*)(\[[ xX\u00a0]?\])/;
 
 /** The tickbox a line starts with, if any. */
 export function tickboxOf(line: string): Tickbox | undefined {
   const match = TICKBOX.exec(line);
   if (!match) return undefined;
   const box = match[2]!;
-  return { indent: match[1]!, box, ticked: box === "[x]" || box === "[X]" };
+  return { indent: match[1]!, box, ticked: box === "[x]" || box === "[X]" || box === `[${TICKED_IN_TEXT_BOX}]` };
+}
+
+/** Changes each line's tickbox "[?]" whose inside is `from` (one character) to have `to` inside. */
+function swapTickboxInsides(text: string, from: RegExp, to: string): string {
+  return text
+    .split("\n")
+    .map((line) => {
+      const tickbox = tickboxOf(line);
+      if (!tickbox || tickbox.box.length !== 3 || !from.test(tickbox.box[1]!)) return line;
+      const inside = tickbox.indent.length + 1;
+      return line.slice(0, inside) + to + line.slice(inside + 1);
+    })
+    .join("\n");
+}
+
+/** Long-form details as the text box holds them: ticked boxes with TICKED_IN_TEXT_BOX inside. Same length. */
+export function detailsForTextBox(text: string): string {
+  return swapTickboxInsides(text, /^[xX]$/, TICKED_IN_TEXT_BOX);
+}
+
+/** The text box's text as it's saved: ticked boxes back to "[x]". Same length. */
+export function detailsFromTextBox(text: string): string {
+  return swapTickboxInsides(text, new RegExp(`^${TICKED_IN_TEXT_BOX}$`), "x");
 }
 
 /** A change to make to some text: replace [from, to) with `insert`. */
@@ -1319,15 +1349,18 @@ const lineStartOf = (text: string, lineIndex: number) => {
   return start;
 };
 
-/** Ticking or unticking line `lineIndex`'s tickbox: "[ ]" and "[]" become "[x]", "[x]" and "[X]" become "[ ]". */
-export function tickboxToggle(text: string, lineIndex: number): TextEdit | undefined {
+/**
+ * Ticking or unticking line `lineIndex`'s tickbox: "[ ]" and "[]" become "[x]", "[x]" and "[X]" become
+ * "[ ]". `ticked` is what goes in a box being ticked: TICKED_IN_TEXT_BOX for the text box's text.
+ */
+export function tickboxToggle(text: string, lineIndex: number, ticked = "x"): TextEdit | undefined {
   const lineStart = lineStartOf(text, lineIndex);
   const end = text.indexOf("\n", lineStart);
   const tickbox = tickboxOf(text.slice(lineStart, end < 0 ? undefined : end));
   if (!tickbox) return undefined;
   const inside = lineStart + tickbox.indent.length + 1;
-  if (tickbox.box === "[]") return { from: inside, to: inside, insert: "x" };
-  return { from: inside, to: inside + 1, insert: tickbox.ticked ? " " : "x" };
+  if (tickbox.box === "[]") return { from: inside, to: inside, insert: ticked };
+  return { from: inside, to: inside + 1, insert: tickbox.ticked ? " " : ticked };
 }
 
 /**
@@ -1341,7 +1374,7 @@ export function tickboxSpacing(text: string, lineStart: number): TextEdit | unde
     const inside = lineStart + empty[1]!.length + 1;
     return { from: inside, to: lineStart + empty[0].length, insert: " ] " };
   }
-  const filled = /^[ \t]*\[[ xX]\](?=\S)/.exec(line);
+  const filled = /^[ \t]*\[[ xX\u00a0]\](?=\S)/.exec(line);
   if (filled) {
     const after = lineStart + filled[0].length;
     return { from: after, to: after, insert: " " };

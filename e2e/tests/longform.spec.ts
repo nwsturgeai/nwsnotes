@@ -269,7 +269,7 @@ test.describe("with the page loaded", () => {
   });
 
   test("tickboxes in the details can be ticked and unticked, and a ticked line is struck through", async ({ page }) => {
-    await startLongForm(page, "Shopping");
+    await startLongForm(page, "Tick list");
     const details = editor(page).getByRole("textbox", { name: "Details" });
     await details.fill("[ ] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
     const display = editor(page).locator(".lf-text-display");
@@ -285,25 +285,67 @@ test.describe("with the page loaded", () => {
     for (let index = 0; index < 3; index++) {
       expect(await targets.nth(index).boundingBox()).toEqual(await display.locator(".fmt-tickbox").nth(index).boundingBox());
     }
+    // In the text box a ticked box has a no-break space for its "x" (saved as "[x]"), so it's as wide as "[ ]".
+    const T = "\u00a0";
+    /** Where the display layer shows a word: ticking mustn't move it. */
+    const placeOf = (word: string) =>
+      display.evaluate((layer, word) => {
+        const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+        for (let node; (node = walker.nextNode()); ) {
+          const at = node.textContent!.indexOf(word);
+          if (at < 0) continue;
+          const range = document.createRange();
+          range.setStart(node, at);
+          range.setEnd(node, at + word.length);
+          const { x, y } = range.getBoundingClientRect();
+          return { x, y };
+        }
+        return undefined;
+      }, word);
+    const bread = await placeOf("Bread");
+    expect(bread).toBeDefined();
     await targets.nth(0).click();
-    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+    await expect(details).toHaveValue(`[${T}] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs`);
+    expect(await placeOf("Bread")).toEqual(bread);
     await targets.nth(1).click();
     await targets.nth(2).click();
-    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[x] Eggs");
+    await expect(details).toHaveValue(`[${T}] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[${T}] Eggs`);
     await expect(display.locator(".fmt-ticked")).toHaveText(["Bread", "Eggs"]);
+    // Unticking and ticking again doesn't move it either.
+    await targets.nth(0).click();
+    await expect(details).toHaveValue(`[ ] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[${T}] Eggs`);
+    expect(await placeOf("Bread")).toEqual(bread);
+    await targets.nth(0).click();
+    expect(await placeOf("Bread")).toEqual(bread);
     // The text box kept the focus, and Undo takes back the last tick.
     await expect(details).toBeFocused();
     await page.keyboard.press("ControlOrMeta+z");
-    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[] Eggs");
+    await expect(details).toHaveValue(`[ ] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[${T}] Eggs`);
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(details).toHaveValue(`[${T}] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[] Eggs`);
+
+    // Copying gives "[x]", as saved.
+    const copied = await details.evaluate((box: HTMLTextAreaElement) => {
+      box.setSelectionRange(0, 9);
+      const data = new DataTransfer();
+      box.dispatchEvent(new ClipboardEvent("copy", { clipboardData: data, bubbles: true, cancelable: true }));
+      return data.getData("text/plain");
+    });
+    expect(copied).toBe("[x] Bread");
 
     // Ticked without the text box having the focus: it stays without it (no keyboard popping up on a phone).
     await editor(page).getByRole("textbox", { name: "Long-form note title" }).focus();
     await targets.nth(1).click();
-    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+    await expect(details).toHaveValue(`[${T}] Bread\nNot a tickbox [ ]\n[${T}] *Milk*\n[] Eggs`);
     await expect(details).not.toBeFocused();
     await editor(page).getByRole("button", { name: "Finish" }).click();
     await expect(editor(page)).toHaveCount(0);
-    await expect.poll(async () => (await savedNote(page, "Shopping"))?.detailsText).toBe("[x] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+    await expect.poll(async () => (await savedNote(page, "Tick list"))?.detailsText).toBe("[x] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+
+    // Opened again, its ticked boxes are as wide as unticked ones too.
+    await noteRow(page, "Tick list").getByRole("button", { name: "Edit note" }).click();
+    await expect(details).toHaveValue(`[${T}] Bread\nNot a tickbox [ ]\n[${T}] *Milk*\n[] Eggs`);
   });
 
   test("tickboxes can't be ticked while the details are locked", async ({ page }) => {

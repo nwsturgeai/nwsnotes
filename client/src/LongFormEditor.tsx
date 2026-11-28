@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type RefObject,
@@ -33,6 +34,9 @@ import {
   type Note,
   type NoteDetails,
   type TextEdit,
+  detailsForTextBox,
+  detailsFromTextBox,
+  TICKED_IN_TEXT_BOX,
   tickboxSpacing,
   tickboxToggle,
 } from "@nwsnotes/shared";
@@ -174,7 +178,12 @@ export function LongFormEditor({
   const [kind] = useState<"text" | "image">(() =>
     note ? (note.detailsImage !== undefined ? "image" : "text") : stylusMode ? "image" : "text",
   );
-  const [detailsText, setDetailsText] = useState(note?.detailsText ?? "");
+  /**
+   * The typed details as the text box holds them: a ticked box has a no-break space for its "x", the
+   * width of the space in "[ ]", so ticking doesn't move the text after it (see detailsForTextBox).
+   * Saved with "[x]". Every position is the same in both.
+   */
+  const [detailsText, setDetailsText] = useState(() => detailsForTextBox(note?.detailsText ?? ""));
   const titleRef = useRef<HTMLInputElement>(null);
   const detailsRef = useRef<HTMLTextAreaElement>(null);
   /** The formatted copy of the typed details, under the text box; it scrolls with it. */
@@ -266,7 +275,7 @@ export function LongFormEditor({
   }
 
   function currentDetails(): NoteDetails {
-    if (kind === "text") return { detailsText: latest.current.detailsText };
+    if (kind === "text") return { detailsText: detailsFromTextBox(latest.current.detailsText) };
     const [first = "", ...more] = pagePads().map((pad) => (pad?.hasInk() ? pad.toImage() : ""));
     return { detailsImage: first, detailsMorePages: more };
   }
@@ -393,7 +402,7 @@ export function LongFormEditor({
 
   function toggleTickbox(lineIndex: number) {
     if (!detailsEditable) return;
-    const edit = tickboxToggle(latest.current.detailsText, lineIndex);
+    const edit = tickboxToggle(latest.current.detailsText, lineIndex, TICKED_IN_TEXT_BOX);
     if (edit) editDetails(edit);
   }
 
@@ -444,6 +453,17 @@ export function LongFormEditor({
       return;
     }
     spaceTickbox(lineStart);
+  }
+
+  /** Copied or cut text has "[x]" for a ticked box, as saved, not the text box's no-break space. */
+  function onDetailsCopy(event: ClipboardEvent<HTMLTextAreaElement>, cut: boolean) {
+    const box = event.currentTarget;
+    const { selectionStart, selectionEnd, value } = box;
+    if (selectionStart === selectionEnd || !value.slice(selectionStart, selectionEnd).includes(TICKED_IN_TEXT_BOX)) return;
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", detailsFromTextBox(value).slice(selectionStart, selectionEnd));
+    // Deleted as an edit of the text box, so Undo puts it back.
+    if (cut && !box.disabled) document.execCommand("delete");
   }
 
   function onDetailsCompositionEnd() {
@@ -913,6 +933,8 @@ export function LongFormEditor({
               disabled={!detailsEditable}
               onChange={(event) => onDetailsInput(event.currentTarget, event.nativeEvent as InputEvent)}
               onCompositionEnd={onDetailsCompositionEnd}
+              onCopy={(event) => onDetailsCopy(event, false)}
+              onCut={(event) => onDetailsCopy(event, true)}
               onScroll={(event) => {
                 if (displayRef.current) displayRef.current.scrollTop = event.currentTarget.scrollTop;
                 if (targetsRef.current) targetsRef.current.scrollTop = event.currentTarget.scrollTop;

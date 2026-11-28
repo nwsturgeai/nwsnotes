@@ -35,7 +35,7 @@ test.beforeEach(async ({ page }) => {
   await openNotes(page);
 });
 
-test("Undo appears left of the cog after a change, undoes it, and becomes Redo", async ({ page }) => {
+test("Undo appears in the top-left corner after a change, undoes it, and becomes Redo", async ({ page }) => {
   // Nothing to undo yet.
   await expect(undoButton(page)).toHaveCount(0);
 
@@ -44,11 +44,13 @@ test("Undo appears left of the cog after a change, undoes it, and becomes Redo",
   await expect(button).toHaveAccessibleName('Undo: Archived "Garden ideas"');
   await expect(button).toHaveAttribute("title", 'Undo: Archived "Garden ideas"');
   await expect(button.locator("svg")).toHaveAttribute("data-icon", "arrow-rotate-left");
-  // Just left of the cog, the same size.
+  // In the top-left corner, the cog's size, and before the first tab.
   const cog = (await page.getByRole("link", { name: "Settings" }).boundingBox())!;
   const box = (await button.boundingBox())!;
-  expect(box.x + box.width).toBeLessThanOrEqual(cog.x + 1);
-  expect(cog.x - (box.x + box.width)).toBeLessThan(8);
+  const firstTab = (await page.locator(".tab-strip .tab").first().boundingBox())!;
+  expect(box.x).toBe(0);
+  expect(Math.abs(box.y)).toBeLessThanOrEqual(0.5);
+  expect(box.x + box.width).toBeLessThanOrEqual(firstTab.x + 1);
   expect(box.width).toBe(cog.width);
   expect(box.height).toBe(cog.height);
 

@@ -159,6 +159,19 @@ body:has(.app) {
   margin-left: auto;
 }
 
+/* The notes page starts with the top-left corner (the Undo button's place), the left strip's width. */
+.app-header.notes-header {
+  padding-left: 0;
+}
+
+.header-corner {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+}
+
 /* ---- Tabs in the header, styled like a browser's ----------------------- */
 
 .tab-strip {
@@ -176,8 +189,12 @@ body:has(.app) {
  * With a left strip, the first tab starts at the strip's dividing line (its last pixel, 39px in), so a
  * selected tab's left border carries that line on up and its white area joins the note list.
  */
+.app-header.notes-header .tab-strip {
+  margin-left: 0;
+}
+
 .app-header.with-left-tabs .tab-strip {
-  margin-left: calc(39px - 1.5rem);
+  margin-left: -1px;
 }
 
 /*
@@ -406,7 +423,7 @@ body:has(.app) {
   background: var(--bg);
 }
 
-/* Undo (or Redo), left of the cog: the same size, as a button. */
+/* Undo (or Redo), in the top-left corner: the cog's size, as a button. */
 .undo-button {
   min-width: 0;
   min-height: 0;
