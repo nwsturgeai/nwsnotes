@@ -125,22 +125,40 @@ const REMINDER_LATEST_MS = 24 * 60 * 60 * 1000;
 /** Lifetimes that get reminders: not Archived or Bin. */
 const REMINDED_LIFETIMES = [LIFETIME_NEW, LIFETIME_ACTIVE, LIFETIME_WAITING];
 
+/** A due date's options: no reminder, and a Waiting note going back to Active when it's due. */
+interface DueOptions {
+  noReminder?: boolean;
+  returnWhenDue?: boolean;
+}
+
+/** A note's due-date options as they are, to keep them. */
+const dueOptionsOf = (note: Note): DueOptions => ({ noReminder: note.noReminder === true, returnWhenDue: note.returnWhenDue === true });
+
 /**
- * A note's due date and reminder record after an add or edit. An unchanged due date keeps its record;
- * a due date that's already past counts as reminded, since it didn't just pass.
+ * A note's due date, its options, and their records after an add or edit. An unchanged due date keeps its
+ * records; a due date that's already past counts as reminded (and returned), since it didn't just pass. So
+ * does one whose reminder (or return) is turned on after it passed: neither happens late.
  */
-function dueDateFields(dueDateTime: string | undefined, existing: Note | undefined, now: Date, allDay = existing?.allDay === true): Partial<Note> {
+function dueDateFields(
+  dueDateTime: string | undefined,
+  existing: Note | undefined,
+  now: Date,
+  allDay = existing?.allDay === true,
+  { noReminder = false, returnWhenDue = false }: DueOptions = {},
+): Partial<Note> {
   if (dueDateTime === undefined) return {};
-  const reminderSentFor =
-    existing?.dueDateTime === dueDateTime
-      ? existing.reminderSentFor
-      : Date.parse(dueDateTime) <= now.getTime()
-        ? dueDateTime
-        : undefined;
+  const past = Date.parse(dueDateTime) <= now.getTime();
+  const sameDue = existing?.dueDateTime === dueDateTime;
+  const reminderTurnedOn = existing?.noReminder === true && !noReminder;
+  const reminderSentFor = sameDue && !reminderTurnedOn ? existing.reminderSentFor : past ? dueDateTime : undefined;
+  const returnedFor = !returnWhenDue ? undefined : sameDue && existing.returnWhenDue ? existing.returnedFor : past ? dueDateTime : undefined;
   // An all-day note (from Google Calendar) stays all-day only while it's due at the all-day time.
   return {
     dueDateTime,
+    ...(noReminder && { noReminder: true as const }),
+    ...(returnWhenDue && { returnWhenDue: true as const }),
     ...(reminderSentFor !== undefined && { reminderSentFor }),
+    ...(returnedFor !== undefined && { returnedFor }),
     ...(allDay && isAllDayTime(dueDateTime) && { allDay: true as const }),
   };
 }
@@ -389,11 +407,16 @@ export class NoteStore {
       const result = await revertedSnapshot(this.db, this.userId, toChangeId as number, this.snapshot());
       if (!result) throw new RequestError(404, `There is no change ${String(toChangeId)} in the history (it may be over ${HISTORY_DAYS} days old).`);
       if (result.undone === 0) throw new RequestError(400, "That's the latest change, so there's nothing to undo.");
-      // A reminder already sent for a note's due date isn't sent again because the note came back.
+      // A reminder already sent for a note's due date isn't sent again because the note came back, nor does a
+      // note already returned from Waiting for it return again.
       const current = new Map(this.notes.map((note) => [note.id, note]));
-      const notes = result.snapshot.notes.map((note) => {
+      const notes = result.snapshot.notes.map((before) => {
+        let note = before;
         const sent = current.get(note.id)?.reminderSentFor;
-        return sent !== undefined && note.dueDateTime === sent && note.reminderSentFor !== sent ? { ...note, reminderSentFor: sent } : note;
+        if (sent !== undefined && note.dueDateTime === sent && note.reminderSentFor !== sent) note = { ...note, reminderSentFor: sent };
+        const returned = current.get(note.id)?.returnedFor;
+        if (returned !== undefined && note.dueDateTime === returned && note.returnedFor !== returned) note = { ...note, returnedFor: returned };
+        return note;
       });
       await this.save(this.nextSaveTime(), { ...result.snapshot, notes }, {
         record: {
@@ -463,6 +486,8 @@ export class NoteStore {
     rawParentId: unknown,
     options: {
       dueDateTime?: string;
+      noReminder?: boolean;
+      returnWhenDue?: boolean;
       clientId?: unknown;
       createdDateTime?: unknown;
       tagsChangedDateTime?: unknown;
@@ -513,7 +538,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...dueDateFields(options.dueDateTime, undefined, now, options.allDay === true),
+        ...dueDateFields(options.dueDateTime, undefined, now, options.allDay === true, options),
         ...(options.createdByUserId !== undefined && { createdByUserId: options.createdByUserId }),
         createdDateTime,
         lastModifiedDateTime: timestamp,
@@ -549,7 +574,8 @@ export class NoteStore {
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
    * If the tags really change, `tagsChangedDateTime` (an offline change's time) or now becomes their
    * changed time. `dueDateTime` (already validated) replaces the note's, so
-   * leaving it out clears it.
+   * leaving it out clears it; likewise `noReminder` and `returnWhenDue`, so leaving them out turns the reminder
+   * on and the return off.
    */
   updateNote(
     id: number,
@@ -558,6 +584,8 @@ export class NoteStore {
     details: NoteDetails | undefined,
     options: {
       dueDateTime?: string;
+      noReminder?: boolean;
+      returnWhenDue?: boolean;
       tagsChangedDateTime?: unknown;
       /** The note's lastModifiedDateTime when the edit started: refused (412) if it has changed since. */
       baseModifiedDateTime?: unknown;
@@ -626,7 +654,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...dueDateFields(options.dueDateTime, existing, now),
+        ...dueDateFields(options.dueDateTime, existing, now, undefined, options),
         ...(existing.createdByUserId !== undefined && { createdByUserId: existing.createdByUserId }),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
@@ -639,8 +667,7 @@ export class NoteStore {
         : details
           ? `Made ${label(note)} a long-form note`
           : `Edited ${label(note)}`;
-      // Only the parent changed (the Parent pop-up, say): just the move.
-      const onlyMoved =
+      const sameContent =
         note.titleText === existing.titleText &&
         note.titleImage === existing.titleImage &&
         note.detailsText === existing.detailsText &&
@@ -648,9 +675,21 @@ export class NoteStore {
         detailsPagesOf(note).join() === detailsPagesOf(existing).join() &&
         note.dueDateTime === existing.dueDateTime &&
         sameTags(note.tagIds, existing.tagIds);
+      const reminderChanged = note.dueDateTime !== undefined && (note.noReminder === true) !== (existing.noReminder === true);
+      const returnChanged = note.dueDateTime !== undefined && (note.returnWhenDue === true) !== (existing.returnWhenDue === true);
+      // Only the parent changed (the Parent pop-up, say): just the move.
+      const onlyMoved = sameContent && !reminderChanged && !returnChanged;
+      const optionsSummary =
+        reminderChanged && returnChanged
+          ? `Changed the due date options of ${label(note)}`
+          : reminderChanged
+            ? `Turned ${note.noReminder ? "off" : "on"} the reminder for ${label(note)}`
+            : `Turned ${note.returnWhenDue ? "on" : "off"} returning from Waiting when due for ${label(note)}`;
       const summary =
         parentId === existing.parentId
-          ? edited
+          ? sameContent && (reminderChanged || returnChanged)
+            ? optionsSummary
+            : edited
           : onlyMoved
             ? this.moveSummary(label(note), existing.parentId, parentId)
             : `${edited}, and ${this.moveSummary("it", existing.parentId, parentId).replace(/^M|^T/, (first) => first.toLowerCase())}`;
@@ -671,7 +710,8 @@ export class NoteStore {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
       const now = this.nextSaveTime();
-      const { reminderSentFor: _sent, allDay: _allDay, ...rest } = existing;
+      // Always with a reminder, and not returning from Waiting (a text can't set either).
+      const { reminderSentFor: _sent, allDay: _allDay, noReminder: _noReminder, returnWhenDue: _return, returnedFor: _returned, ...rest } = existing;
       const note: Note = { ...rest, ...dueDateFields(dueDateTime, existing, now), lastModifiedDateTime: now.toISOString() };
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
         record: { summary: `Set the due date of ${label(note)}${sourceSuffix(options.source)}` },
@@ -700,7 +740,7 @@ export class NoteStore {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) return undefined;
       const now = this.nextSaveTime();
-      const { reminderSentFor: _sent, allDay: _allDay, dueDateTime: _due, ...rest } = existing;
+      const { reminderSentFor: _sent, allDay: _allDay, dueDateTime: _due, noReminder: _noReminder, returnWhenDue: _return, returnedFor: _returned, ...rest } = existing;
       let note: Note = { ...rest };
       if (change.titleText !== undefined && existing.titleText !== undefined) note.titleText = change.titleText;
       // Only typed notes take typed details: handwritten details stay as they are.
@@ -708,7 +748,8 @@ export class NoteStore {
         note.detailsText = change.detailsText;
       }
       const due = change.dueDateTime === undefined ? existing.dueDateTime : (change.dueDateTime ?? undefined);
-      note = { ...note, ...dueDateFields(due, existing, now, change.allDay ?? existing.allDay === true) };
+      // A change in Google never changes the due date's options: they're only changed in nwsnotes.
+      note = { ...note, ...dueDateFields(due, existing, now, change.allDay ?? existing.allDay === true, dueOptionsOf(existing)) };
       if (change.tagIds !== undefined) {
         const valid = validateTagIds(change.tagIds.filter((tagId) => !isLifetimeTag(tagId)), this.categories);
         if (valid.ok) note.tagIds = [...valid.value, lifetimeOf(existing)];
@@ -911,14 +952,62 @@ export class NoteStore {
 
   /**
    * Notes needing a reminder now: New, Active or Waiting, due at or before `now` (but less than a day
-   * ago), and not yet reminded for this due date.
+   * ago), not yet reminded for this due date, and not set to have no reminder.
    */
   dueForReminder(now: Date): Note[] {
     return this.notes.filter((note) => {
-      if (note.dueDateTime === undefined || note.reminderSentFor === note.dueDateTime) return false;
+      if (note.dueDateTime === undefined || note.reminderSentFor === note.dueDateTime || note.noReminder) return false;
       if (!REMINDED_LIFETIMES.includes(lifetimeOf(note))) return false;
       const late = now.getTime() - Date.parse(note.dueDateTime);
       return late >= 0 && late < REMINDER_LATEST_MS;
+    });
+  }
+
+  /** Notes whose due date has been reached that go back to Active if Waiting, and haven't been dealt with for it yet. */
+  dueToReturn(now: Date): Note[] {
+    return this.notes.filter(
+      (note) => note.returnWhenDue && note.dueDateTime !== undefined && note.returnedFor !== note.dueDateTime && Date.parse(note.dueDateTime) <= now.getTime(),
+    );
+  }
+
+  /**
+   * Puts these notes back to Active if they're still Waiting, and records that their due date has been
+   * dealt with, Waiting or not (so making one Waiting later doesn't send it back). Skips any whose due date
+   * or option changed meanwhile. Saves; a note that went back to Active is in the History.
+   */
+  returnDue(due: Note[]): Promise<Note[]> {
+    return this.enqueue(async () => {
+      const dueById = new Map(due.map((note) => [note.id, note.dueDateTime]));
+      const now = this.nextSaveTime();
+      const returned: Note[] = [];
+      let changed = false;
+      const notes = this.notes.map((note) => {
+        if (!note.returnWhenDue || note.dueDateTime === undefined || dueById.get(note.id) !== note.dueDateTime || note.returnedFor === note.dueDateTime) {
+          return note;
+        }
+        changed = true;
+        if (lifetimeOf(note) !== LIFETIME_WAITING) return { ...note, returnedFor: note.dueDateTime };
+        const tagIds = withLifetime(note, LIFETIME_ACTIVE);
+        const back: Note = {
+          ...note,
+          returnedFor: note.dueDateTime,
+          lastModifiedDateTime: now.toISOString(),
+          tagsChangedDateTime: this.tagsChangedTime(note, tagIds, now),
+          tagIds,
+        };
+        returned.push(back);
+        return back;
+      });
+      if (!changed) return [];
+      const summary =
+        returned.length === 1
+          ? `${label(returned[0]!)} returned from Waiting, as it was due`
+          : returned.length > 1
+            ? `${plural(returned.length, "note")} returned from Waiting, as they were due`
+            : undefined;
+      // Only bookkeeping (no note was Waiting) isn't in the History.
+      await this.save(now, { notes }, summary ? { record: { summary } } : undefined);
+      return returned;
     });
   }
 

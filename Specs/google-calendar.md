@@ -55,6 +55,7 @@ Kept as named constants in one place, as they may later become per-user settings
   - **A long-form note with handwritten details:** the body is "Handwritten description available in nwsnotes".
   - If a note has no tags and its typed details start with a line made only of hashtags, nwsnotes puts a blank line first, so the details aren't read back as tags.
 - **Alerts:** each event nwsnotes makes has one pop-up alert at its start time (all-day events: at 09:00 on the day), instead of nwsnotes' own reminder (see "Reminders" below). Events added in Google keep the alerts they were given there.
+  - **No reminder:** a note with "Remind me?" unticked (see "No reminder" in [due-dates.md](due-dates.md)) has an event with no alerts. Turning the reminder off or on in nwsnotes removes or restores the alert, on events added in Google too. It's only ever changed in nwsnotes: changing an event's alerts in Google doesn't change the note, and other changes made in Google keep the note without a reminder. The link records `noAlert` while nwsnotes last sent the event without one.
 - **How fast:** 1–3 seconds after the change reaches the server. Google's own apps then show it on refresh or at their next sync (usually seconds to a minute on Android). A change made offline syncs once it reaches the server.
 
 ### From Google to nwsnotes

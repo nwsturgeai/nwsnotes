@@ -525,8 +525,8 @@ function CategoryForm({
                 disabled={saving}
                 onClick={() => setPickingHueFor(row)}
               />
-              {underName ? (
-                // The name box, with "Create Tab for this Tag" (or what came of it) in small text underneath.
+              {/* The name box, with "Create Tab for this Tag" (or what came of it) in small text underneath. Always
+                  in this wrapper, so the box isn't remade (losing focus) when the link appears as a new tag is typed. */}
                 <div className="tag-name">
                   {nameBox}
                   {tabLink && tabResult?.made !== true && (
@@ -546,9 +546,6 @@ function CategoryForm({
                     </span>
                   )}
                 </div>
-              ) : (
-                nameBox
-              )}
               {/* "Shared by you", as on the tag's pills: what the most generous of its shares allows, or an hourglass
                   while someone hasn't accepted yet. Every row keeps the room for it, so the name boxes line up. */}
               <span className="tag-row-sharing">{savedTag && !sharedLayout && <SettingsSharingIcon tag={savedTag} />}</span>

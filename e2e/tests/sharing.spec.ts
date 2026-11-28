@@ -1,5 +1,5 @@
 import type { APIRequestContext, Browser, Page } from "@playwright/test";
-import { addArea, expect, logIn, noteRow, openNotes, pills, shareTag, sharingRequestLink, test } from "./fixtures";
+import { addArea, expect, filterRow, logIn, noteRow, openNotes, pills, shareTag, sharingRequestLink, test } from "./fixtures";
 
 /*
  * Sharing tags, in the app: the owner's share dialog, and what a recipient sees and can do. The seed is
@@ -202,6 +202,25 @@ test("a recipient's buttons follow their permission, and they can't change tags 
   await shareThroughApi(page.request, SHOPPING, "sam@example.com", "delete");
   await noteRow(sam, "Buy oat milk").getByRole("button", { name: "Archive" }).click();
   await expect(noteRow(sam, "Buy oat milk").getByRole("button", { name: "Move to bin" })).toBeVisible();
+  await sam.context().close();
+});
+
+test("in edit-order mode, Archived → Bin counts only the shared notes the recipient may bin", async ({ page, browser }) => {
+  const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "edit");
+  // The admin archives Buy milk (Shopping): Sam sees it, but can't bin it.
+  expect((await page.request.put("/api/notes/2/lifetime", { data: { lifetime: "Archived" } })).ok()).toBe(true);
+  await openNotes(sam);
+  await expect(noteRow(sam, "Buy milk").getByRole("button", { name: "Reinstate" })).toBeVisible();
+  await filterRow(sam).getByRole("button", { name: "Edit order" }).click();
+  const lifetimes = filterRow(sam).getByRole("group", { name: "Lifetime of the listed notes" });
+  await expect(lifetimes.getByRole("button", { name: /^Archived → Bin/ })).toHaveCount(0);
+  await expect(lifetimes).toHaveText("No permission to move to bin");
+
+  // With delete permission, the button is back, counting the note.
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "delete");
+  await expect(lifetimes.getByRole("button", { name: /^Archived → Bin/ })).toHaveText("Archived → Bin (1)");
+  await expect(lifetimes.getByText("No permission to move to bin")).toHaveCount(0);
   await sam.context().close();
 });
 

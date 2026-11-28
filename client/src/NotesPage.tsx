@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faAlarmClock, faCircle, faEye, faFileLines } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faBellSlash, faCircle, faEye, faFileLines } from "@fortawesome/free-regular-svg-icons";
 import {
   faAnglesDown,
   faAnglesUp,
@@ -68,7 +68,7 @@ import { ApiError, api } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { DueDateDialog, formatNoteDate } from "./DueDateDialog";
+import { DueDateDialog, dueOf, dueRequest, dueTitle, formatNoteDate, sameDue, type Due } from "./DueDateDialog";
 import { autoAcceptingTabMoves, describeTabMoveChange, TabMoveDialog } from "./TabMoveDialog";
 import { FormattedText } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
@@ -830,8 +830,8 @@ export function NotesPage({
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  /** The due date of the note being added or edited (ISO), saved with it when Add or Update is tapped. */
-  const [dueDate, setDueDate] = useState<string>();
+  /** The due date of the note being added or edited, saved with it when Add or Update is tapped. */
+  const [dueDate, setDueDate] = useState<Due>();
   const [choosingDueDate, setChoosingDueDate] = useState(false);
 
   /**
@@ -875,7 +875,7 @@ export function NotesPage({
     setOrdering(false);
     // Any new note that was being typed or written is discarded.
     setTitle(note.titleText ?? "");
-    setDueDate(note.dueDateTime);
+    setDueDate(dueOf(note));
     setEditParent(note.parentId);
     setEditSelection(selectionFor(note, userCategories));
     setSaveError(undefined);
@@ -946,9 +946,19 @@ export function NotesPage({
     }
   }
 
-  /** Edit-order mode's lifetime buttons: the listed notes that are Waiting, and those that are Archived. */
-  const listedWaiting = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_WAITING).map((note) => note.id);
-  const listedArchived = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED).map((note) => note.id);
+  /**
+   * Edit-order mode's lifetime buttons: the listed notes that are Waiting and may be archived, and those that
+   * are Archived and may be binned. Notes shared with you count only if their owner lets you do that (as on
+   * the server); `anyListedArchived` says whether there are Archived notes at all, binnable or not.
+   */
+  const mayChange = (note: Note, needed: "edit" | "delete") => !note.shared || allows(note.shared.permission, needed);
+  const listedWaiting = visibleNotes
+    .filter((note) => lifetimeOf(note) === LIFETIME_WAITING && mayChange(note, "edit"))
+    .map((note) => note.id);
+  const anyListedArchived = visibleNotes.some((note) => lifetimeOf(note) === LIFETIME_ARCHIVED);
+  const listedArchived = visibleNotes
+    .filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED && mayChange(note, "delete"))
+    .map((note) => note.id);
   const [listLifetimeBusy, setListLifetimeBusy] = useState(false);
 
   /** Moves the listed Waiting notes to Archived, or the listed Archived ones to the Bin, in one save. */
@@ -990,9 +1000,9 @@ export function NotesPage({
   const [listDueNote, setListDueNote] = useState<Note>();
 
   /** Saves a due date (or clears it: undefined) chosen by tapping a note's date in the list. */
-  async function setListDueDate(note: Note, dueDateTime: string | undefined) {
+  async function setListDueDate(note: Note, due: Due | undefined) {
     setListDueNote(undefined);
-    if (busyNoteId !== undefined || dueDateTime === note.dueDateTime) return;
+    if (busyNoteId !== undefined || sameDue(due, dueOf(note))) return;
     setBusyNoteId(note.id);
     try {
       const noteTitle: NoteTitle = note.titleImage !== undefined ? { titleImage: note.titleImage } : { titleText: note.titleText ?? "" };
@@ -1005,7 +1015,7 @@ export function NotesPage({
             ? { detailsText: note.detailsText }
             : undefined;
       onNoteUpdated(
-        await offlineApi.updateNote(note.id, { ...noteTitle, ...details, tagIds: note.tagIds, ...(dueDateTime && { dueDateTime }) }, base),
+        await offlineApi.updateNote(note.id, { ...noteTitle, ...details, tagIds: note.tagIds, ...dueRequest(due) }, base),
       );
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
@@ -1068,7 +1078,7 @@ export function NotesPage({
       const note = await offlineApi.updateNote(
         editingNote.id,
         // It keeps its due date.
-        { titleText: check.title, tagIds, ...details, ...(dueDate && { dueDateTime: dueDate }), parentId: editParent ?? null },
+        { titleText: check.title, tagIds, ...details, ...dueRequest(dueDate), parentId: editParent ?? null },
         editBase.current,
       );
       onNoteUpdated(note);
@@ -1100,7 +1110,7 @@ export function NotesPage({
       onNoteUpdated(
         await offlineApi.updateNote(
           editingNote.id,
-          { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }), parentId: editParent ?? null },
+          { ...noteTitle, tagIds, ...dueRequest(dueDate), parentId: editParent ?? null },
           editBase.current,
         ),
       );
@@ -1159,7 +1169,7 @@ export function NotesPage({
           ...noteTitle,
           tagIds,
           ...(parentId !== undefined && { parentId }),
-          ...(dueDate && { dueDateTime: dueDate }),
+          ...dueRequest(dueDate),
         });
         // The due date doesn't carry over to the next note (unlike the tags).
         setDueDate(undefined);
@@ -1511,7 +1521,7 @@ export function NotesPage({
                     Waiting → Archive ({listedWaiting.length})
                   </button>
                 )}
-                {listedArchived.length > 0 && (
+                {listedArchived.length > 0 ? (
                   <button
                     type="button"
                     className="small-button"
@@ -1521,6 +1531,8 @@ export function NotesPage({
                   >
                     Archived → Bin ({listedArchived.length})
                   </button>
+                ) : (
+                  anyListedArchived && <span className="list-lifetime-note">No permission to move to bin</span>
                 )}
               </div>
             ) : (
@@ -1798,14 +1810,25 @@ export function NotesPage({
                       </div>
                       {/* The due date if the note has one, otherwise when it was created. */}
                       {(() => {
+                        // A Waiting note that goes back to Active when its due date (still to come) is reached.
+                        const returnsWhenDue =
+                          note.dueDateTime !== undefined && note.returnWhenDue === true && lifetimeOf(note) === LIFETIME_WAITING && Date.parse(note.dueDateTime) > now;
                         const date = (
                           <time
                             className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
                             dateTime={note.dueDateTime ?? note.createdDateTime}
-                            title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}`}
+                            title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}${note.dueDateTime && note.noReminder ? " (no reminder)" : ""}${returnsWhenDue ? " (returns from Waiting)" : ""}`}
                           >
                             {pendingIds.has(note.id) && (
                               <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
+                            )}
+                            {/* A due date with no reminder: a crossed-out bell before it. */}
+                            {note.dueDateTime && note.noReminder && (
+                              <FontAwesomeIcon icon={faBellSlash} className="note-no-reminder" title="No reminder" />
+                            )}
+                            {/* A Waiting note that goes back to Active when it's due. */}
+                            {returnsWhenDue && (
+                              <FontAwesomeIcon icon={faRotateLeft} className="note-returns" title="Returns from Waiting when due" />
                             )}
                             {note.dueDateTime ? "Due " : "Cr. "}
                             {formatNoteDate(note.dueDateTime ?? note.createdDateTime, note.dueDateTime !== undefined && note.allDay === true)}
@@ -1818,7 +1841,11 @@ export function NotesPage({
                           <button
                             type="button"
                             className="note-date-button"
-                            aria-label={note.dueDateTime ? `Due ${formatNoteDate(note.dueDateTime, note.allDay === true)}: change due date` : "Set due date"}
+                            aria-label={
+                              note.dueDateTime
+                                ? `${dueTitle(dueOf(note)!, note.allDay === true)}${returnsWhenDue ? " (returns from Waiting)" : ""}: change due date`
+                                : "Set due date"
+                            }
                             // Another note being edited is saved first, as with the note's other buttons.
                             data-saves-edit={editing ? undefined : true}
                             disabled={editing ? saving : busy}
@@ -1869,7 +1896,8 @@ export function NotesPage({
 
       {choosingDueDate && (
         <DueDateDialog
-          dueDate={dueDate}
+          due={dueDate}
+          newNote={!editingNote}
           onSet={(value) => {
             setDueDate(value);
             setChoosingDueDate(false);
@@ -1897,7 +1925,7 @@ export function NotesPage({
 
       {listDueNote && (
         <DueDateDialog
-          dueDate={listDueNote.dueDateTime}
+          due={dueOf(listDueNote)}
           onSet={(value) => void setListDueDate(listDueNote, value)}
           onCancel={() => setListDueNote(undefined)}
         />
@@ -2133,7 +2161,7 @@ export function NotesPage({
                   type="button"
                   className={dueDate ? "icon-button primary" : "icon-button"}
                   aria-label={dueDate ? "Change due date" : "Set due date"}
-                  title={dueDate ? `Due ${formatNoteDate(dueDate)}` : "Set due date"}
+                  title={dueDate ? dueTitle(dueDate) : "Set due date"}
                   disabled={saving}
                   onClick={() => setChoosingDueDate(true)}
                 >
@@ -2251,7 +2279,7 @@ function tagsOwner(tagIds: number[], categories: Category[]): { id: number; name
  * owner's notebook, so it can only have tags shared by that one person, all ones you may edit, and no
  * due date (only the owner sets those). The server checks the same.
  */
-function sharedNoteProblem(tagIds: number[], categories: Category[], dueDate: string | undefined): string | undefined {
+function sharedNoteProblem(tagIds: number[], categories: Category[], dueDate: Due | undefined): string | undefined {
   const shared = categories.find((category) => category.shared)?.tags.filter((tag) => tagIds.includes(tag.id)) ?? [];
   if (shared.length === 0) return undefined;
   if (shared.length !== tagIds.filter((id) => !isLifetimeTag(id)).length) {

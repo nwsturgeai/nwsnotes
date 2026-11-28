@@ -42,6 +42,7 @@ interface ApiNote {
   tagIds: number[];
   dueDateTime?: string;
   allDay?: boolean;
+  noReminder?: boolean;
 }
 
 const control = "/api/test/google/control";
@@ -443,6 +444,43 @@ test("a note with an event gets Google's alert, not nwsnotes' reminder", async (
   await page.waitForTimeout(2000);
   await request.post("/api/test/check-reminders");
   expect(await sent()).toEqual(["Due: Plan the team meeting"]);
+});
+
+test("a note with no reminder gets no reminder from nwsnotes, and its event no alert", async ({ page }) => {
+  const request = page.request;
+  expect((await request.post("/api/push/subscribe", { data: { endpoint: "https://push.example.com/3", keys: { p256dh: "k", auth: "a" } } })).ok()).toBe(true);
+  const sent = async () => ((await (await request.get("/api/test/notifications")).json()) as { title: string }[]).map((n) => n.title);
+  const soon = () => new Date(Date.now() + 1500).toISOString();
+
+  // Not connected: no reminder when it falls due.
+  const due = soon();
+  await edit(request, 1, { dueDateTime: due, noReminder: true });
+  expect((await note(request, 1)).noReminder).toBe(true);
+  await page.waitForTimeout(2000);
+  await request.post("/api/test/check-reminders");
+  expect(await sent()).toEqual([]);
+  // Turning the reminder on once it has passed doesn't send one late.
+  await edit(request, 1, { dueDateTime: due, noReminder: undefined });
+  expect((await note(request, 1)).noReminder).toBeUndefined();
+  await request.post("/api/test/check-reminders");
+  expect(await sent()).toEqual([]);
+
+  // Connected: its event has no alert, and turning the reminder on and off changes only that.
+  await edit(request, 2, { dueDateTime: DUE, noReminder: true });
+  await connect(request);
+  await sync(request);
+  expect((await eventOf(request, 2))?.reminders).toEqual({ useDefault: false, overrides: [] });
+  await edit(request, 2, { dueDateTime: DUE, noReminder: undefined });
+  await sync(request);
+  expect((await eventOf(request, 2))?.reminders).toEqual({ useDefault: false, overrides: [{ method: "popup", minutes: 0 }] });
+  await edit(request, 2, { dueDateTime: DUE, noReminder: true });
+  await sync(request);
+  expect((await eventOf(request, 2))?.reminders).toEqual({ useDefault: false, overrides: [] });
+
+  // A change made in Google keeps the note without a reminder.
+  await changeEvent(request, (await eventOf(request, 2))!.id, { summary: "Buy oat milk" });
+  await sync(request);
+  expect(await note(request, 2)).toMatchObject({ titleText: "Buy oat milk", noReminder: true });
 });
 
 test("when the notebook is full, an event isn't added, and a notification says so", async ({ page }) => {

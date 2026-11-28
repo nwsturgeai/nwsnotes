@@ -38,7 +38,7 @@ import {
 import { ApiError } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { DueDateDialog, formatNoteDate } from "./DueDateDialog";
+import { DueDateDialog, dueOf, dueRequest, dueTitle, sameDue, type Due } from "./DueDateDialog";
 import { ParentDialog, ParentPill } from "./ParentDialog";
 import { possibleParents } from "./parents";
 import { FormattedText, TickboxTargets } from "./FormattedText";
@@ -167,7 +167,7 @@ export function LongFormEditor({
   const [parentId, setParentId] = useState(initialParentId);
   const [choosingParent, setChoosingParent] = useState(false);
   /** The note's due date, sent with every save (leaving it out would clear it). Only the owner can change it. */
-  const [dueDate, setDueDate] = useState(note?.dueDateTime);
+  const [dueDate, setDueDate] = useState<Due | undefined>(() => dueOf(note));
   const [choosingDueDate, setChoosingDueDate] = useState(false);
   /** Typed or handwritten details: fixed for an existing note; for a new one, from stylus mode now. */
   const [kind] = useState<"text" | "image">(() =>
@@ -276,7 +276,7 @@ export function LongFormEditor({
       titleText,
       tagIds: selectedTagIds(categories, latest.current.selection),
       ...currentDetails(),
-      ...(due && { dueDateTime: due }),
+      ...dueRequest(due),
       ...(update ? { parentId: parent ?? null } : parent !== undefined && { parentId: parent }),
     };
   }
@@ -319,9 +319,9 @@ export function LongFormEditor({
   }
 
   /** A due date chosen (or cleared, undefined) in the pop-up: saved straight away, not at the end of the window. */
-  function changeDueDate(value: string | undefined) {
+  function changeDueDate(value: Due | undefined) {
     setChoosingDueDate(false);
-    if (value === latest.current.dueDate) return;
+    if (sameDue(value, latest.current.dueDate)) return;
     setDueDate(value);
     latest.current.dueDate = value;
     dirty.current = true;
@@ -1169,7 +1169,7 @@ export function LongFormEditor({
             type="button"
             className={dueDate ? "icon-button primary lf-due" : "icon-button lf-due"}
             aria-label={dueDate ? "Change the long-form note's due date" : "Set the long-form note's due date"}
-            title={noteId === undefined ? "Accept the title first" : dueDate ? `Due ${formatNoteDate(dueDate)}` : "Set due date"}
+            title={noteId === undefined ? "Accept the title first" : dueDate ? dueTitle(dueDate) : "Set due date"}
             disabled={busy || noteId === undefined}
             onClick={() => setChoosingDueDate(true)}
           >
@@ -1204,7 +1204,7 @@ export function LongFormEditor({
       </div>
 
       {choosingDueDate && (
-        <DueDateDialog dueDate={dueDate} onSet={changeDueDate} onCancel={() => setChoosingDueDate(false)} />
+        <DueDateDialog due={dueDate} onSet={changeDueDate} onCancel={() => setChoosingDueDate(false)} />
       )}
       {choosingParent && (
         <ParentDialog
