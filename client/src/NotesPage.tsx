@@ -1810,11 +1810,14 @@ export function NotesPage({
                       </div>
                       {/* The due date if the note has one, otherwise when it was created. */}
                       {(() => {
+                        // A Waiting note that goes back to Active when its due date (still to come) is reached.
+                        const returnsWhenDue =
+                          note.dueDateTime !== undefined && note.returnWhenDue === true && lifetimeOf(note) === LIFETIME_WAITING && Date.parse(note.dueDateTime) > now;
                         const date = (
                           <time
                             className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
                             dateTime={note.dueDateTime ?? note.createdDateTime}
-                            title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}${note.dueDateTime && note.noReminder ? " (no reminder)" : ""}`}
+                            title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}${note.dueDateTime && note.noReminder ? " (no reminder)" : ""}${returnsWhenDue ? " (returns from Waiting)" : ""}`}
                           >
                             {pendingIds.has(note.id) && (
                               <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
@@ -1822,6 +1825,10 @@ export function NotesPage({
                             {/* A due date with no reminder: a crossed-out bell before it. */}
                             {note.dueDateTime && note.noReminder && (
                               <FontAwesomeIcon icon={faBellSlash} className="note-no-reminder" title="No reminder" />
+                            )}
+                            {/* A Waiting note that goes back to Active when it's due. */}
+                            {returnsWhenDue && (
+                              <FontAwesomeIcon icon={faRotateLeft} className="note-returns" title="Returns from Waiting when due" />
                             )}
                             {note.dueDateTime ? "Due " : "Cr. "}
                             {formatNoteDate(note.dueDateTime ?? note.createdDateTime, note.dueDateTime !== undefined && note.allDay === true)}
@@ -1834,7 +1841,11 @@ export function NotesPage({
                           <button
                             type="button"
                             className="note-date-button"
-                            aria-label={note.dueDateTime ? `${dueTitle(dueOf(note)!, note.allDay === true)}: change due date` : "Set due date"}
+                            aria-label={
+                              note.dueDateTime
+                                ? `${dueTitle(dueOf(note)!, note.allDay === true)}${returnsWhenDue ? " (returns from Waiting)" : ""}: change due date`
+                                : "Set due date"
+                            }
                             // Another note being edited is saved first, as with the note's other buttons.
                             data-saves-edit={editing ? undefined : true}
                             disabled={editing ? saving : busy}

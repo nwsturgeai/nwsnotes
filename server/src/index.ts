@@ -68,6 +68,8 @@ async function main() {
   const push = new PushReminders(config.dataDir, config.pushContact, notebooks, config.testMode);
   await push.init();
   const live = new LiveUpdates(users, config.sessionSecret);
+  // Notes that went back to Active as they were due: the owner's open pages show it straight away.
+  push.onReturned = (userId) => live.notifyChanged(userId, undefined);
   const mailer = new Mailer(config.email, !config.production);
   if (config.email) console.log(`Emails are sent from ${config.email.from}, through Brevo.`);
   const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, mailer, sharing);

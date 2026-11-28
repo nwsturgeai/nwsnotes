@@ -44,6 +44,7 @@ A note is due
   - With no due date yet, it starts at 20:00 today, or tomorrow if it's already 20:00 or later.
   - Below the date and time, a "Remind me?" tickbox: ticked for a new due date, otherwise as the note has it. Unticked, the note has a due date but no reminder (see "No reminder" below).
     - For a note being added, a new due date's tickbox starts as it was last set for a note being added on this device (kept in the browser's storage as `nwsnotes.newNoteRemind`, "off" while unticked). Notes already added, and long-form notes, aren't affected and don't change it.
+  - Below it, a "Note returns from 'Waiting' when due?" tickbox: ticked for a new due date, otherwise as the note has it (see "Returning from Waiting" below).
   - Buttons: "Cancel", "Clear Due Date" (only if the note has a due date) and "Set Due Date" (the green main button). Escape counts as Cancel.
 - **Saved with the note:** the chosen date is only saved when Add or Update is tapped. Cancelling an edit drops it.
   - Unlike the tags, it doesn't carry over: after a note is added, the next new note starts with no due date.
@@ -61,6 +62,20 @@ A note is due
 - **By text message:** "Due <when>" always sets a due date with a reminder (it turns the reminder back on).
 - **History:** an edit that only turns the reminder off or on is "Turned off the reminder for "<title>"" (or "Turned on …").
 - **Google Calendar:** the note's event has no alert. See [google-calendar.md](google-calendar.md).
+
+### Returning from Waiting
+- **Stored on the note:** `returnWhenDue: true`, only while it has a due date and the tickbox was ticked. Like `noReminder`, it's sent with `dueDateTime` in `POST /api/notes` and `PUT /api/notes/:id`, every save sends it as it is, leaving it out of a PUT turns it off, and clearing the due date clears it. Anything but true or false is refused. Notes from before it existed don't have it.
+- **What happens:** when the due date is reached, the server (in its minute-by-minute check, for every user) puts the note back to Active if it's Waiting, even with no page open. New, Active, Archived and Bin notes are left as they are. It's in the History ("Buy milk" returned from Waiting, as it was due, or "3 notes returned from Waiting, as they were due" for several at once), the owner's open pages update straight away, and so do those of people the note is shared with.
+- **Once per due date:** the note stores `returnedFor`, the due date it was dealt with for, whether it was Waiting then or not (left out of shared notes' views). So:
+  - A note made Waiting again after it returned, or made Waiting only after its due date was reached, stays Waiting.
+  - A due date that's already past when it's set, or when the tickbox is ticked, counts as dealt with: nothing happens.
+  - A new due date re-arms it.
+  - Going back in the History doesn't make a note return again for a due date it was already dealt with for.
+  - If the server was down when it was due, it happens once it's back, however late.
+- **In the list:** a Waiting note with it, whose due date is still to come, has a `fa-rotate-left` icon before "Due …", and " (returns from Waiting)" at the end of the date's tooltip and accessible label. Other notes show nothing for it.
+- **It's independent of the reminder:** a note can have either, both or neither.
+- **Shared notes:** only the owner turns it on or off, as for the due date.
+- **By text message:** "Due <when>" sets a due date without it (turning it off if it was on). Due dates from Google Calendar don't have it, and changes made in Google keep it as it is.
 
 ### Long-form notes
 - **The button:** in the long-form editor's bottom row, an `fa-alarm-clock` button (outline, 40px like the row's other buttons), just after Export (4px) for handwritten details, or in Export's place for typed ones, then the usual 24px gap before Cancel and Finish. Its accessible label is "Set the long-form note's due date", or "Change the long-form note's due date" while it has one. Like the regular button, it's filled in green while the note has a due date, with the tooltip e.g. "Due 12/11 20:00", otherwise "Set due date". It opens the same "Due date" pop-up.

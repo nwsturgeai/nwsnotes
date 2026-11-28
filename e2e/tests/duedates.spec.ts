@@ -229,6 +229,104 @@ test("\"Remind me?\" for a new note's due date starts as it was last set for a n
   await expect(remind).toBeChecked();
 });
 
+test("a Waiting note set to return when due goes back to Active when its due date is reached", async ({ page }) => {
+  await openNotes(page);
+  const row = noteRow(page, "Buy milk");
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  const returns = dialog.getByRole("checkbox", { name: "Note returns from 'Waiting' when due?" });
+
+  // Ticked for a new due date; the icon shows only once the note is Waiting.
+  await row.getByText("Cr.").click();
+  await expect(returns).toBeChecked();
+  const due = dayFromNow(3);
+  await dialog.getByLabel("Due date").fill(due.input);
+  await dialog.getByLabel("Due time").fill("09:00");
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(row.locator("time")).toHaveText(`Due ${due.shown} 09:00`);
+  await expect(row.locator(".note-returns")).toHaveCount(0);
+  await row.getByRole("button", { name: "Waiting" }).click();
+  await expect(row.locator(".note-returns")).toBeVisible();
+  await expect(row.locator("time")).toHaveAttribute("title", / \(returns from Waiting\)$/);
+  await expect(row.getByRole("button", { name: `Due ${due.shown} 09:00 (returns from Waiting): change due date` })).toBeVisible();
+
+  // Unticked: no icon. The pop-up starts as the note has it.
+  await row.locator("time").click();
+  await returns.uncheck();
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(row.locator(".note-returns")).toHaveCount(0);
+  await row.locator("time").click();
+  await expect(returns).not.toBeChecked();
+  await returns.check();
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await expect(row.locator(".note-returns")).toBeVisible();
+
+  // Due in a moment: once it's reached, the note is Active again, live, and the History says so.
+  const { notes } = (await (await page.request.get("/api/notes")).json()) as { notes: { id: number; titleText?: string; tagIds: number[] }[] };
+  const milk = notes.find((note) => note.titleText === "Buy milk")!;
+  const soon = new Date(Date.now() + 1500).toISOString();
+  expect((await page.request.put(`/api/notes/${milk.id}`, { data: { titleText: "Buy milk", tagIds: milk.tagIds, dueDateTime: soon, returnWhenDue: true } })).ok()).toBe(true);
+  await page.waitForTimeout(2000);
+  await page.request.post("/api/test/check-reminders");
+  await expect(row.getByRole("button", { name: "Waiting", exact: true })).toBeVisible();
+  await expect(row.locator(".note-returns")).toHaveCount(0);
+  await page.getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "History", exact: true }).click();
+  await expect(page.locator(".history-list > li .history-summary").first()).toHaveText('"Buy milk" returned from Waiting, as it was due');
+});
+
+test("a note returns from Waiting only once per due date, and only if it's Waiting when that's reached", async ({ page }) => {
+  const request = page.request;
+  type ApiNote = { id: number; titleText?: string; tagIds: number[]; dueDateTime?: string; returnWhenDue?: boolean };
+  const note = async (id: number) => ((await (await request.get("/api/notes")).json()) as { notes: ApiNote[] }).notes.find((n) => n.id === id)!;
+  const lifetime = async (id: number) => (await note(id)).tagIds.find((tagId) => tagId < 0);
+  const ACTIVE = -2;
+  const WAITING = -5;
+  const setLifetime = async (id: number, value: string) => expect((await request.put(`/api/notes/${id}/lifetime`, { data: { lifetime: value } })).ok()).toBe(true);
+  const edit = async (id: number, change: Partial<ApiNote>) => {
+    const { titleText, tagIds } = await note(id);
+    expect((await request.put(`/api/notes/${id}`, { data: { titleText, tagIds, ...change } })).ok()).toBe(true);
+  };
+  const reachDue = async () => {
+    await page.waitForTimeout(2000);
+    await request.post("/api/test/check-reminders");
+  };
+  const soon = () => new Date(Date.now() + 1500).toISOString();
+
+  // Not ticked: stays Waiting.
+  await setLifetime(2, "Waiting");
+  await edit(2, { dueDateTime: soon() });
+  await reachDue();
+  expect(await lifetime(2)).toBe(WAITING);
+
+  // Ticked: returns, once. Made Waiting again, it stays Waiting.
+  await edit(2, { dueDateTime: soon(), returnWhenDue: true });
+  await reachDue();
+  expect(await lifetime(2)).toBe(ACTIVE);
+  await setLifetime(2, "Waiting");
+  await request.post("/api/test/check-reminders");
+  expect(await lifetime(2)).toBe(WAITING);
+
+  // A new due date re-arms it.
+  await edit(2, { dueDateTime: soon(), returnWhenDue: true });
+  await reachDue();
+  expect(await lifetime(2)).toBe(ACTIVE);
+
+  // Active when its due date is reached, then made Waiting: it stays Waiting.
+  await edit(1, { dueDateTime: soon(), returnWhenDue: true });
+  await reachDue();
+  await setLifetime(1, "Waiting");
+  await request.post("/api/test/check-reminders");
+  expect(await lifetime(1)).toBe(WAITING);
+
+  // Ticked once the due date has passed: nothing happens.
+  const past = new Date(Date.now() - 60_000).toISOString();
+  await edit(3, { dueDateTime: past });
+  await setLifetime(3, "Waiting");
+  await edit(3, { dueDateTime: past, returnWhenDue: true });
+  await request.post("/api/test/check-reminders");
+  expect(await lifetime(3)).toBe(WAITING);
+});
+
 test("tapping the date of the note being edited changes the due date saved with the edit", async ({ page }) => {
   await openNotes(page);
   const row = noteRow(page, "Buy milk");

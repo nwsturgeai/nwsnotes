@@ -1,26 +1,40 @@
 import { useEffect, useRef, useState } from "react";
 import type { Note } from "@nwsnotes/shared";
 
-/** A note's due date (ISO), and whether it has no reminder ("Remind me?" unticked). */
+/**
+ * A note's due date (ISO), whether it has no reminder ("Remind me?" unticked), and whether a Waiting note
+ * goes back to Active when it's due ("Note returns from 'Waiting' when due?" ticked).
+ */
 export interface Due {
   dueDateTime: string;
   noReminder?: true;
+  returnWhenDue?: true;
 }
 
 /** A note's due date, if it has one. */
 export function dueOf(note: Note | undefined): Due | undefined {
   if (note?.dueDateTime === undefined) return undefined;
-  return { dueDateTime: note.dueDateTime, ...(note.noReminder && { noReminder: true as const }) };
+  return {
+    dueDateTime: note.dueDateTime,
+    ...(note.noReminder && { noReminder: true as const }),
+    ...(note.returnWhenDue && { returnWhenDue: true as const }),
+  };
 }
 
 /** A due date's part of an add or edit (nothing for none, which clears it). */
-export function dueRequest(due: Due | undefined): { dueDateTime?: string; noReminder?: boolean } {
-  return due ? { dueDateTime: due.dueDateTime, ...(due.noReminder && { noReminder: true }) } : {};
+export function dueRequest(due: Due | undefined): { dueDateTime?: string; noReminder?: boolean; returnWhenDue?: boolean } {
+  return due
+    ? { dueDateTime: due.dueDateTime, ...(due.noReminder && { noReminder: true }), ...(due.returnWhenDue && { returnWhenDue: true }) }
+    : {};
 }
 
-/** Whether two due dates are the same, reminder included. */
+/** Whether two due dates are the same, options included. */
 export function sameDue(a: Due | undefined, b: Due | undefined): boolean {
-  return a?.dueDateTime === b?.dueDateTime && (a?.noReminder === true) === (b?.noReminder === true);
+  return (
+    a?.dueDateTime === b?.dueDateTime &&
+    (a?.noReminder === true) === (b?.noReminder === true) &&
+    (a?.returnWhenDue === true) === (b?.returnWhenDue === true)
+  );
 }
 
 /** A due date's tooltip, e.g. "Due 12/11 20:00", or "Due 12/11 20:00 (no reminder)". */
@@ -80,6 +94,8 @@ export function DueDateDialog({ due, newNote = false, onSet, onCancel }: Props) 
   const [time, setTime] = useState(`${two(start.getHours())}:${two(start.getMinutes())}`);
   // As the note has it; for a new due date ticked, or for a note being added as last time on this device.
   const [remind, setRemind] = useState(() => (due ? due.noReminder !== true : !newNote || rememberedRemind()));
+  // As the note has it; ticked for a new due date.
+  const [returnWhenDue, setReturnWhenDue] = useState(due ? due.returnWhenDue === true : true);
 
   useEffect(() => {
     const dialog = ref.current;
@@ -108,10 +124,16 @@ export function DueDateDialog({ due, newNote = false, onSet, onCancel }: Props) 
         <input type="date" aria-label="Due date" value={day} onChange={(event) => setDay(event.target.value)} />
         <input type="time" aria-label="Due time" value={time} onChange={(event) => setTime(event.target.value)} />
       </div>
-      <label className="due-date-remind">
+      <div className="due-date-options">
+      <label>
         <input type="checkbox" checked={remind} onChange={(event) => setRemind(event.target.checked)} />
         Remind me?
       </label>
+      <label>
+        <input type="checkbox" checked={returnWhenDue} onChange={(event) => setReturnWhenDue(event.target.checked)} />
+        Note returns from 'Waiting' when due?
+      </label>
+      </div>
       <div className="form-buttons">
         <button
           type="button"
@@ -119,7 +141,11 @@ export function DueDateDialog({ due, newNote = false, onSet, onCancel }: Props) 
           disabled={!valid}
           onClick={() => {
             if (newNote) rememberRemind(remind);
-            onSet({ dueDateTime: chosen.toISOString(), ...(!remind && { noReminder: true as const }) });
+            onSet({
+              dueDateTime: chosen.toISOString(),
+              ...(!remind && { noReminder: true as const }),
+              ...(returnWhenDue && { returnWhenDue: true as const }),
+            });
           }}
           autoFocus
         >

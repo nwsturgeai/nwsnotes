@@ -312,7 +312,11 @@ function titleAndDetails(body: NewNoteRequest): Partial<Note> {
       : body.detailsImage !== undefined
         ? { detailsImage: body.detailsImage, ...(body.detailsMorePages?.length && { detailsMorePages: body.detailsMorePages }) }
         : {}),
-    ...(body.dueDateTime !== undefined && { dueDateTime: body.dueDateTime, ...(body.noReminder === true && { noReminder: true as const }) }),
+    ...(body.dueDateTime !== undefined && {
+      dueDateTime: body.dueDateTime,
+      ...(body.noReminder === true && { noReminder: true as const }),
+      ...(body.returnWhenDue === true && { returnWhenDue: true as const }),
+    }),
   };
 }
 
@@ -410,8 +414,8 @@ export async function updateNote(id: number, body: NewNoteRequest, startedFrom?:
   const base = localNote(id);
   if (!base) throw notAvailable("PUT", `/api/notes/${id}`);
   const noteId = resolve(id);
-  const { titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime, noReminder, parentId: oldParent, ...rest } = base;
-  void [titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime, noReminder];
+  const { titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime, noReminder, returnWhenDue, parentId: oldParent, ...rest } = base;
+  void [titleText, titleImage, detailsText, detailsImage, detailsMorePages, dueDateTime, noReminder, returnWhenDue];
   // A parent id sets it, null takes it away, and leaving it out keeps the one it has.
   const parentId = body.parentId === undefined ? oldParent : (body.parentId ?? undefined);
   const now = new Date().toISOString();
