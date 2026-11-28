@@ -14,6 +14,7 @@ import {
   faChevronRight,
   faCircleCheck,
   faEraser,
+  faHighlighter,
   faPen,
   faShareFromSquare,
   faTags,
@@ -43,7 +44,7 @@ import { possibleParents } from "./parents";
 import { FormattedText, TickboxTargets } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
-import { BLACK_PEN, PEN_WIDTHS, usePenColour, usePenWidth } from "./stylusMode";
+import { BLACK_PEN, HIGHLIGHTER_COLOURS, PEN_WIDTHS, useHighlighterColour, usePenColour, usePenWidth } from "./stylusMode";
 import { PenColourDialog } from "./PenColourDialog";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
@@ -193,6 +194,10 @@ export function LongFormEditor({
   /** The device's pen colour for long-form notes, chosen from the pen menu. */
   const [penColour, setPenColour] = usePenColour();
   const [choosingPenColour, setChoosingPenColour] = useState(false);
+  /** The highlighter's colour (remembered on this device), and whether it's in use instead of the pen. */
+  const [highlighterColour, setHighlighterColour] = useHighlighterColour();
+  const [highlighting, setHighlighting] = useState(false);
+  const [choosingHighlighter, setChoosingHighlighter] = useState(false);
   /**
    * Handwritten details' pages. Each has its own canvas; they're all kept (stacked, only the current
    * one shown), so turning the page never redraws or moves what's written.
@@ -606,19 +611,33 @@ export function LongFormEditor({
 
   useCloseOnOutside(penMenu !== undefined, penMenuRef, () => setPenMenu(undefined));
 
-  /** A pen-thickness menu item: chooses it (for every canvas on this device), turns the eraser off and closes the menu. */
+  /**
+   * A pen-thickness menu item: chooses it (for every canvas on this device), goes back to the pen from
+   * the eraser or highlighter, and closes the menu.
+   */
   function onPenWidthClick(event: ReactMouseEvent, width: number) {
     if (ignoredTap(stylusMode, event)) return;
     setPenWidth(width);
     setErasing(false);
+    setHighlighting(false);
     setPenMenu(undefined);
   }
 
-  /** A pen colour (from the dialog, or black from the menu): drawn with from now on, and the eraser turns off. */
+  /** A pen colour (from the dialog, or black from the menu): drawn with from now on, back to the pen. */
   function choosePenColour(colour: string) {
     setPenColour(colour);
     setErasing(false);
+    setHighlighting(false);
     setChoosingPenColour(false);
+    setPenMenu(undefined);
+  }
+
+  /** A highlighter colour (from its dialog): the highlighter is used from now on, instead of the pen or eraser. */
+  function chooseHighlighter(colour: string) {
+    setHighlighterColour(colour);
+    setHighlighting(true);
+    setErasing(false);
+    setChoosingHighlighter(false);
     setPenMenu(undefined);
   }
 
@@ -922,6 +941,7 @@ export function LongFormEditor({
                 label="Details of the long-form note"
                 disabled={!detailsEditable || index !== pageIndex}
                 colour={penColour}
+                highlighter={highlighting ? highlighterColour : undefined}
                 erasing={erasing}
                 initialImage={page.image}
                 onInk={schedule}
@@ -964,20 +984,28 @@ export function LongFormEditor({
           >
             <FontAwesomeIcon icon={faEraser} />
           </button>
-          {/* One button (a scribble) that opens a menu of the pen thicknesses, above it. */}
+          {/*
+           * One button (a scribble, or a highlighter while that's in use) that opens the pen menu above it:
+           * the pen thicknesses, then the pen colour, black, and the highlighter.
+           */}
           <div className="lf-pen-menu" ref={penMenuRef}>
             <button
               ref={penMenuButton}
               type="button"
-              className="icon-button"
+              className={highlighting ? "icon-button lf-highlighting" : "icon-button"}
+              style={highlighting ? { background: highlighterColour } : undefined}
               aria-label="Pen thickness"
-              title={`Pen thickness: ${penWidth}px`}
+              title={highlighting ? "Highlighter" : `Pen thickness: ${penWidth}px`}
               aria-haspopup="menu"
               aria-expanded={penMenu !== undefined}
               disabled={busy || !detailsEditable}
               onClick={togglePenMenu}
             >
-              <ScribbleIcon colour={penColour === BLACK_PEN ? undefined : penColour} />
+              {highlighting ? (
+                <FontAwesomeIcon icon={faHighlighter} />
+              ) : (
+                <ScribbleIcon colour={penColour === BLACK_PEN ? undefined : penColour} />
+              )}
             </button>
             {penMenu && (
               <div className="tag-dropdown-list lf-pen-menu-list" role="menu" aria-label="Pen thickness" style={penMenu}>
@@ -986,13 +1014,13 @@ export function LongFormEditor({
                     key={width}
                     type="button"
                     role="menuitemradio"
-                    aria-checked={penWidth === width}
+                    aria-checked={!highlighting && penWidth === width}
                     aria-label={`Pen thickness ${width}px`}
                     className={penWidth === width ? "tag-option chosen" : "tag-option"}
                     onClick={(event) => onPenWidthClick(event, width)}
                   >
                     <span className="lf-pen-check" aria-hidden>
-                      {penWidth === width && <FontAwesomeIcon icon={faCheck} />}
+                      {!highlighting && penWidth === width && <FontAwesomeIcon icon={faCheck} />}
                     </span>
                     <span className="lf-pen-sample" style={{ height: width }} />
                     <span className="lf-pen-size">{width}px</span>
@@ -1016,12 +1044,28 @@ export function LongFormEditor({
                   type="button"
                   role="menuitem"
                   className="tag-option"
-                  disabled={penColour === BLACK_PEN}
+                  disabled={!highlighting && penColour === BLACK_PEN}
                   onClick={menuAction(() => choosePenColour(BLACK_PEN))}
                 >
                   <span className="lf-pen-check" aria-hidden />
                   <span className="lf-pen-swatch" style={{ background: BLACK_PEN }} aria-hidden />
                   Black pen
+                </button>
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={highlighting}
+                  className="tag-option"
+                  onClick={menuAction(() => {
+                    setPenMenu(undefined);
+                    setChoosingHighlighter(true);
+                  })}
+                >
+                  <span className="lf-pen-check" aria-hidden>
+                    {highlighting && <FontAwesomeIcon icon={faCheck} />}
+                  </span>
+                  <span className="lf-pen-swatch light" style={{ background: highlighterColour }} aria-hidden />
+                  Highlighter…
                 </button>
               </div>
             )}
@@ -1181,6 +1225,18 @@ export function LongFormEditor({
             if (!ignoredTap(stylusMode, event)) choosePenColour(colour);
           }}
           onCancel={() => setChoosingPenColour(false)}
+        />
+      )}
+      {choosingHighlighter && (
+        <PenColourDialog
+          title="Highlighter colour"
+          colours={HIGHLIGHTER_COLOURS}
+          light
+          colour={highlighting ? highlighterColour : undefined}
+          onChoose={(colour, event) => {
+            if (!ignoredTap(stylusMode, event)) chooseHighlighter(colour);
+          }}
+          onCancel={() => setChoosingHighlighter(false)}
         />
       )}
       {confirmingAddPage && (

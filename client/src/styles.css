@@ -1759,6 +1759,21 @@ body:has(.note-list li.dragging) {
   cursor: pointer;
 }
 
+/* Light colours (the highlighter's): a dark tick, and a faint edge so the palest show on white. */
+.pen-colours.light .pen-colour {
+  border-color: rgb(0 0 0 / 0.12);
+  color: #333;
+}
+
+.lf-pen-swatch.light {
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+}
+
+/* The pen button while the highlighter is in use: the highlighter's colour (set inline), with a dark icon. */
+.icon-button.lf-highlighting {
+  color: #333;
+}
+
 .pen-colour[aria-pressed="true"] {
   outline: 2px solid var(--text);
   outline-offset: 2px;
