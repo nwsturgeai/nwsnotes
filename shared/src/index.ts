@@ -631,6 +631,12 @@ export type SmsStatus =
   | { smsNumber: string; linked: true; phoneNumber: string; linkedDateTime: string };
 
 /** POST /api/me/sms/link-code: the code to text to the nwsnotes number, from the phone being linked. */
+/** GET /api/google: whether the user's Google Calendar is connected, and any problem that has stopped the sync. */
+export interface GoogleStatus {
+  connected: boolean;
+  problem?: string;
+}
+
 export interface SmsLinkCode {
   code: string;
   smsNumber: string;

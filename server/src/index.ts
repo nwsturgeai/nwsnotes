@@ -72,7 +72,7 @@ async function main() {
   if (config.email) console.log(`Emails are sent from ${config.email.from}, through Brevo.`);
   const sms = config.sms && new SmsNotes(config.sms, notebooks, live, push, config.sessionSecret, mailer, sharing);
   if (config.sms) console.log(`Notes can be texted to ${config.sms.number}.`);
-  const google = config.google && new GoogleCalendar(config.google, db, notebooks, push);
+  const google = config.google && new GoogleCalendar(config.google, db, notebooks, push, live);
   if (google) {
     await google.init();
     push.alertsElsewhere = (userId, noteId) => google.alertsInGoogle(userId, noteId);

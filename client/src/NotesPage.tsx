@@ -1808,7 +1808,7 @@ export function NotesPage({
                               <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
                             )}
                             {note.dueDateTime ? "Due " : "Cr. "}
-                            {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
+                            {formatNoteDate(note.dueDateTime ?? note.createdDateTime, note.dueDateTime !== undefined && note.allDay === true)}
                           </time>
                         );
                         // Tapping it sets, changes or clears the due date. Only a note's owner can; not while
@@ -1818,7 +1818,7 @@ export function NotesPage({
                           <button
                             type="button"
                             className="note-date-button"
-                            aria-label={note.dueDateTime ? `Due ${formatNoteDate(note.dueDateTime)}: change due date` : "Set due date"}
+                            aria-label={note.dueDateTime ? `Due ${formatNoteDate(note.dueDateTime, note.allDay === true)}: change due date` : "Set due date"}
                             // Another note being edited is saved first, as with the note's other buttons.
                             data-saves-edit={editing ? undefined : true}
                             disabled={editing ? saving : busy}

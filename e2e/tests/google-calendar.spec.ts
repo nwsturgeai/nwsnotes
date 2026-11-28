@@ -1,5 +1,5 @@
-import type { APIRequestContext } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import type { APIRequestContext, Page } from "@playwright/test";
+import { expect, noteRow, openNotes, test } from "./fixtures";
 
 /*
  * Google Calendar (Specs/google-calendar.md), against the fake Google in the test server (see
@@ -8,7 +8,8 @@ import { expect, test } from "./fixtures";
  * "Holiday plans", is long-form with typed details.
  */
 test.beforeEach(() => {
-  test.skip(test.info().project.name !== "desktop", "Through the API, apart from Settings: once is enough.");
+  // The page tests ("In the app: ...") run at both sizes.
+  test.skip(test.info().project.name !== "desktop" && !test.info().title.startsWith("In the app"), "Through the API: once is enough.");
 });
 
 interface EventTime {
@@ -499,4 +500,57 @@ test("disconnecting stops the sync and leaves the calendar in Google", async ({ 
   const cal = await calendar(request);
   expect(cal.channels).toBe(0);
   expect(cal.events).toEqual([expect.objectContaining({ summary: "Buy milk" })]);
+});
+
+/** Opens Settings, at the Google Calendar section. */
+async function googleSection(page: Page) {
+  await openNotes(page);
+  await page.getByRole("link", { name: "Settings" }).click();
+  const section = page.locator("section.google-calendar");
+  await expect(section.getByRole("heading", { name: "Google Calendar" })).toBeVisible();
+  return section;
+}
+
+test("In the app: Settings connects Google Calendar, says how it went, and disconnects it", async ({ page }) => {
+  let section = await googleSection(page);
+  await expect(section).toContainText('nwsnotes makes a calendar called "nwsnotes" in your Google account.');
+
+  // Declined at Google's sign-in.
+  await page.request.post(`${control}/settings`, { data: { declineNext: true } });
+  await section.getByRole("link", { name: "Connect Google Calendar" }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  section = page.locator("section.google-calendar");
+  await expect(section.getByRole("status")).toHaveText("Google Calendar wasn't connected, as access wasn't allowed.");
+
+  // Allowed: connected, and the address is tidied.
+  await section.getByRole("link", { name: "Connect Google Calendar" }).click();
+  await expect(section.getByRole("status")).toHaveText("Google Calendar is connected.");
+  await expect(page).toHaveURL(/\/settings$/);
+  await expect(section).toContainText("Connected. Notes with a due date are in the nwsnotes calendar");
+  await expect(section).toContainText("#Garden_ideas");
+
+  // A problem that has stopped the sync shows, with Connect again.
+  await page.request.post(`${control}/revoke-all`);
+  await page.request.post("/api/test/google-sync");
+  await page.reload();
+  section = page.locator("section.google-calendar");
+  await expect(section.getByRole("alert")).toHaveText("Google no longer lets nwsnotes use your calendar. Connect again to carry on.");
+  await section.getByRole("link", { name: "Connect again" }).click();
+  await expect(section.getByRole("status")).toHaveText("Google Calendar is connected.");
+  await expect(section.getByRole("alert")).toHaveCount(0);
+
+  // Disconnecting asks first.
+  await section.getByRole("button", { name: "Disconnect" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Disconnect" }).click();
+  await expect(section.getByRole("link", { name: "Connect Google Calendar" })).toBeVisible();
+  expect(await (await page.request.get("/api/google")).json()).toEqual({ connected: false });
+});
+
+test("In the app: an event added in Google shows as a note straight away, all-day ones as \"all day\"", async ({ page }) => {
+  await connect(page.request);
+  await openNotes(page);
+  await addEvent(page.request, { summary: "Bin day #Home", start: { date: "2030-01-07" }, end: { date: "2030-01-08" } });
+  // By the webhook and the live update: no reload.
+  await expect(noteRow(page, "Bin day").locator("time")).toHaveText("Due 07/01/30 all day");
+  await expect(noteRow(page, "Bin day").locator(".pills li")).toHaveText(["Home", "New"]);
 });

@@ -32,6 +32,7 @@ import {
   type Tab,
   type NoteOrderRequest,
   type NoteStats,
+  type GoogleStatus,
   type SmsLinkCode,
   type SmsStatus,
   type TabRequest,
@@ -210,6 +211,9 @@ export const api = {
   smsStatus: () => request<SmsStatus>("GET", "/api/me/sms"),
   smsLinkCode: () => request<SmsLinkCode>("POST", "/api/me/sms/link-code"),
   smsUnlink: () => request<SmsStatus>("DELETE", "/api/me/sms"),
+  /** Google Calendar: whether it's connected, and disconnecting it (connecting is a visit to GOOGLE_CONNECT_PATH). */
+  googleStatus: () => request<GoogleStatus>("GET", "/api/google"),
+  googleDisconnect: () => request<GoogleStatus>("POST", "/api/google/disconnect"),
   /** Changing your own password: this page stays logged in, your other devices are logged out. */
   changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
   changeName: (body: NameChangeRequest) => request<Me>("PUT", "/api/me/name", body, changeHeaders()),

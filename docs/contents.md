@@ -17,3 +17,4 @@
 15. [Offline use and installing the app](offline.md)
 16. [Texting notes in, from the car](text-messages.md)
 17. [Sharing Tags with other people](sharing.md)
+18. [Google Calendar](google-calendar.md)

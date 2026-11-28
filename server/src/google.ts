@@ -34,6 +34,7 @@ import {
 } from "@nwsnotes/shared";
 import type { GoogleConfig } from "./config.js";
 import type { Db } from "./db.js";
+import type { LiveUpdates } from "./live.js";
 import type { Notebooks } from "./notebooks.js";
 import type { PushReminders } from "./push.js";
 import { RequestError, type CalendarChange, type NoteStore } from "./store.js";
@@ -344,6 +345,7 @@ export class GoogleCalendar {
     private readonly db: Db,
     private readonly notebooks: Notebooks,
     private readonly push: PushReminders,
+    private readonly live: LiveUpdates,
   ) {
     this.api = new GoogleApi(config);
   }
@@ -703,7 +705,10 @@ export class GoogleCalendar {
       nextSyncToken = page.nextSyncToken;
       break;
     }
+    const before = store.notesAndCategories().notes;
     for (const event of events) await this.applyEvent(userId, store, event);
+    // The user's open pages show the changes straight away (their other users' are told by Notebooks).
+    if (store.notesAndCategories().notes !== before) this.live.notifyChanged(userId, undefined);
     account = this.accounts.get(userId)!;
     if (nextSyncToken && nextSyncToken !== account.syncToken) await this.saveAccount(userId, { ...account, syncToken: nextSyncToken });
   }
