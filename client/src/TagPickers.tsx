@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCaretDown, faCaretRight, faCheck, faLock, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { LIFETIME_CATEGORY_ID, tagLabel, type Category, type Note, type TabFilter, type Tag } from "@nwsnotes/shared";
@@ -264,6 +264,7 @@ function TagDropdown({
   const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set());
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const withNone = checkList && noneOption === true;
   const names =
     withNone && noneChosen
@@ -335,6 +336,17 @@ function TagDropdown({
     };
   }, [open]);
 
+  // The list is as wide as its options need (up to the window's width). Left-aligned with its button where it
+  // fits; near the window's right edge it moves left instead of being squeezed narrow. Again when unfolding
+  // options widens it.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !position) return;
+    list.style.left = `${position.left}px`;
+    const overflow = list.getBoundingClientRect().right - (document.documentElement.clientWidth - LIST_MARGIN_PX);
+    if (overflow > 0) list.style.left = `${Math.max(LIST_MARGIN_PX, position.left - overflow)}px`;
+  }, [position, folded]);
+
   function choose(tagId: number | undefined) {
     onChange(tagId === undefined ? [] : [tagId]);
     close();
@@ -399,10 +411,20 @@ function TagDropdown({
       {open && (
         <div
           className="tag-dropdown-list"
+          ref={listRef}
           id={listId}
           role="group"
           aria-label={category.name}
-          style={{ left: position.left, top: position.top, bottom: position.bottom, "--list-room": `${position.room}px` } as CSSProperties}
+          style={
+            {
+              left: position.left,
+              top: position.top,
+              bottom: position.bottom,
+              width: "max-content",
+              maxWidth: `calc(100vw - ${2 * LIST_MARGIN_PX}px)`,
+              "--list-room": `${position.room}px`,
+            } as CSSProperties
+          }
         >
           {/* "select all" ticks every tag (greyed out once they all are); "clear selection" unticks every tag
               and "(None)", but not a tag the tab fixes (greyed out once nothing else is ticked). */}
