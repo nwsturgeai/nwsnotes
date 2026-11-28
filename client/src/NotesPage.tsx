@@ -1886,6 +1886,7 @@ export function NotesPage({
       {choosingDueDate && (
         <DueDateDialog
           due={dueDate}
+          newNote={!editingNote}
           onSet={(value) => {
             setDueDate(value);
             setChoosingDueDate(false);

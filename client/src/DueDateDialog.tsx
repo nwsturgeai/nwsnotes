@@ -28,9 +28,34 @@ export function dueTitle(due: Due, allDay = false): string {
   return `Due ${formatNoteDate(due.dueDateTime, allDay)}${due.noReminder ? " (no reminder)" : ""}`;
 }
 
+/** This device's last "Remind me?" choice for a new note's due date: "off" when it was unticked. */
+const NEW_NOTE_REMIND_KEY = "nwsnotes.newNoteRemind";
+
+function rememberedRemind(): boolean {
+  try {
+    return localStorage.getItem(NEW_NOTE_REMIND_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function rememberRemind(remind: boolean) {
+  try {
+    if (remind) localStorage.removeItem(NEW_NOTE_REMIND_KEY);
+    else localStorage.setItem(NEW_NOTE_REMIND_KEY, "off");
+  } catch {
+    // Not remembered (storage blocked): next time starts ticked.
+  }
+}
+
 interface Props {
   /** The note's current due date, if it has one. */
   due: Due | undefined;
+  /**
+   * For a note being added: with no due date yet, "Remind me?" starts as it was last set for a new note on
+   * this device, and the choice made here is remembered for the next one.
+   */
+  newNote?: boolean;
   /** A new due date, or undefined for "Clear Due Date". */
   onSet: (due: Due | undefined) => void;
   onCancel: () => void;
@@ -47,14 +72,14 @@ function defaultDueDate(): Date {
 }
 
 /** The app's own pop-up for choosing a note's due date, with the device's date and time pickers. */
-export function DueDateDialog({ due, onSet, onCancel }: Props) {
+export function DueDateDialog({ due, newNote = false, onSet, onCancel }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const start = due ? new Date(due.dueDateTime) : defaultDueDate();
   // The pickers work in local time: "2026-11-09" and "20:00".
   const [day, setDay] = useState(`${start.getFullYear()}-${two(start.getMonth() + 1)}-${two(start.getDate())}`);
   const [time, setTime] = useState(`${two(start.getHours())}:${two(start.getMinutes())}`);
-  // Ticked for a new due date; otherwise as the note has it.
-  const [remind, setRemind] = useState(due?.noReminder !== true);
+  // As the note has it; for a new due date ticked, or for a note being added as last time on this device.
+  const [remind, setRemind] = useState(() => (due ? due.noReminder !== true : !newNote || rememberedRemind()));
 
   useEffect(() => {
     const dialog = ref.current;
@@ -92,7 +117,10 @@ export function DueDateDialog({ due, onSet, onCancel }: Props) {
           type="button"
           className="button primary"
           disabled={!valid}
-          onClick={() => onSet({ dueDateTime: chosen.toISOString(), ...(!remind && { noReminder: true as const }) })}
+          onClick={() => {
+            if (newNote) rememberRemind(remind);
+            onSet({ dueDateTime: chosen.toISOString(), ...(!remind && { noReminder: true as const }) });
+          }}
           autoFocus
         >
           Set Due Date

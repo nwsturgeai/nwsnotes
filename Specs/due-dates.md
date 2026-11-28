@@ -43,6 +43,7 @@ A note is due
 - **The dialog:** the app's own pop-up, titled "Due date", with a date box and a time box (the device's own pickers).
   - With no due date yet, it starts at 20:00 today, or tomorrow if it's already 20:00 or later.
   - Below the date and time, a "Remind me?" tickbox: ticked for a new due date, otherwise as the note has it. Unticked, the note has a due date but no reminder (see "No reminder" below).
+    - For a note being added, a new due date's tickbox starts as it was last set for a note being added on this device (kept in the browser's storage as `nwsnotes.newNoteRemind`, "off" while unticked). Notes already added, and long-form notes, aren't affected and don't change it.
   - Buttons: "Cancel", "Clear Due Date" (only if the note has a due date) and "Set Due Date" (the green main button). Escape counts as Cancel.
 - **Saved with the note:** the chosen date is only saved when Add or Update is tapped. Cancelling an edit drops it.
   - Unlike the tags, it doesn't carry over: after a note is added, the next new note starts with no due date.

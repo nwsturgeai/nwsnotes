@@ -191,6 +191,44 @@ test("\"Remind me?\" unticked gives a due date with no reminder, shown by a cros
   await expect(page.locator(".history-list > li .history-summary").first()).toHaveText('Turned on the reminder for "Buy oat milk"');
 });
 
+test("\"Remind me?\" for a new note's due date starts as it was last set for a new note on this device", async ({ page }) => {
+  await openNotes(page);
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  const dialog = page.getByRole("dialog", { name: "Due date" });
+  const remind = dialog.getByRole("checkbox", { name: "Remind me?" });
+  const due = dayFromNow(6);
+  const openForNewNote = () => addArea(page).getByRole("button", { name: /^(Set|Change) due date$/ }).click();
+
+  // Unticked for one new note...
+  await openForNewNote();
+  await expect(remind).toBeChecked();
+  await dialog.getByLabel("Due date").fill(due.input);
+  await remind.uncheck();
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await addNote(page, "Call the garage");
+  await expect(noteRow(page, "Call the garage").locator(".note-no-reminder")).toBeVisible();
+
+  // ...it starts unticked for the next, even after a reload.
+  await page.reload();
+  await openForNewNote();
+  await expect(remind).not.toBeChecked();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Not for a note already added: its own due date starts ticked.
+  await noteRow(page, "Buy milk").getByText("Cr.").click();
+  await expect(remind).toBeChecked();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Ticked again for a new note: the next one starts ticked.
+  await openForNewNote();
+  await remind.check();
+  await dialog.getByRole("button", { name: "Set Due Date" }).click();
+  await addNote(page, "Book the MOT");
+  await expect(noteRow(page, "Book the MOT").locator(".note-no-reminder")).toHaveCount(0);
+  await openForNewNote();
+  await expect(remind).toBeChecked();
+});
+
 test("tapping the date of the note being edited changes the due date saved with the edit", async ({ page }) => {
   await openNotes(page);
   const row = noteRow(page, "Buy milk");
