@@ -31,8 +31,8 @@ test("with no tabs set to Left there's no left strip", async ({ page }) => {
   await expect(topTabs(page)).toHaveText(["All", "Work", "Home", "On hold"]);
   // The filter row starts at the screen's edge.
   expect((await page.locator(".filter-row").boundingBox())!.x).toBeLessThan(2);
-  // The top tabs start 12px in, as before.
-  expect((await topTabs(page).first().boundingBox())!.x).toBe(12);
+  // The top tabs start after the top-left corner (the Undo button's place), 40px in.
+  expect((await topTabs(page).first().boundingBox())!.x).toBe(40);
 });
 
 test("a chevron button at the bottom of the left strip hides it, and floats over the list to show it again, remembered for every tab", async ({ page }) => {
@@ -67,7 +67,7 @@ test("a chevron button at the bottom of the left strip hides it, and floats over
   await expect(leftStrip(page)).toHaveCount(0);
   await expect(show.locator("svg")).toHaveAttribute("data-icon", "chevron-right");
   expect((await page.locator(".filter-row").boundingBox())!.x).toBeLessThan(2);
-  expect((await topTabs(page).first().boundingBox())!.x).toBe(12);
+  expect((await topTabs(page).first().boundingBox())!.x).toBe(40);
   expect(await show.boundingBox()).toEqual(button);
   const list = (await page.locator(".note-list").boundingBox())!;
   expect(button.x).toBeGreaterThanOrEqual(list.x);

@@ -12,7 +12,7 @@ const ERROR_MESSAGE_MS = 10_000;
 const BLOCKED_HINT = "Finish or cancel the edit first";
 
 /**
- * The notes page's Undo button, left of the Settings cog (see Specs/undo.md), and the message after it's
+ * The notes page's Undo button, in the top-left corner (see Specs/undo.md), and the message after it's
  * used. Shows only while there's something to undo (or redo) from the last 5 minutes.
  */
 export function useUndoButton({ blocked, onUndone, onSessionExpired }: { blocked: boolean; onUndone: () => void; onSessionExpired: () => void }) {
