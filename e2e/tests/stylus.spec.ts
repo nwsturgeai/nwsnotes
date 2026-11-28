@@ -276,6 +276,63 @@ test("the pen menu chooses a pen colour for long-form notes, remembered on this 
   expect(await inkColour(details, 0.55, 0.65)).toEqual([0, 0, 0]);
 });
 
+/** How many fully opaque pixels of exactly this colour a canvas has. */
+function pixelsOf(canvas: Locator, [r, g, b]: [number, number, number]): Promise<number> {
+  return canvas.evaluate(
+    (element: HTMLCanvasElement, [r, g, b]: [number, number, number]) => {
+      const data = element.getContext("2d")!.getImageData(0, 0, element.width, element.height).data;
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) if (data[i] === r && data[i + 1] === g && data[i + 2] === b && data[i + 3] === 255) count++;
+      return count;
+    },
+    [r, g, b] as [number, number, number],
+  );
+}
+
+test("the pen menu's highlighter draws thick lines behind the writing, until the pen is chosen again", async ({ page }) => {
+  const editor = await newHandwrittenLongForm(page, "Highlights");
+  const penButton = editor.getByRole("button", { name: "Pen thickness" });
+  const penMenu = page.getByRole("menu", { name: "Pen thickness" });
+  const details = editor.getByRole("img", { name: "Details of the long-form note" });
+  await expect(penButton).toBeEnabled();
+  await draw(page, details, 0.2, 0.6);
+  const black = await pixelsOf(details, [0, 0, 0]);
+  expect(black).toBeGreaterThan(0);
+
+  // "Highlighter…" opens a pop-up of light colours; choosing one turns the highlighter on.
+  await penButton.click();
+  await expect(penMenu.getByRole("menuitemcheckbox", { name: "Highlighter…" })).toHaveAttribute("aria-checked", "false");
+  await penMenu.getByRole("menuitemcheckbox", { name: "Highlighter…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Highlighter colour" });
+  await dialog.getByRole("button", { name: "Yellow" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(penButton).toHaveAttribute("title", "Highlighter");
+
+  // Highlighting over the line leaves every bit of the line as it was: the highlight goes behind it.
+  await draw(page, details, 0.1, 0.7);
+  const yellow = await pixelsOf(details, [0xff, 0xf1, 0x76]);
+  expect(yellow).toBeGreaterThan(black);
+  expect(await pixelsOf(details, [0, 0, 0])).toBe(black);
+  // Thick: the highlight is much taller than the 2.5px line.
+  const tall = await details.evaluate((element: HTMLCanvasElement) => {
+    const data = element.getContext("2d")!.getImageData(Math.floor(element.width * 0.65), 0, 1, element.height).data;
+    let count = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i]! > 0) count++;
+    return count;
+  });
+  expect(tall).toBeGreaterThan(25);
+
+  // In the menu it's ticked, not the thickness; choosing a thickness goes back to the pen.
+  await penButton.click();
+  await expect(penMenu.getByRole("menuitemcheckbox", { name: "Highlighter…" })).toHaveAttribute("aria-checked", "true");
+  await expect(penMenu.getByRole("menuitemradio", { name: "Pen thickness 2.5px" })).toHaveAttribute("aria-checked", "false");
+  await penMenu.getByRole("menuitemradio", { name: "Pen thickness 2.5px" }).click();
+  await expect(penButton).toHaveAttribute("title", "Pen thickness: 2.5px");
+  // The pen draws on top of the highlight.
+  await draw(page, details, 0.62, 0.68);
+  expect(await pixelsOf(details, [0, 0, 0])).toBeGreaterThan(black);
+});
+
 test("the pen colour doesn't apply to regular notes' handwritten titles", async ({ page }) => {
   await page.evaluate(() => localStorage.setItem("nwsnotes.penColour", "#1f5fd1"));
   await page.reload();
