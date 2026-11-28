@@ -43,6 +43,8 @@ interface Props {
    * then keeps what's written (cut off if it no longer fits) rather than clearing it.
    */
   fill?: boolean;
+  /** The colour new strokes are drawn in (default black). */
+  colour?: string;
   label?: string;
 }
 
@@ -64,7 +66,17 @@ function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
  * A canvas to write a note on. Only a stylus (or a mouse, for testing on a computer) draws;
  * fingers and palms are ignored.
  */
-export function StylusPad({ ref, disabled, onInk, onInkChange, erasing, initialImage, fill, label = "Writing area for a new note" }: Props) {
+export function StylusPad({
+  ref,
+  disabled,
+  onInk,
+  onInkChange,
+  erasing,
+  initialImage,
+  fill,
+  colour = "#000",
+  label = "Writing area for a new note",
+}: Props) {
   const inkChanged = useRef(onInkChange);
   inkChanged.current = onInkChange;
   /** Tells `onInkChange` whether there's ink now. */
@@ -185,8 +197,8 @@ export function StylusPad({ ref, disabled, onInk, onInkChange, erasing, initialI
     const context = canvasRef.current!.getContext("2d")!;
     context.setTransform(INK_SCALE, 0, 0, INK_SCALE, 0, 0);
     context.globalCompositeOperation = erase ? "destination-out" : "source-over";
-    context.strokeStyle = "#000";
-    context.fillStyle = "#000";
+    context.strokeStyle = colour;
+    context.fillStyle = colour;
     context.lineWidth = erase ? ERASER_SIZE : penWidth;
     context.lineCap = "round";
     context.lineJoin = "round";

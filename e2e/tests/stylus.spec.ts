@@ -129,7 +129,7 @@ test("the eraser removes ink from handwritten long-form details", async ({ page 
   await expect(eraser).toHaveAttribute("aria-pressed", "false");
 });
 
-test("the long-form editor has pen-thickness buttons beside the eraser, sharing the setting", async ({ page }) => {
+test("the long-form editor has a pen-thickness menu beside the eraser, sharing the setting", async ({ page }) => {
   await turnOnStylusMode(page);
   await page.getByRole("button", { name: "Show all tags" }).click();
   await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
@@ -137,28 +137,36 @@ test("the long-form editor has pen-thickness buttons beside the eraser, sharing 
   await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Thick and thin");
   await editor.getByRole("button", { name: "Accept title" }).click();
 
-  const pens = editor.getByRole("radiogroup", { name: "Pen thickness" }).getByRole("radio");
+  // One button, which opens a menu of the three thicknesses (above it), with the current one ticked.
+  const penButton = editor.getByRole("button", { name: "Pen thickness" });
+  await expect(penButton).toHaveAttribute("aria-haspopup", "menu");
+  await expect(page.getByRole("menu", { name: "Pen thickness" })).toHaveCount(0);
+  await penButton.click();
+  const penMenu = page.getByRole("menu", { name: "Pen thickness" });
+  const pens = penMenu.getByRole("menuitemradio");
   await expect(pens).toHaveCount(3);
-  await expect(editor.getByRole("radio", { name: "Pen thickness 2.5px" })).toHaveAttribute("aria-checked", "true");
+  await expect(penMenu.getByRole("menuitemradio", { name: "Pen thickness 2.5px" })).toHaveAttribute("aria-checked", "true");
+  await expect(penMenu.getByRole("menuitemradio", { name: "Pen thickness 1.5px" })).toHaveAttribute("aria-checked", "false");
+  const penButtonBox = (await penButton.boundingBox())!;
+  expect((await penMenu.boundingBox())!.y + (await penMenu.boundingBox())!.height).toBeLessThanOrEqual(penButtonBox.y);
+  // Escape closes it.
+  await page.keyboard.press("Escape");
+  await expect(penMenu).toHaveCount(0);
 
   // Right of the eraser with a wider gap, and Cancel then Finish at the far right of the row.
   const eraser = editor.getByRole("button", { name: "Eraser" });
   const eraserBox = (await eraser.boundingBox())!;
-  const firstPen = (await pens.first().boundingBox())!;
-  const secondPen = (await pens.nth(1).boundingBox())!;
-  expect(Math.round(firstPen.x - (eraserBox.x + eraserBox.width))).toBe(16);
-  expect(Math.round(secondPen.x - (firstPen.x + firstPen.width))).toBe(4);
+  expect(Math.round(penButtonBox.x - (eraserBox.x + eraserBox.width))).toBe(16);
   const cancel = (await editor.getByRole("button", { name: "Cancel" }).boundingBox())!;
   const finish = (await editor.getByRole("button", { name: "Finish" }).boundingBox())!;
   const row = (await page.locator(".lf-finish").boundingBox())!;
   expect(Math.round(row.x + row.width - (finish.x + finish.width))).toBe(0);
   expect(cancel.x).toBeLessThan(finish.x);
   expect(finish.width).toBe(40);
-  // The pages come after the pens, with the same wider gap: "1/1", Previous, Next and the page menu.
+  // The pages come after the pen button, with the same wider gap: "1/1", Previous, Next and the page menu.
   const pages = editor.getByRole("group", { name: "Pages" });
   const pagesBox = (await pages.boundingBox())!;
-  const lastPen = (await pens.last().boundingBox())!;
-  expect(Math.round(pagesBox.x - (lastPen.x + lastPen.width))).toBe(16);
+  expect(Math.round(pagesBox.x - (penButtonBox.x + penButtonBox.width))).toBe(16);
   await expect(pages).toHaveText("1/1");
   const previousBox = (await pages.getByRole("button", { name: "Previous page" }).boundingBox())!;
   const nextBox = (await pages.getByRole("button", { name: "Next page" }).boundingBox())!;
@@ -169,16 +177,23 @@ test("the long-form editor has pen-thickness buttons beside the eraser, sharing 
   const exportBox = (await editor.getByRole("button", { name: "Export as image" }).boundingBox())!;
   expect(Math.round(cancel.x - (exportBox.x + exportBox.width))).toBe(24);
 
-  // Choosing a thickness turns the eraser off, and draws at it.
+  // Choosing a thickness closes the menu, turns the eraser off, and draws at it.
   await eraser.click();
   await expect(eraser).toHaveAttribute("aria-pressed", "true");
-  await editor.getByRole("radio", { name: "Pen thickness 4.5px" }).click();
+  await penButton.click();
+  await penMenu.getByRole("menuitemradio", { name: "Pen thickness 4.5px" }).click();
+  await expect(penMenu).toHaveCount(0);
   await expect(eraser).toHaveAttribute("aria-pressed", "false");
-  await expect(editor.getByRole("radio", { name: "Pen thickness 4.5px" })).toHaveAttribute("aria-checked", "true");
+  await penButton.click();
+  await expect(penMenu.getByRole("menuitemradio", { name: "Pen thickness 4.5px" })).toHaveAttribute("aria-checked", "true");
+  // Clicking elsewhere closes it, choosing nothing.
+  await editor.click({ position: { x: 5, y: 5 } });
+  await expect(penMenu).toHaveCount(0);
   const details = editor.getByRole("img", { name: "Details of the long-form note" });
   await draw(page, details, 0.2, 0.4);
   const thick = await inkPixels(details);
-  await editor.getByRole("radio", { name: "Pen thickness 1.5px" }).click();
+  await penButton.click();
+  await penMenu.getByRole("menuitemradio", { name: "Pen thickness 1.5px" }).click();
   await draw(page, details, 0.5, 0.7);
   expect((await inkPixels(details)) - thick).toBeLessThan(thick / 2);
 
@@ -186,6 +201,100 @@ test("the long-form editor has pen-thickness buttons beside the eraser, sharing 
   await editor.getByRole("button", { name: "Finish" }).click();
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("radio", { name: "Pen thickness 1.5px" })).toHaveAttribute("aria-checked", "true");
+});
+
+/**
+ * The colour of the most opaque ink on a canvas, between these fractions of its width, as [r, g, b]
+ * (or undefined when there's none).
+ */
+function inkColour(canvas: Locator, from = 0, to = 1): Promise<[number, number, number] | undefined> {
+  return canvas.evaluate(
+    (element: HTMLCanvasElement, [from, to]: [number, number]) => {
+      const left = Math.floor(element.width * from);
+      const width = Math.max(1, Math.floor(element.width * to) - left);
+      const data = element.getContext("2d")!.getImageData(left, 0, width, element.height).data;
+      let best = -1;
+      for (let i = 0; i < data.length; i += 4) if (data[i + 3]! > (best < 0 ? 0 : data[best + 3]!)) best = i;
+      return best < 0 ? undefined : [data[best]!, data[best + 1]!, data[best + 2]!];
+    },
+    [from, to] as [number, number],
+  );
+}
+
+test("the pen menu chooses a pen colour for long-form notes, remembered on this device, and back to black", async ({ page }) => {
+  let editor = await newHandwrittenLongForm(page, "Colours");
+  const penButton = editor.getByRole("button", { name: "Pen thickness" });
+  const penMenu = page.getByRole("menu", { name: "Pen thickness" });
+  const details = editor.getByRole("img", { name: "Details of the long-form note" });
+
+  // Black to start with, so "Black pen" is greyed out.
+  await penButton.click();
+  await expect(penMenu.getByRole("menuitem", { name: "Black pen" })).toBeDisabled();
+
+  // "Pen colour…" opens a pop-up of colours (the menu closes); Cancel changes nothing.
+  await penMenu.getByRole("menuitem", { name: "Pen colour…" }).click();
+  await expect(penMenu).toHaveCount(0);
+  const dialog = page.getByRole("dialog", { name: "Pen colour" });
+  await expect(dialog.getByRole("button", { name: "Red" })).toHaveAttribute("aria-pressed", "false");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // Choosing Red closes the pop-up, turns the eraser off, and draws in red.
+  const eraser = editor.getByRole("button", { name: "Eraser" });
+  await eraser.click();
+  await penButton.click();
+  await penMenu.getByRole("menuitem", { name: "Pen colour…" }).click();
+  await dialog.getByRole("button", { name: "Red" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(eraser).toHaveAttribute("aria-pressed", "false");
+  await draw(page, details, 0.2, 0.4);
+  expect(await inkColour(details)).toEqual([0xd0, 0x31, 0x2d]);
+
+  // It's remembered on this device, ticked in the pop-up.
+  await editor.getByRole("button", { name: "Finish" }).click();
+  await expect(editor).toHaveCount(0);
+  await page.reload();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Still red");
+  await editor.getByRole("button", { name: "Accept title" }).click();
+  await expect(editor.getByRole("button", { name: "Pen thickness" })).toBeEnabled();
+  await editor.getByRole("button", { name: "Pen thickness" }).click();
+  await expect(penMenu.getByRole("menuitem", { name: "Black pen" })).toBeEnabled();
+  await penMenu.getByRole("menuitem", { name: "Pen colour…" }).click();
+  await expect(dialog.getByRole("button", { name: "Red" })).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await draw(page, details, 0.2, 0.4);
+  expect(await inkColour(details)).toEqual([0xd0, 0x31, 0x2d]);
+
+  // "Black pen" sets it back to black.
+  await editor.getByRole("button", { name: "Pen thickness" }).click();
+  await penMenu.getByRole("menuitem", { name: "Black pen" }).click();
+  await expect(penMenu).toHaveCount(0);
+  await draw(page, details, 0.5, 0.7);
+  expect(await inkColour(details, 0.55, 0.65)).toEqual([0, 0, 0]);
+});
+
+test("the pen colour doesn't apply to regular notes' handwritten titles", async ({ page }) => {
+  await page.evaluate(() => localStorage.setItem("nwsnotes.penColour", "#1f5fd1"));
+  await page.reload();
+  await turnOnStylusMode(page);
+  const pad = addArea(page).getByRole("img", { name: "Writing area for a new note" });
+  await draw(page, pad);
+  expect(await inkColour(pad)).toEqual([0, 0, 0]);
+  // While a long-form note's details are in blue.
+  await addArea(page).getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: "Show all tags" }).click();
+  await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+  const editor = page.getByRole("dialog", { name: "Long-form note" });
+  await editor.getByRole("textbox", { name: "Long-form note title" }).fill("Blue");
+  await editor.getByRole("button", { name: "Accept title" }).click();
+  // Ready to write in once the pen button is enabled.
+  await expect(editor.getByRole("button", { name: "Pen thickness" })).toBeEnabled();
+  const details = editor.getByRole("img", { name: "Details of the long-form note" });
+  await draw(page, details);
+  expect(await inkColour(details)).toEqual([0x1f, 0x5f, 0xd1]);
 });
 
 test("with a handwritten long-form note open, the add area is collapsed and can't be expanded", async ({ page }) => {
@@ -425,10 +534,10 @@ test("handwritten long-form details have at most 10 pages", async ({ page }) => 
   expect((await response.json()).error).toBe("The handwritten details have 11 pages; the most is 10.");
 });
 
-test("on a narrow screen, the Previous and Next page buttons are hidden, then the pen thicknesses", async ({ page }) => {
+test("on a narrow screen, the Previous and Next page buttons are hidden, then the pen thickness button", async ({ page }) => {
   const editor = await newHandwrittenLongForm(page, "Narrow");
   await expect(editor.getByRole("button", { name: "Next page" })).toBeVisible();
-  const pens = editor.getByRole("radiogroup", { name: "Pen thickness" });
+  const pens = editor.getByRole("button", { name: "Pen thickness" });
   // A little narrower: Previous and Next go, and the pens stay.
   await page.setViewportSize({ width: 520, height: 800 });
   await expect(editor.getByRole("button", { name: "Next page" })).toBeHidden();
