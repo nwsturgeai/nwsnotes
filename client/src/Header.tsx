@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faCloud, faEllipsis, faEye, faEyeSlash, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
+import { faChevronLeft, faChevronRight, faCloud, faEllipsis, faGear, faSignature, faSlash, faTriangleExclamation } from "@fortawesome/free-solid-svg-icons";
 import { ALL_TAB_NAME, type Category, type SharePermission, type Tab } from "@nwsnotes/shared";
 import { reloadToUpdate } from "./appUpdate";
 import { pathFor, type Page } from "./route";
@@ -70,7 +70,7 @@ export function Header({
   accountsWaiting = 0,
 }: Props) {
   const cogBlocked = editing || offline;
-  const [leftTabsHidden, setLeftTabsHidden] = useLeftTabsHidden();
+  const [leftTabsHidden] = useLeftTabsHidden();
   const offlineTitle =
     pendingCount === 0 ? "Offline" : `Offline: ${pendingCount} ${pendingCount === 1 ? "change" : "changes"} waiting`;
   const waitingTitle = `${accountsWaiting} ${accountsWaiting === 1 ? "account is" : "accounts are"} waiting to be confirmed`;
@@ -88,20 +88,7 @@ export function Header({
 
   return (
     <>
-      <header className={page.name === "notes" && leftStrip ? "app-header with-left-tabs" : "app-header"}>
-        {/* Above the left strip, the strip's width and half the header's height: hides or shows the strip. */}
-        {page.name === "notes" && leftStrip && (
-          <button
-            type="button"
-            className="left-tabs-toggle"
-            aria-label={leftTabsHidden ? "Show left tabs" : "Hide left tabs"}
-            aria-pressed={leftTabsHidden}
-            title={leftTabsHidden ? "Show left tabs" : "Hide left tabs"}
-            onClick={() => setLeftTabsHidden(!leftTabsHidden)}
-          >
-            <FontAwesomeIcon icon={leftTabsHidden ? faEye : faEyeSlash} />
-          </button>
-        )}
+      <header className={page.name === "notes" && leftStrip && !leftTabsHidden ? "app-header with-left-tabs" : "app-header"}>
         {page.name === "notes" && (
           <TabStrip
             tabs={tabs}
@@ -224,6 +211,8 @@ export function LeftTabStrip({
   editing: boolean;
 }) {
   return (
+    // The tabs (scrolling when they don't fit), with the button that hides them at the bottom.
+    <div className="left-tabs-column">
     <div className="left-tabs" role="tablist" aria-label="Left tabs" aria-orientation="vertical" data-saves-edit>
       {tabs.map((tab) => {
         const selected = tab.id === selectedTabId;
@@ -247,6 +236,29 @@ export function LeftTabStrip({
         );
       })}
     </div>
+    <LeftTabsToggle />
+    </div>
+  );
+}
+
+/**
+ * Hides the left tab strip (a chevron pointing left, at the strip's bottom) or, while it's hidden,
+ * shows it again (a chevron pointing right, floating over the bottom-left corner of the notes list).
+ */
+export function LeftTabsToggle() {
+  const [hidden, setHidden] = useLeftTabsHidden();
+  const label = hidden ? "Show left tabs" : "Hide left tabs";
+  return (
+    <button
+      type="button"
+      className={hidden ? "left-tabs-toggle floating" : "left-tabs-toggle"}
+      aria-label={label}
+      aria-pressed={hidden}
+      title={label}
+      onClick={() => setHidden(!hidden)}
+    >
+      <FontAwesomeIcon icon={hidden ? faChevronRight : faChevronLeft} />
+    </button>
   );
 }
 

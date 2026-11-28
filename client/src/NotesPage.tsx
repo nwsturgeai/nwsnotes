@@ -84,7 +84,7 @@ import { ParentDialog, ParentPill } from "./ParentDialog";
 import type { ExtraPill } from "./TagPills";
 import { LongFormEditor } from "./LongFormEditor";
 import type { Page } from "./route";
-import { LeftTabStrip, type TabEntry } from "./Header";
+import { LeftTabStrip, LeftTabsToggle, type TabEntry } from "./Header";
 import { useLongPress } from "./longPress";
 import { useNoteDrag } from "./noteDrag";
 import { columnCount, useFilterRowCollapsed, useFullTagList, useLeftTabsHidden, type ColumnsChoice } from "./stylusMode";
@@ -1384,10 +1384,12 @@ export function NotesPage({
     <div className={fullTagList ? "notes-page full-tag-list" : "notes-page"}>
       {/* Always shown: even a tab that filters on every category has the search and edit-order buttons. */}
       {/* The left tab strip (if any tabs are set to "Left") beside the filter row and the list. */}
-      <div className="notes-body">
+      <div className={leftTabs.length > 0 && leftTabsHidden ? "notes-body left-tabs-hidden" : "notes-body"}>
         {leftTabs.length > 0 && !leftTabsHidden && (
           <LeftTabStrip tabs={leftTabs} selectedTabId={selectedTab?.id} onSelectTab={onSelectTab} editing={tabsBlocked} />
         )}
+        {/* While the strip is hidden, the button that shows it again stays, over the list's bottom-left corner. */}
+        {leftTabs.length > 0 && leftTabsHidden && <LeftTabsToggle />}
         <div className="notes-main">
           {/* Yellow while any of its dropdowns has something ticked, or a search is typed, so it's clear the tab's list is narrowed. */}
           <div
