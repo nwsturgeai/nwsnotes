@@ -32,18 +32,30 @@ Nothing is built or installed on Google's side; it's a registration that gives t
 ### Per user (once, about 30 seconds)
 - Settings → "Connect Google Calendar" → Google's consent page → Allow → back to nwsnotes. The server stores a refresh token for that user. Disconnect from Settings, or from the Google account's third-party connections page.
 
-## Decisions still to make
+## Agreed so far
 
-- **Which calendar:** recommended a dedicated "nwsnotes" calendar the app creates in each user's account, so ordinary meetings and birthdays don't become notes.
-- **Event length:** notes have no duration; e.g. 15-minute events.
-- **All-day events:** due at 20:00 (as for a text with no time)?
-- **Recurring events:** skip, or only the next occurrence?
-- **Deleting:** deleting an event bins the note, or only clears its due date? Clearing the due date, archiving or binning a note removes the event?
-- **Titles:** renames go both ways. Handwritten notes have no text title, so the event says e.g. "nwsnotes note".
-- **Shared notes:** whose calendar a shared note goes in (owner's, or `createdByUserId`'s).
-- **Duplicate alerts:** turn off the calendar's own alerts on these events, since the app's reminders already go out.
-- **Long-form notes** can now have due dates, so they would sync too (the event could include their typed details).
-- **Tests:** a fake Google Calendar server for the e2e tests.
+- **Event length:** a default duration, `DEFAULT_EVENT_MINUTES = 15`, kept as one constant. It may later become a per-user setting (not now).
+- **All-day events (from Google):** the note is due at `ALL_DAY_DUE_TIME = 20:00` on that day, kept as one constant. It may later become per-user (not now). The note is flagged as all-day, so its event always stays all-day in Google even though nwsnotes shows 20:00.
+- **Events longer than a day (from Google):** the note is due on the first day of the range.
+- **Recurring events (from Google):** they become notes, with no due date.
+- **Deleting an event** in Google moves its note to the Bin.
+- **Titles:** renaming works both ways. A handwritten note's event is titled "Handwritten note", and renaming that event in Google is ignored.
+- **Shared notes:** a note is synced only with its owner's calendar.
+- **Alerts:** the alert comes from Google Calendar, not from nwsnotes' own reminder.
+- **Descriptions:**
+  - A regular note's event has a title and no description.
+  - A long-form note with typed details: the details are the event's description.
+  - A long-form note with handwritten details: the description is "Handwritten description available in nwsnotes", and editing it in Google is ignored.
+  - A regular note given a description in Google becomes a long-form note with those details.
+  - Formatting in a Google description is ignored: the note gets the plain text.
+  - A description removed in Google leaves the note long-form (for now).
+
+## Recommendations not yet confirmed
+
+- **Which calendar:** a dedicated "nwsnotes" calendar the app creates in each user's account, so ordinary meetings and birthdays don't become notes.
+- **Which notes sync:** every note of the user's own with a due date, regular and long-form, that's New, Active or Waiting.
+- **Tags on new notes from Google:** none, so they show in All, like a "New" text.
+- **Who connects:** every user can link their own Google account in Settings; the admin sets up the Google project once.
 
 ## Size
 
