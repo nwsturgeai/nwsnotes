@@ -32,6 +32,8 @@ interface Props {
   /** A tab made here with "Create Tab for this Tag" (saved straight away, without saving the category). */
   onTabSaved: (tab: Tab) => void;
   onSaved: (category: Category) => void;
+  /** The category was deleted (its tags also came off notes and tabs on the server). */
+  onDeleted: (id: number) => void;
   /** Returns to the settings page (after saving or cancelling). */
   onClose: () => void;
   onSessionExpired: () => void;
@@ -75,6 +77,7 @@ function CategoryForm({
   onTabSaved,
   existing,
   onSaved,
+  onDeleted,
   onClose,
   onSessionExpired,
 }: Props & { existing: Category | undefined }) {
@@ -103,6 +106,9 @@ function CategoryForm({
   /** "Shared with me": the tag you're asked to confirm you want to stop viewing, and whether that's being sent. */
   const [leaving, setLeaving] = useState<Tag>();
   const [leavingBusy, setLeavingBusy] = useState(false);
+
+  /** Asking before deleting the whole category: what it will change. */
+  const [deleting, setDeleting] = useState<{ message: string; onlyFilter: string[]; lessFiltered: string[]; sharedWith?: string[] }>();
 
   /** "Create Tab for this Tag": the tag row whose tab is being made, and what happened (by row key). */
   const [makingTabFor, setMakingTabFor] = useState<number>();
@@ -291,6 +297,67 @@ function CategoryForm({
     void send(check.category, tabRowKey);
   }
 
+  /** Works out what deleting the category changes, then asks first. */
+  async function askDelete() {
+    if (!existing) return;
+    setError(undefined);
+    const tagIds = new Set(existing.tags.map((tag) => tag.id));
+    const affected = notes.filter((note) => note.tagIds.some((id) => tagIds.has(id))).length;
+    const filtering = tabs.filter((tab) => tab.categories.some((filter) => filter.categoryId === existing.id));
+    const onlyFilter = filtering.filter((tab) => tab.categories.every((filter) => filter.categoryId === existing.id)).map((tab) => tab.name);
+    const lessFiltered = filtering.filter((tab) => !onlyFilter.includes(tab.name)).map((tab) => tab.name);
+    // Who its shared tags are shared with, to say they'll stop seeing them.
+    const shared = existing.tags.filter((tag) => tag.sharedOut !== undefined || tag.sharePending);
+    let sharedWith: string[] | undefined;
+    if (shared.length > 0) {
+      setSaving(true);
+      try {
+        const shares = (await Promise.all(shared.map((tag) => api.tagShares(tag.id)))).flat();
+        sharedWith = [...new Set(shares.map((share) => share.displayName))];
+      } catch (err) {
+        if (err instanceof ApiError && err.isUnauthorized) {
+          onSessionExpired();
+          return;
+        }
+        // Still warned, without the names.
+        sharedWith = [];
+      } finally {
+        setSaving(false);
+      }
+    }
+    const tagCount = existing.tags.length === 1 ? "Its tag" : `Its ${existing.tags.length} tags`;
+    setDeleting({
+      message:
+        `Delete the category "${existing.name}"? ` +
+        (affected > 0
+          ? `${tagCount} will be removed from ${plural(affected, "note")}. The notes themselves are kept.`
+          : "None of your notes have its tags."),
+      onlyFilter,
+      lessFiltered,
+      ...(sharedWith && { sharedWith }),
+    });
+  }
+
+  async function deleteCategory() {
+    if (!existing) return;
+    setDeleting(undefined);
+    setSaving(true);
+    setError(undefined);
+    try {
+      await api.deleteCategory(existing.id);
+    } catch (err) {
+      if (err instanceof ApiError && err.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      setError(`The category wasn't deleted: ${err instanceof Error ? err.message : String(err)}`);
+      setSaving(false);
+      return;
+    }
+    onDeleted(existing.id);
+    onClose();
+  }
+
   /**
    * "Shared with me": stops seeing one of its tags, straight away. The other rows keep any unsaved changes;
    * with none left, the category has gone, so it's back to Settings.
@@ -458,8 +525,8 @@ function CategoryForm({
                 disabled={saving}
                 onClick={() => setPickingHueFor(row)}
               />
-              {underName ? (
-                // The name box, with "Create Tab for this Tag" (or what came of it) in small text underneath.
+              {/* The name box, with "Create Tab for this Tag" (or what came of it) in small text underneath. Always
+                  in this wrapper, so the box isn't remade (losing focus) when the link appears as a new tag is typed. */}
                 <div className="tag-name">
                   {nameBox}
                   {tabLink && tabResult?.made !== true && (
@@ -479,9 +546,6 @@ function CategoryForm({
                     </span>
                   )}
                 </div>
-              ) : (
-                nameBox
-              )}
               {/* "Shared by you", as on the tag's pills: what the most generous of its shares allows, or an hourglass
                   while someone hasn't accepted yet. Every row keeps the room for it, so the name boxes line up. */}
               <span className="tag-row-sharing">{savedTag && !sharedLayout && <SettingsSharingIcon tag={savedTag} />}</span>
@@ -576,6 +640,11 @@ function CategoryForm({
           <button type="button" className="button" disabled={saving} onClick={onClose}>
             Cancel
           </button>
+          {existing && !existing.system && !sharedLayout && (
+            <button type="button" className="button danger" disabled={saving} onClick={() => void askDelete()}>
+              Delete category
+            </button>
+          )}
         </div>
       </form>
       {pickingHueFor && (
@@ -600,6 +669,15 @@ function CategoryForm({
           onCancel={() => !leavingBusy && setLeaving(undefined)}
         />
       )}
+      {deleting && (
+        <ConfirmDialog
+          message={deleting.message}
+          details={<DeleteDetails {...deleting} />}
+          confirmLabel="Delete category"
+          onConfirm={() => void deleteCategory()}
+          onCancel={() => setDeleting(undefined)}
+        />
+      )}
       {confirming && (
         <ConfirmDialog
           message={confirming.message}
@@ -609,5 +687,47 @@ function CategoryForm({
         />
       )}
     </main>
+  );
+}
+
+/** "Pat", "Pat and Sam", "Pat, Sam and Jo". */
+function listOf(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+const quoted = (names: string[]) => listOf(names.map((name) => `"${name}"`));
+
+/** What else deleting a category changes: tabs left showing every note come first, highlighted. */
+function DeleteDetails({ onlyFilter, lessFiltered, sharedWith }: { onlyFilter: string[]; lessFiltered: string[]; sharedWith?: string[] }) {
+  return (
+    <div className="confirm-details">
+      {onlyFilter.length > 0 && (
+        <div className="confirm-warning">
+          <p>
+            <strong>
+              {onlyFilter.length === 1 ? `The tab ${quoted(onlyFilter)} will be left with no filter` : `${onlyFilter.length} tabs will be left with no filter`}
+            </strong>
+            , so {onlyFilter.length === 1 ? "it" : "they"} will show every note:
+          </p>
+          <ul>
+            {onlyFilter.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {lessFiltered.length > 0 && (
+        <p>
+          {lessFiltered.length === 1 ? "The tab" : "The tabs"} {quoted(lessFiltered)} will no longer filter on this category.
+        </p>
+      )}
+      {sharedWith && (
+        <p>
+          {sharedWith.length > 0 ? listOf(sharedWith) : "The people its tags are shared with"} will stop seeing your notes through its shared
+          tags.
+        </p>
+      )}
+      <p className="confirm-note">This can be undone from Settings → History.</p>
+    </div>
   );
 }

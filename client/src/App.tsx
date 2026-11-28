@@ -258,6 +258,12 @@ export function App() {
     [applySaved],
   );
 
+  /** A deleted category's tags also came off notes and tabs on the server: those are reloaded. */
+  const deleteCategory = useCallback(
+    (id: number) => applySaved((data) => ({ ...data, categories: data.categories.filter((c) => c.id !== id) })),
+    [applySaved],
+  );
+
   const saveTab = useCallback(
     (tab: Tab) =>
       applySaved((data) => ({
@@ -462,6 +468,10 @@ export function App() {
                 // Deleted tags were also removed from notes and tabs on the server; reload to match.
                 void refreshNotes();
               }}
+              onDeleted={(id) => {
+                deleteCategory(id);
+                void refreshNotes();
+              }}
               onClose={() => {
                 setSettingsSection("categories");
                 navigate({ name: "settings" });
@@ -488,6 +498,7 @@ export function App() {
               notes={state.data.notes}
               categories={state.data.categories}
               selectedTab={selectedTab}
+              tabs={tabs}
               leftTabs={[
                 ...(allOnLeft ? [{ id: undefined, name: ALL_TAB_NAME, count: tabCounts?.get("all") }] : []),
                 ...tabs.filter((tab) => tab.placement === "left").map((tab) => ({

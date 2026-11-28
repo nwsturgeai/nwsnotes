@@ -15,6 +15,7 @@ import {
   type UndoReply,
   type LifetimeChange,
   type LifetimeRequest,
+  type TabMoveRequest,
   type LoginRequest,
   type Me,
   type NewUserRequest,
@@ -34,6 +35,9 @@ import {
   type Tab,
   type NoteOrderRequest,
   type NoteStats,
+  type GoogleStatus,
+  type AlexaLinkCode,
+  type AlexaStatus,
   type SmsLinkCode,
   type SmsStatus,
   type TabRequest,
@@ -181,6 +185,8 @@ export const api = {
   deleteNote: (id: number) => request<{ ok: true }>("DELETE", `/api/notes/${id}`, undefined, changeHeaders()),
   /** Multi-select: add and remove tags on several notes in one save; returns the updated notes. */
   bulkTags: (body: BulkTagsRequest) => request<Note[]>("PUT", "/api/notes/bulk-tags", body, changeHeaders()),
+  /** Edit-order mode: a note dragged onto another tab gets that tab's tags (refused, isNoteChanged, if it has changed since `base`). */
+  moveNoteToTab: (id: number, body: TabMoveRequest) => request<Note>("PUT", `/api/notes/${id}/tab-move`, body, changeHeaders()),
   /** `tagsChangedDateTime`: only for a change made offline, the time it was made. */
   setLifetime: (id: number, lifetime: LifetimeChange, tagsChangedDateTime?: string) =>
     request<Note>(
@@ -198,6 +204,7 @@ export const api = {
   addCategory: (body: CategoryRequest) => request<Category>("POST", "/api/categories", body, changeHeaders()),
   updateCategory: (id: number, body: CategoryRequest) =>
     request<Category>("PUT", `/api/categories/${id}`, body, changeHeaders()),
+  deleteCategory: (id: number) => request<{ ok: true }>("DELETE", `/api/categories/${id}`, undefined, changeHeaders()),
   /** The user categories' order (every id, once each); returns all categories, Lifetime last. */
   tagShares: (tagId: number) => request<TagShare[]>("GET", `/api/tags/${tagId}/shares`),
   setTagShares: (tagId: number, body: TagSharesRequest) => request<TagShare[]>("PUT", `/api/tags/${tagId}/shares`, body, changeHeaders()),
@@ -236,6 +243,13 @@ export const api = {
   smsStatus: () => request<SmsStatus>("GET", "/api/me/sms"),
   smsLinkCode: () => request<SmsLinkCode>("POST", "/api/me/sms/link-code"),
   smsUnlink: () => request<SmsStatus>("DELETE", "/api/me/sms"),
+  /** Adding notes by Alexa: whether it's linked, a code to link it, and unlinking it. */
+  alexaStatus: () => request<AlexaStatus>("GET", "/api/me/alexa"),
+  alexaLinkCode: () => request<AlexaLinkCode>("POST", "/api/me/alexa/link-code"),
+  alexaUnlink: () => request<AlexaStatus>("DELETE", "/api/me/alexa"),
+  /** Google Calendar: whether it's connected, and disconnecting it (connecting is a visit to GOOGLE_CONNECT_PATH). */
+  googleStatus: () => request<GoogleStatus>("GET", "/api/google"),
+  googleDisconnect: () => request<GoogleStatus>("POST", "/api/google/disconnect"),
   /** Changing your own password: this page stays logged in, your other devices are logged out. */
   changePassword: (body: PasswordChangeRequest) => request<{ ok: true }>("PUT", "/api/me/password", body, changeHeaders()),
   changeName: (body: NameChangeRequest) => request<Me>("PUT", "/api/me/name", body, changeHeaders()),

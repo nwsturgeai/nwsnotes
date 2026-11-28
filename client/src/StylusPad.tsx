@@ -11,6 +11,8 @@ const ERASER_SIZE = 20;
 const PEN_ERASER_BUTTONS = 32;
 /** `PointerEvent.button` when a stylus's eraser end touches down. */
 const PEN_ERASER_BUTTON = 5;
+/** The highlighter's width, in CSS pixels. */
+export const HIGHLIGHTER_WIDTH = 16;
 /** Space kept around the writing when cropping, in CSS pixels. */
 const CROP_MARGIN = 4;
 
@@ -43,6 +45,13 @@ interface Props {
    * then keeps what's written (cut off if it no longer fits) rather than clearing it.
    */
   fill?: boolean;
+  /** The colour new strokes are drawn in (default black). */
+  colour?: string;
+  /**
+   * A highlighter colour, when the highlighter is in use: strokes are thick, and drawn only into the
+   * blank parts of the canvas, so they sit behind what's already written.
+   */
+  highlighter?: string;
   label?: string;
 }
 
@@ -64,7 +73,18 @@ function copyOf(canvas: HTMLCanvasElement): HTMLCanvasElement {
  * A canvas to write a note on. Only a stylus (or a mouse, for testing on a computer) draws;
  * fingers and palms are ignored.
  */
-export function StylusPad({ ref, disabled, onInk, onInkChange, erasing, initialImage, fill, label = "Writing area for a new note" }: Props) {
+export function StylusPad({
+  ref,
+  disabled,
+  onInk,
+  onInkChange,
+  erasing,
+  initialImage,
+  fill,
+  colour = "#000",
+  highlighter,
+  label = "Writing area for a new note",
+}: Props) {
   const inkChanged = useRef(onInkChange);
   inkChanged.current = onInkChange;
   /** Tells `onInkChange` whether there's ink now. */
@@ -72,7 +92,9 @@ export function StylusPad({ ref, disabled, onInk, onInkChange, erasing, initialI
     inkChanged.current?.(bounds.current !== undefined);
   }
   /** The Pen thickness setting, for new strokes (changed in Settings, or by the long-form editor's pen buttons). */
-  const [penWidth] = usePenWidth();
+  const [settingWidth] = usePenWidth();
+  /** How wide new strokes are: the highlighter's width, or the Pen thickness setting. */
+  const penWidth = highlighter ? HIGHLIGHTER_WIDTH : settingWidth;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   /** The eraser's outline, following the pointer while erasing. */
   const ringRef = useRef<HTMLDivElement>(null);
@@ -184,9 +206,10 @@ export function StylusPad({ ref, disabled, onInk, onInkChange, erasing, initialI
   function pen(erase = false): CanvasRenderingContext2D {
     const context = canvasRef.current!.getContext("2d")!;
     context.setTransform(INK_SCALE, 0, 0, INK_SCALE, 0, 0);
-    context.globalCompositeOperation = erase ? "destination-out" : "source-over";
-    context.strokeStyle = "#000";
-    context.fillStyle = "#000";
+    // The highlighter draws behind the ink ("destination-over"), so it only fills what's still blank.
+    context.globalCompositeOperation = erase ? "destination-out" : highlighter ? "destination-over" : "source-over";
+    context.strokeStyle = highlighter ?? colour;
+    context.fillStyle = highlighter ?? colour;
     context.lineWidth = erase ? ERASER_SIZE : penWidth;
     context.lineCap = "round";
     context.lineJoin = "round";

@@ -2,6 +2,8 @@ import { nameClashesWithSpokenName, spokenNameError } from "./sms";
 
 export * from "./sms";
 export * from "./spokenDue";
+export * from "./calendarText";
+export * from "./alexa";
 
 /** A single note, as stored on the server and sent to the website. */
 export interface Note {
@@ -44,8 +46,19 @@ export interface Note {
    * the owner's notebook. Set by the server; missing on notes added before it was recorded.
    */
   createdByUserId?: number;
-  /** ISO 8601, UTC: when the note is due. Regular notes only. */
+  /** ISO 8601, UTC: when the note is due. Regular and long-form notes. */
   dueDateTime?: string;
+  /** The note has a due date but no reminder ("Remind me?" unticked): no push reminder, and no alert on its Google Calendar event. */
+  noReminder?: true;
+  /** A Waiting note goes back to Active when its due date is reached ("Note returns from 'Waiting' when due?" ticked). */
+  returnWhenDue?: true;
+  /** The due date `returnWhenDue` has been dealt with for (or that was already past when set), so it happens once. Set by the server. */
+  returnedFor?: string;
+  /**
+   * From an all-day event in Google Calendar (see Specs/google-calendar.md): its event stays all-day
+   * while the note is due at 20:00 (UK time). Set by the server, and dropped when the time changes.
+   */
+  allDay?: true;
   /** The due date a reminder has been sent for (or that was already past when set), so it's sent once. Set by the server. */
   reminderSentFor?: string;
   /**
@@ -365,12 +378,16 @@ export type NoteDetails =
  * its parent and leaving it out keeps the parent it has. Also POST only: clientId (see
  * Note), and createdDateTime for a note created offline (used if it's valid and not in the future).
  * Both: tagsChangedDateTime, when the tags were changed offline (used the same way), and
- * dueDateTime (regular notes only; leaving it out of a PUT clears it).
+ * dueDateTime (leaving it out of a PUT clears it), with noReminder: true for a due date without a reminder
+ * (leaving it out of a PUT turns the reminder on) and returnWhenDue: true for a Waiting note to go back to
+ * Active when it's due (leaving it out of a PUT turns that off).
  */
 export type NewNoteRequest = NoteTitle & {
   tagIds: number[];
   parentId?: number | null;
   dueDateTime?: string;
+  noReminder?: boolean;
+  returnWhenDue?: boolean;
   clientId?: string;
   createdDateTime?: string;
   tagsChangedDateTime?: string;
@@ -386,6 +403,72 @@ export type NewNoteRequest = NoteTitle & {
 export interface LifetimeRequest {
   lifetime: LifetimeChange;
   tagsChangedDateTime?: string;
+}
+
+/**
+ * Body of PUT /api/notes/:id/tab-move: dragging a note onto another tab in edit-order mode. The server
+ * works out the tags with `tagsForTabMove`, from the note as it is then.
+ */
+export interface TabMoveRequest {
+  toTabId: number;
+  /** The tab it was dragged from; undefined for "All". */
+  fromTabId?: number;
+  /** The note's lastModifiedDateTime when it was dropped: refused if it has changed since. */
+  baseModifiedDateTime?: string;
+}
+
+/** One category's tags before and after a move to a tab (only categories that change). */
+export interface TabMoveChange {
+  categoryId: number;
+  removed: number[];
+  added: number[];
+}
+
+export type TabMove = { ok: true; tagIds: number[]; changes: TabMoveChange[] } | { ok: false; error: string };
+
+/**
+ * The tags a note gets when it's dragged onto tab `to` from tab `from` (undefined: "All"). `categories`
+ * includes Lifetime. For each of `to`'s filters the note keeps a tag it already has, or else gets the
+ * filter's first tag (in a single-select category, replacing the one it had; Lifetime never becomes
+ * New). Then the tags of `from`'s filters are taken off, in categories `to` doesn't filter on (never
+ * Lifetime, which every note has one of), so the note leaves the tab it came from.
+ */
+export function tagsForTabMove(note: Note, categories: Category[], to: Tab, from: Tab | undefined): TabMove {
+  let tagIds = note.tagIds.some(isLifetimeTag) ? [...note.tagIds] : [...note.tagIds, LIFETIME_ACTIVE];
+  for (const filter of to.categories) {
+    const category = categories.find((c) => c.id === filter.categoryId);
+    if (!category || category.shared) {
+      return { ok: false, error: `"${to.name}" shows tags shared with you, so your own notes can't be moved into it.` };
+    }
+    const options = filter.tagIds.filter((id) => category.tags.some((tag) => tag.id === id));
+    if (options.some((id) => tagIds.includes(id))) continue;
+    const pick = options.find((id) => id !== LIFETIME_NEW);
+    if (pick === undefined) {
+      return {
+        ok: false,
+        error: options.length > 0 ? `Notes can't be made New, so they can't be moved to "${to.name}".` : `"${to.name}" has no tags to give the note.`,
+      };
+    }
+    if (!category.multiSelect) tagIds = tagIds.filter((id) => !category.tags.some((tag) => tag.id === id));
+    tagIds.push(pick);
+  }
+  for (const filter of from?.categories ?? []) {
+    if (filter.categoryId === LIFETIME_CATEGORY_ID || to.categories.some((f) => f.categoryId === filter.categoryId)) continue;
+    tagIds = tagIds.filter((id) => !filter.tagIds.includes(id));
+  }
+  // The Lifetime tag stays last, as everywhere else.
+  const lifetime = tagIds.find(isLifetimeTag)!;
+  tagIds = [...tagIds.filter((id) => id !== lifetime), lifetime];
+  const changes: TabMoveChange[] = [];
+  for (const category of categories) {
+    const inCategory = (ids: number[]) => category.tags.filter((tag) => ids.includes(tag.id)).map((tag) => tag.id);
+    const before = inCategory(category.id === LIFETIME_CATEGORY_ID ? [lifetimeOf(note)] : note.tagIds);
+    const after = inCategory(tagIds);
+    const removed = before.filter((id) => !after.includes(id));
+    const added = after.filter((id) => !before.includes(id));
+    if (removed.length > 0 || added.length > 0) changes.push({ categoryId: category.id, removed, added });
+  }
+  return { ok: true, tagIds, changes };
 }
 
 /** Whether two notes' tag lists hold the same tags, in any order. */
@@ -545,6 +628,8 @@ export interface UserSummary extends Me {
   smsLinked: boolean;
   /** Whether each text they send that works gets a text back confirming it (set by the admin). */
   smsConfirmations: boolean;
+  /** Whether they've linked an Alexa account for adding notes by Alexa. */
+  alexaLinked: boolean;
   /**
    * How many changes they've made today and in the 6 days before (as their History lists them), counted from
    * the `changesSince` GET /api/users is given. `more` when their History has already dropped some of those
@@ -559,6 +644,12 @@ export type SmsStatus =
   | { smsNumber: string; linked: true; phoneNumber: string; linkedDateTime: string };
 
 /** POST /api/me/sms/link-code: the code to text to the nwsnotes number, from the phone being linked. */
+/** GET /api/google: whether the user's Google Calendar is connected, and any problem that has stopped the sync. */
+export interface GoogleStatus {
+  connected: boolean;
+  problem?: string;
+}
+
 export interface SmsLinkCode {
   code: string;
   smsNumber: string;
@@ -799,13 +890,27 @@ function checkDetailsPage(raw: unknown, what: string): Check<string> {
   return raw === "" ? { ok: true, value: "" } : validateTitleImage(raw, DETAILS_IMAGE_MAX_LENGTH, what);
 }
 
-/** Checks a note's due date, if any: a valid date-time, returned as ISO 8601 UTC. */
-export function validateDueDate(body: unknown): { ok: true; dueDateTime?: string } | { ok: false; error: string } {
-  const { dueDateTime } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+/**
+ * Checks a note's due date, if any: a valid date-time, returned as ISO 8601 UTC, whether it has no
+ * reminder (`noReminder: true`) and whether a Waiting note goes back to Active when it's due
+ * (`returnWhenDue: true`). Both only with a due date.
+ */
+export function validateDueDate(
+  body: unknown,
+): { ok: true; dueDateTime?: string; noReminder?: true; returnWhenDue?: true } | { ok: false; error: string } {
+  const { dueDateTime, noReminder, returnWhenDue } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+  for (const [name, value] of [["noReminder", noReminder], ["returnWhenDue", returnWhenDue]] as const) {
+    if (value !== undefined && value !== null && typeof value !== "boolean") return { ok: false, error: `"${name}" must be true or false.` };
+  }
   if (dueDateTime === undefined || dueDateTime === null) return { ok: true };
   const ms = typeof dueDateTime === "string" ? Date.parse(dueDateTime) : NaN;
   if (Number.isNaN(ms)) return { ok: false, error: "The due date must be a valid date and time." };
-  return { ok: true, dueDateTime: new Date(ms).toISOString() };
+  return {
+    ok: true,
+    dueDateTime: new Date(ms).toISOString(),
+    ...(noReminder === true && { noReminder: true as const }),
+    ...(returnWhenDue === true && { returnWhenDue: true as const }),
+  };
 }
 
 /** Checks a new note's title: exactly one of typed text or a handwritten image. */
@@ -1073,10 +1178,10 @@ export function validateTab(
 
 // ---- Text formatting -------------------------------------------------------
 
-/** A style the markers turn on: *bold*, _underline_ and /italic/. */
-export type TextStyle = "bold" | "underline" | "italic";
+/** A style the markers turn on: *bold*, _underline_, /italic/, -strikethrough- and #highlight#. */
+export type TextStyle = "bold" | "underline" | "italic" | "strikethrough" | "highlight";
 
-const STYLE_MARKERS: Record<string, TextStyle> = { "*": "bold", _: "underline", "/": "italic" };
+const STYLE_MARKERS: Record<string, TextStyle> = { "*": "bold", _: "underline", "/": "italic", "-": "strikethrough", "#": "highlight" };
 /** What may come just before an opening marker, besides the start of the line or a space. */
 const BEFORE_OPENING = "([{\"'";
 /** What may come just after a closing marker, besides the end of the line or a space. */
@@ -1178,4 +1283,68 @@ export interface HistoryChange {
 export interface HistoryPage {
   changes: HistoryChange[];
   more: boolean;
+}
+
+// ---- Tickboxes (long-form details only) ------------------------------------
+
+/** A tickbox at the start of a line of long-form details: "[ ]", "[]", "[x]" or "[X]", after any indent. */
+export interface Tickbox {
+  /** The spaces or tabs before it. */
+  indent: string;
+  /** The tickbox as typed, e.g. "[ ]". */
+  box: string;
+  ticked: boolean;
+}
+
+const TICKBOX = /^([ \t]*)(\[[ xX]?\])/;
+
+/** The tickbox a line starts with, if any. */
+export function tickboxOf(line: string): Tickbox | undefined {
+  const match = TICKBOX.exec(line);
+  if (!match) return undefined;
+  const box = match[2]!;
+  return { indent: match[1]!, box, ticked: box === "[x]" || box === "[X]" };
+}
+
+/** A change to make to some text: replace [from, to) with `insert`. */
+export interface TextEdit {
+  from: number;
+  to: number;
+  insert: string;
+}
+
+const lineStartOf = (text: string, lineIndex: number) => {
+  let start = 0;
+  for (let index = 0; index < lineIndex; index++) start = text.indexOf("\n", start) + 1;
+  return start;
+};
+
+/** Ticking or unticking line `lineIndex`'s tickbox: "[ ]" and "[]" become "[x]", "[x]" and "[X]" become "[ ]". */
+export function tickboxToggle(text: string, lineIndex: number): TextEdit | undefined {
+  const lineStart = lineStartOf(text, lineIndex);
+  const end = text.indexOf("\n", lineStart);
+  const tickbox = tickboxOf(text.slice(lineStart, end < 0 ? undefined : end));
+  if (!tickbox) return undefined;
+  const inside = lineStart + tickbox.indent.length + 1;
+  if (tickbox.box === "[]") return { from: inside, to: inside, insert: "x" };
+  return { from: inside, to: inside + 1, insert: tickbox.ticked ? " " : "x" };
+}
+
+/**
+ * The spaces a just-typed tickbox needs once text is typed after it, on the line starting at `lineStart`:
+ * "[]Hello" and "[] Hello" become "[ ] Hello", and "[x]Done" becomes "[x] Done". Undefined if it needs none.
+ */
+export function tickboxSpacing(text: string, lineStart: number): TextEdit | undefined {
+  const line = text.slice(lineStart).split("\n", 1)[0]!;
+  const empty = /^([ \t]*)\[\] ?(?=\S)/.exec(line);
+  if (empty) {
+    const inside = lineStart + empty[1]!.length + 1;
+    return { from: inside, to: lineStart + empty[0].length, insert: " ] " };
+  }
+  const filled = /^[ \t]*\[[ xX]\](?=\S)/.exec(line);
+  if (filled) {
+    const after = lineStart + filled[0].length;
+    return { from: after, to: after, insert: " " };
+  }
+  return undefined;
 }

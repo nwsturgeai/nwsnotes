@@ -29,6 +29,10 @@ export class PushReminders {
   private subscriptions: Device[] = [];
   private keys = { publicKey: "", privateKey: "" };
   private checking = false;
+  /** Whether a note's alert comes from elsewhere (its Google Calendar event), so nwsnotes sends no reminder for it. */
+  alertsElsewhere?: (userId: number, noteId: number) => boolean;
+  /** Called after Waiting notes of this user's went back to Active as they were due (to update their open pages). */
+  onReturned?: (userId: number) => void;
   /** End-to-end tests only: what would have been sent, as push services can't be reached from the tests. */
   private sentForTests: (PushMessage & { userId: number; devices: number })[] = [];
 
@@ -98,6 +102,11 @@ export class PushReminders {
     return this.sentForTests.filter((sent) => sent.userId === userId).map(({ userId: _user, ...sent }) => sent);
   }
 
+  /** End-to-end tests only: looks for notes that have fallen due now, rather than at the next minute. */
+  checkDueForTests(): Promise<void> {
+    return this.checkDue();
+  }
+
   /** A notification to every device of the user that has reminders on. Returns how many it reached. */
   notify(userId: number, message: PushMessage): Promise<number> {
     return this.sendToUser(userId, message);
@@ -147,6 +156,7 @@ export class PushReminders {
   /**
    * Sends a reminder for each note that has fallen due, then records that it was sent. Every user with
    * a device is checked (their notebook is loaded if it isn't yet), and every notebook already loaded.
+   * Also puts Waiting notes set to return when due back to Active: for that, every user is checked.
    */
   private async checkDue(): Promise<void> {
     if (this.checking) return;
@@ -154,15 +164,23 @@ export class PushReminders {
     try {
       const users = this.notebooks.users;
       if (!users.isReady()) return;
-      const ids = new Set([...this.subscriptions.map((device) => device.userId), ...(await this.notebooks.loaded()).map((store) => store.userId)]);
+      const ids = new Set([
+        ...users.list().map((user) => user.id),
+        ...this.subscriptions.map((device) => device.userId),
+        ...(await this.notebooks.loaded()).map((store) => store.userId),
+      ]);
       for (const userId of ids) {
         const user = users.byId(userId);
         if (!user || user.disabled) continue;
         try {
           const store = await this.notebooks.for(userId);
+          const toReturn = store.dueToReturn(new Date());
+          if (toReturn.length > 0 && (await store.returnDue(toReturn)).length > 0) this.onReturned?.(userId);
           const due = store.dueForReminder(new Date());
           if (due.length === 0) continue;
           for (const note of due) {
+            // Recorded as reminded all the same, so disconnecting doesn't send a late one.
+            if (this.alertsElsewhere?.(userId, note.id)) continue;
             await this.sendToUser(userId, {
               title: note.titleText !== undefined ? `Due: ${withoutMarkers(note.titleText)}` : "A note is due",
               tag: `note-${note.id}`,

@@ -9,7 +9,8 @@ With the area at the bottom expanded, tap the **page** button (under the + butto
 1. Type a title and tap the **tick** next to it (or press Enter).
 2. Choose its Tags in the band below the title. The **tags** button at the right of that band picks the current tab's Tags for you.
 3. Write the details in the big box below.
-4. Tap **Finish** (the tick at the bottom right) when you're done, or press Ctrl+Enter.
+4. To give it a [due date](due-dates.md), tap the **alarm clock** at the bottom, next to Finish.
+5. Tap **Finish** (the tick at the bottom right) when you're done, or press Ctrl+Enter.
 
 The details are saved by themselves as you go, so nothing is lost if you're interrupted. **Cancel** (the X, only while creating a new one) deletes the note, asking first if you've written anything.
 

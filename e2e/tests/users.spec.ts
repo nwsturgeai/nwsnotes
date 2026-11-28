@@ -143,7 +143,7 @@ test("each user's row shows how many changes they've made today and in the 6 day
   await sam.context().close();
 });
 
-test("two users' notebooks are separate; note and tag ids are unique across users, category and tab ids are each user's own", async ({
+test("two users' notebooks are separate; note, tag and category ids are unique across users, tab ids are each user's own", async ({
   page,
   browser,
 }) => {
@@ -153,8 +153,9 @@ test("two users' notebooks are separate; note and tag ids are unique across user
   await addNote(robin, "Robin's own note");
   const category = await robin.request.post("/api/categories", { data: { name: "Hobbies", multiSelect: false, tags: [{ name: "Chess" }] } });
   expect(category.ok()).toBe(true);
+  const hobbiesId = ((await category.json()) as { id: number }).id;
   const chess = ((await category.json()) as { tags: { id: number }[] }).tags[0]!.id;
-  const tab = await robin.request.post("/api/tabs", { data: { name: "Fun", categories: [{ categoryId: 1, tagIds: [chess] }] } });
+  const tab = await robin.request.post("/api/tabs", { data: { name: "Fun", categories: [{ categoryId: hobbiesId, tagIds: [chess] }] } });
   expect(tab.ok(), await tab.text()).toBe(true);
 
   const robinData = (await (await robin.request.get("/api/notes")).json()) as {
@@ -162,10 +163,11 @@ test("two users' notebooks are separate; note and tag ids are unique across user
     categories: { id: number; name: string; system?: boolean; tags: { id: number }[] }[];
     tabs: { id: number; name: string }[];
   };
-  // The seed's notes are 1 to 9 and its tags 1 to 5, so Robin's are the next ones given out.
+  // The seed's notes are 1 to 9, its tags 1 to 5 and its categories 1 and 2, so Robin's are the next ones
+  // given out (category ids are never reused, so a deleted category's id can't come back). Tab ids are Robin's own.
   expect(robinData.notes.map((note) => [note.id, note.titleText])).toEqual([[10, "Robin's own note"]]);
   const hobbies = robinData.categories.find((c) => !c.system)!;
-  expect([hobbies.id, hobbies.name, hobbies.tags[0]!.id]).toEqual([1, "Hobbies", 6]);
+  expect([hobbies.id, hobbies.name, hobbies.tags[0]!.id]).toEqual([3, "Hobbies", 6]);
   expect(robinData.tabs.map((t) => [t.id, t.name])).toEqual([[1, "Fun"]]);
 
 
@@ -201,6 +203,7 @@ test("two users' notebooks are separate; note and tag ids are unique across user
   const adminCategory = await page.request.post("/api/categories", { data: { name: "Places", multiSelect: false, tags: [{ name: "Paris" }, { name: "Rome" }] } });
   expect(adminCategory.ok(), await adminCategory.text()).toBe(true);
   expect(((await adminCategory.json()) as { id: number; tags: { id: number }[] }).tags.map((tag) => tag.id)).toEqual([7, 8]);
+  expect(((await adminCategory.json()) as { id: number }).id).toBe(4);
   // A tag id from someone else's notebook isn't one of Robin's.
   expect((await robin.request.post("/api/notes", { data: { titleText: "Borrowed tag", tagIds: [7] } })).status()).toBe(400);
   await robin.context().close();

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { hashPassword } from "./auth.js";
 import type { EmailConfig } from "./email.js";
+import { ALEXA_TEST_CERT_PATH, ALEXA_TEST_ROOT } from "./fakeAlexa.js";
 
 export interface Config {
   /** True on the VM; false when running locally with `npm run dev`. */
@@ -50,8 +51,50 @@ export interface Config {
   databaseCaFile?: string;
   /** Adding notes by text message (Twilio). Missing: turned off. */
   sms?: SmsConfig;
+  /** Adding notes by Alexa (development and the tests: a fake Alexa, signed with test certificates). Missing: turned off. */
+  alexa?: AlexaConfig;
   /** Sending email through Brevo (production only; development and the tests keep emails in memory). Missing: turned off. */
   email?: EmailConfig;
+  /** Syncing notes with Google Calendar (development and the tests: a fake Google, in this server). Missing: turned off. */
+  google?: GoogleConfig;
+}
+
+/** The Google Cloud project's OAuth client, and where Google's services are (the fake one's, outside production). */
+export interface GoogleConfig {
+  clientId: string;
+  clientSecret: string;
+  /** The site's address as Google sees it (e.g. "https://nwsnotes.com"): for the sign-in's return address and the webhook. */
+  publicUrl: string;
+  /** Google's sign-in page. */
+  authUrl: string;
+  /** Exchanges a sign-in's code for tokens, and refreshes them. */
+  tokenUrl: string;
+  /** Revokes a token (disconnecting). */
+  revokeUrl: string;
+  /** The Calendar API, e.g. "https://www.googleapis.com/calendar/v3". */
+  calendarApi: string;
+}
+
+/** Google's real addresses, in production. */
+const GOOGLE_URLS = {
+  authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+  tokenUrl: "https://oauth2.googleapis.com/token",
+  revokeUrl: "https://oauth2.googleapis.com/revoke",
+  calendarApi: "https://www.googleapis.com/calendar/v3",
+};
+
+/** Development and the tests: the fake Google served by this server (see fakeGoogle.ts). */
+export function fakeGoogleConfig(port: number | string): GoogleConfig {
+  const base = `http://localhost:${port}/api/test/google`;
+  return {
+    clientId: "fake-client-id",
+    clientSecret: "fake-client-secret",
+    publicUrl: `http://localhost:${port}`,
+    authUrl: `${base}/oauth/auth`,
+    tokenUrl: `${base}/oauth/token`,
+    revokeUrl: `${base}/oauth/revoke`,
+    calendarApi: `${base}/calendar/v3`,
+  };
 }
 
 /** The Twilio number that texts are sent to, and what's needed to check that requests come from Twilio. */
@@ -63,6 +106,22 @@ export interface SmsConfig {
   /** The site's address as Twilio sees it (e.g. "https://nwsnotes.com"), part of what Twilio signs. */
   publicUrl: string;
 }
+
+/** The Alexa skill that sends requests here (see Specs/alexa.md). */
+export interface AlexaConfig {
+  /** The skill's ID in Alexa's developer console (e.g. "amzn1.ask.skill.…"): requests from any other skill are refused. */
+  skillId: string;
+  /** The site's address (e.g. "https://nwsnotes.com"), for links in tab emails. */
+  publicUrl: string;
+  /**
+   * Development and the tests only: certificates are also accepted from this address (this server's own
+   * test certificates, see fakeAlexa.ts), and trusted when signed by this root instead of the usual ones.
+   */
+  test?: { certUrlPrefix: string; rootPem: string };
+}
+
+/** Development and the tests: a made-up skill ID, which the tests' requests use. */
+export const TEST_ALEXA_SKILL_ID = "amzn1.ask.skill.00000000-0000-0000-0000-000000000000";
 
 /** Development and the tests: a made-up number, and a known token so the tests can sign their texts. */
 export const TEST_SMS = { authToken: "test-twilio-auth-token", number: "+447700900000" };
@@ -111,6 +170,14 @@ export function loadConfig(): Config {
       databaseUrl: process.env.NWSNOTES_DATABASE_URL,
       // A fake Twilio: texts are posted to the server by the tests (or by hand), signed with the test token.
       sms: { ...TEST_SMS, publicUrl: `http://localhost:${process.env.PORT ?? 3000}` },
+      // A fake Google Calendar, in this server: connecting and syncing work without a Google account.
+      google: fakeGoogleConfig(process.env.PORT ?? 3000),
+      // A fake Alexa: requests are posted by the tests, signed with test certificates this server serves.
+      alexa: {
+        skillId: TEST_ALEXA_SKILL_ID,
+        publicUrl: `http://localhost:${process.env.PORT ?? 3000}`,
+        test: { certUrlPrefix: `http://localhost:${process.env.PORT ?? 3000}${ALEXA_TEST_CERT_PATH}/`, rootPem: ALEXA_TEST_ROOT },
+      },
     };
   }
 
@@ -122,17 +189,26 @@ export function loadConfig(): Config {
     brevoApiKey?: string;
     emailFrom?: string;
     emailFromName?: string;
+    googleClientId?: string;
+    googleClientSecret?: string;
+    alexaSkillId?: string;
   };
   const smsKeys = ["twilioAuthToken", "smsNumber", "publicUrl"] as const;
   const smsSet = smsKeys.filter((key) => raw[key]);
   if (smsSet.length > 0 && smsSet.length < smsKeys.length) {
     throw new Error(`${file} needs all of ${smsKeys.map((key) => `"${key}"`).join(", ")} for text messages, or none of them.`);
   }
+  if ((raw.googleClientId || raw.googleClientSecret) && !(raw.googleClientId && raw.googleClientSecret && raw.publicUrl)) {
+    throw new Error(`${file} needs all of "googleClientId", "googleClientSecret" and "publicUrl" for Google Calendar, or neither Google one.`);
+  }
   if (raw.emailFrom && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(raw.emailFrom)) {
     throw new Error(`${file}: "emailFrom" must be an email address, e.g. "noreply@nwsnotes.com".`);
   }
   if (raw.smsNumber && !/^\+[1-9]\d{6,14}$/.test(raw.smsNumber)) {
     throw new Error(`${file}: "smsNumber" must be in international form, e.g. "+447700900123".`);
+  }
+  if (raw.alexaSkillId && !/^amzn1\.ask\.skill\.[0-9a-f-]+$/.test(raw.alexaSkillId)) {
+    throw new Error(`${file}: "alexaSkillId" must be the skill's ID from Alexa's developer console, e.g. "amzn1.ask.skill.1a2b3c4d-…".`);
   }
   for (const key of ["sessionSecret", "databaseUrl"] as const) {
     if (!raw[key]) throw new Error(`${file} is missing "${key}"`);
@@ -156,6 +232,14 @@ export function loadConfig(): Config {
     ...(raw.twilioAuthToken &&
       raw.smsNumber &&
       raw.publicUrl && { sms: { authToken: raw.twilioAuthToken, number: raw.smsNumber, publicUrl: raw.publicUrl.replace(/\/+$/, "") } }),
+    ...(raw.googleClientId &&
+      raw.googleClientSecret &&
+      raw.publicUrl && {
+        google: { clientId: raw.googleClientId, clientSecret: raw.googleClientSecret, publicUrl: raw.publicUrl.replace(/\/+$/, ""), ...GOOGLE_URLS },
+      }),
+    ...(raw.alexaSkillId && {
+      alexa: { skillId: raw.alexaSkillId, publicUrl: (raw.publicUrl ?? `https://${raw.siteHost ?? DEFAULT_SITE_HOST}`).replace(/\/+$/, "") },
+    }),
     ...(raw.brevoApiKey && {
       email: { brevoApiKey: raw.brevoApiKey, from: raw.emailFrom ?? DEFAULT_EMAIL_FROM, fromName: raw.emailFromName ?? DEFAULT_EMAIL_FROM_NAME },
     }),

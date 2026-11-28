@@ -41,6 +41,10 @@ export interface UserData {
   smsLinkedDateTime?: string;
   /** Set by the admin: each text of theirs that works gets a text back confirming it (missing means off). */
   smsConfirmations?: boolean;
+  /** The Alexa account linked for adding notes by Alexa (Alexa's `userId` for it). Unique among users. */
+  alexaUserId?: string;
+  /** When it was linked. */
+  alexaLinkedDateTime?: string;
 }
 
 /** A user's maximum number of notes. */
@@ -289,6 +293,31 @@ export class Users {
     });
   }
 
+  /** The user this Alexa account (Alexa's `userId`) is linked to. */
+  byAlexaUserId(alexaUserId: string): User | undefined {
+    return this.list().find((user) => user.alexaUserId === alexaUserId);
+  }
+
+  /** Links an Alexa account to a user, taking it from anyone else it was linked to, and replacing the user's earlier one. */
+  linkAlexa(id: number, alexaUserId: string): Promise<User> {
+    return this.enqueue(async () => {
+      const user = this.required(id);
+      const previous = this.byAlexaUserId(alexaUserId);
+      if (previous && previous.id !== id) await this.save(withoutAlexa(previous));
+      const next = { ...user, alexaUserId, alexaLinkedDateTime: new Date().toISOString() };
+      await this.save(next);
+      return next;
+    });
+  }
+
+  /** Unlinks the user's Alexa, if they have one. */
+  unlinkAlexa(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      const user = this.required(id);
+      if (user.alexaUserId !== undefined) await this.save(withoutAlexa(user));
+    });
+  }
+
   /** Checks a login: the user, or why not. */
   checkLogin(rawName: unknown, rawPassword: unknown): User | "incorrect" | "disabled" | "waiting" {
     if (!this.ready) throw databaseUnreachable();
@@ -380,6 +409,7 @@ export class Users {
       ...noteStatsOf(user, counts),
       smsLinked: user.smsPhoneNumber !== undefined,
       smsConfirmations: user.smsConfirmations === true,
+      alexaLinked: user.alexaUserId !== undefined,
     };
   }
 
@@ -566,7 +596,7 @@ export class Users {
       this.requests.clear();
       for (const id of others) this.users.delete(id);
       const admin = this.required(ADMIN_ID);
-      const { noteLimit: _limit, smsConfirmations: _confirmations, ...asStarted } = withoutPhone(admin);
+      const { noteLimit: _limit, smsConfirmations: _confirmations, ...asStarted } = withoutAlexa(withoutPhone(admin));
       await this.save({
         ...asStarted,
         loginName: adminLoginName,
@@ -612,6 +642,11 @@ export class Users {
 
 function withoutPhone(user: User): User {
   const { smsPhoneNumber: _phone, smsLinkedDateTime: _linked, ...rest } = user;
+  return rest;
+}
+
+function withoutAlexa(user: User): User {
+  const { alexaUserId: _alexa, alexaLinkedDateTime: _linked, ...rest } = user;
   return rest;
 }
 

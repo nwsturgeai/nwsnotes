@@ -111,6 +111,13 @@ const TABLES = [
   // Note ids and tag ids are unique across all users, and never reused: new ones come from these.
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.note_ids",
   "CREATE SEQUENCE IF NOT EXISTS nwsnotes.tag_ids",
+  // New category ids too, so a deleted category's id is never given to another (older ones count up from 1 in
+  // each notebook, and can be the same in two notebooks, which is fine: categories are only ever per user).
+  "CREATE SEQUENCE IF NOT EXISTS nwsnotes.category_ids",
+  // Google Calendar (see google.ts): each connected user's account (its refresh token, the calendar and how
+  // far it has been read), and each synced note's event as it was last written or read. Not in the History.
+  "CREATE TABLE IF NOT EXISTS nwsnotes.google_accounts (user_id integer PRIMARY KEY, data jsonb NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS nwsnotes.google_events (user_id integer NOT NULL, note_id integer NOT NULL, data jsonb NOT NULL, PRIMARY KEY (user_id, note_id))",
 ];
 
 /**
@@ -136,6 +143,11 @@ const TAG_IDS_SQL = `
   UNION SELECT c.user_id, (t->>'id')::int FROM nwsnotes.change_items ci JOIN nwsnotes.changes c ON c.id = ci.change_id,
     jsonb_array_elements(ci."before"->'data'->'tags') t
   WHERE ci.kind = 'category' AND jsonb_typeof(ci."before"->'data'->'tags') = 'array'`;
+
+/** Every category id each user has, or has had (in their History), as `(user_id, id)` rows. */
+const CATEGORY_IDS_SQL = `
+  SELECT user_id, id FROM nwsnotes.categories
+  UNION SELECT c.user_id, ci.item_id FROM nwsnotes.change_items ci JOIN nwsnotes.changes c ON c.id = ci.change_id WHERE ci.kind = 'category'`;
 
 /** "note id 4" or "note ids 4, 7": for messages naming ids. */
 export function idList(kind: string, ids: number[]): string {
@@ -177,7 +189,7 @@ async function checkGlobalIds(query: Query, testMode: boolean): Promise<void> {
 }
 
 /**
- * Moves the note and tag id sequences past every id in use (notes, tags, their History copies, and the
+ * Moves the note, tag and category id sequences past every id in use (notes, tags, categories, their History copies, and the
  * old per-user `lastNoteId`s, which cover notes deleted since). They're never moved back, apart from with
  * `exact` (the tests' reset), which sets them to just past what's there.
  */
@@ -196,7 +208,8 @@ export async function syncIdSequences(query: Query, exact = false): Promise<void
        WHERE ci.kind = 'note' AND jsonb_typeof(ci."before"->'tagIds') = 'array'`,
     ),
   );
-  for (const [sequence, used] of [["note_ids", notes], ["tag_ids", tags]] as const) {
+  const categories = await highest(CATEGORY_IDS_SQL);
+  for (const [sequence, used] of [["note_ids", notes], ["tag_ids", tags], ["category_ids", categories]] as const) {
     const [state] = await query<{ last_value: number; is_called: boolean }>(`SELECT last_value::int AS last_value, is_called FROM nwsnotes.${sequence}`);
     const given = state!.is_called ? Number(state!.last_value) : Number(state!.last_value) - 1;
     const target = exact ? used : Math.max(used, given);
@@ -208,7 +221,7 @@ export async function syncIdSequences(query: Query, exact = false): Promise<void
 }
 
 /** New ids from a sequence: `count` of them, in order. */
-async function nextIds(db: Db, sequence: "note_ids" | "tag_ids", count: number): Promise<number[]> {
+async function nextIds(db: Db, sequence: "note_ids" | "tag_ids" | "category_ids", count: number): Promise<number[]> {
   if (count === 0) return [];
   const rows = await db.query<{ id: number }>(`SELECT nextval('nwsnotes.${sequence}')::int AS id FROM generate_series(1, $1)`, [count]);
   return rows.map((row) => Number(row.id)).sort((a, b) => a - b);
@@ -217,6 +230,18 @@ async function nextIds(db: Db, sequence: "note_ids" | "tag_ids", count: number):
 /** A new note id, unique across all users. */
 export async function nextNoteId(db: Db): Promise<number> {
   return (await nextIds(db, "note_ids", 1))[0]!;
+}
+
+/** A new category id, never used before. */
+export async function nextCategoryId(db: Db): Promise<number> {
+  return (await nextIds(db, "category_ids", 1))[0]!;
+}
+
+/** Which of `ids` were this user's tags at some point in their History (tags since deleted, say). */
+export async function formerTagIds(db: Db, userId: number, ids: number[]): Promise<Set<number>> {
+  if (ids.length === 0) return new Set();
+  const rows = await db.query<{ id: number }>(`SELECT DISTINCT id FROM (${TAG_IDS_SQL}) ids WHERE user_id = $1 AND id = ANY($2::int[])`, [userId, ids]);
+  return new Set(rows.map((row) => Number(row.id)));
 }
 
 /** `count` new tag ids, unique across all users. */

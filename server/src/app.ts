@@ -26,6 +26,11 @@ import { EmailChanges } from "./emailChange.js";
 import { ShareInvites } from "./shareInvite.js";
 import type { Mailer } from "./email.js";
 import type { SmsNotes } from "./sms.js";
+import type { AlexaNotes } from "./alexa.js";
+import type { DictatedCommands } from "./dictation.js";
+import { ALEXA_TEST_CERTS, ALEXA_TEST_CERT_PATH } from "./fakeAlexa.js";
+import type { GoogleCalendar } from "./google.js";
+import type { FakeGoogle } from "./fakeGoogle.js";
 import { actingUser, type ActingUser } from "./context.js";
 import type { NoteStore } from "./store.js";
 import type { Sharing } from "./sharing.js";
@@ -47,6 +52,10 @@ export function createApp(
   sharing: Sharing,
   sms?: SmsNotes,
   mailer?: Mailer,
+  google?: GoogleCalendar,
+  fakeGoogle?: FakeGoogle,
+  alexa?: AlexaNotes,
+  commands?: DictatedCommands,
 ) {
   const users = notebooks.users;
 
@@ -85,6 +94,20 @@ export function createApp(
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(redirectToSiteHost(config));
+  // --- Adding notes by Alexa (only when it's set up) ------------------------
+  // Before the JSON parser: Alexa's signature is of the body exactly as it arrived.
+
+  const alexaRouters = alexa?.routers();
+  if (alexaRouters) app.use(alexaRouters.webhook);
+  // Outside production, the fake Alexa's test certificates, which the tests' requests name.
+  if (alexa && !config.production) {
+    app.get(`${ALEXA_TEST_CERT_PATH}/:name`, (req, res) => {
+      const pem = ALEXA_TEST_CERTS[req.params.name];
+      if (pem === undefined) res.status(404).type("text").send("No such test certificate.");
+      else res.type("application/x-pem-file").send(pem);
+    });
+  }
+
   // Large enough for a long-form note's handwritten details: up to 10 pages of up to 2 MB each.
   app.use(express.json({ limit: "24mb" }));
 
@@ -179,6 +202,13 @@ export function createApp(
     app.use(webhook);
     app.use("/api/me/sms", me);
   }
+  if (alexaRouters) app.use("/api/me/alexa", alexaRouters.me);
+
+  // --- Google Calendar (only when it's set up) ------------------------------
+
+  if (google) app.use("/api/google", google.router(requireSession(users, config.sessionSecret)));
+  // Outside production, a fake Google, so connecting works without a Google account (see fakeGoogle.ts).
+  if (fakeGoogle && !config.production) app.use("/api/test/google", fakeGoogle.router());
 
   // --- The logged-in user ---------------------------------------------------
 
@@ -367,6 +397,8 @@ export function createApp(
       }
       const { note, created } = await sharing.addNote(userOf(res), check.title, req.body?.tagIds, details.details, req.body?.parentId, {
         dueDateTime: due.dueDateTime,
+        noReminder: due.noReminder,
+        returnWhenDue: due.returnWhenDue,
         clientId: req.body?.clientId,
         createdDateTime: req.body?.createdDateTime,
         tagsChangedDateTime: req.body?.tagsChangedDateTime,
@@ -417,6 +449,8 @@ export function createApp(
     }
     const note = await sharing.updateNote(userOf(res), id, check.title, req.body?.tagIds, details.details, {
       dueDateTime: due.dueDateTime,
+      noReminder: due.noReminder,
+      returnWhenDue: due.returnWhenDue,
       tagsChangedDateTime: req.body?.tagsChangedDateTime,
       baseModifiedDateTime: req.body?.baseModifiedDateTime,
       parentId: parentId as number | null | undefined,
@@ -436,6 +470,18 @@ export function createApp(
     await sharing.deleteNote(userOf(res), id);
     notifyChanged(req, res);
     res.json({ ok: true });
+  });
+
+  // Edit-order mode: a note dragged onto another tab gets that tab's tags.
+  notesRouter.put("/:id/tab-move", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no note with id ${req.params.id}.` });
+      return;
+    }
+    const note = await sharing.moveToTab(userOf(res), id, req.body);
+    notifyChanged(req, res);
+    res.json(note);
   });
 
   // Archive, reinstate or bin a note.
@@ -504,6 +550,20 @@ export function createApp(
     // Deleted tags are no longer shared.
     notifyUsers(await sharing.pruneDeletedTags(userOf(res).id));
     res.json((await sharing.withSharedOut(userOf(res).id, [category]))[0]);
+  });
+
+  // Deletes a category: its tags come off every note and out of every tab's filter, and their shares end.
+  categoriesRouter.delete("/:id", async (req: Request<{ id: string }>, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) {
+      res.status(404).json({ error: `There is no category with id ${req.params.id}.` });
+      return;
+    }
+    await notebookOf(res).deleteCategory(id);
+    notifyChanged(req, res);
+    // Its tags are no longer shared: the people they were shared with are told, and their pages reload.
+    notifyUsers(await sharing.pruneDeletedTags(userOf(res).id));
+    res.json({ ok: true });
   });
 
   app.use("/api/categories", categoriesRouter);
@@ -680,7 +740,11 @@ export function createApp(
       await (await notebooks.for(ADMIN_ID)).resetTo(JSON.stringify(req.body));
       await push.forgetAllDevices();
       sms?.resetForTests();
+      await alexa?.resetForTests();
+      commands?.resetForTests();
       mailer?.resetForTests();
+      await google?.resetForTests();
+      fakeGoogle?.reset();
       passwordResets.resetForTests();
       serverLog.clear();
       res.json({ ok: true });
@@ -716,6 +780,20 @@ export function createApp(
     // Loads the data again from the database, as a restart would.
     app.post("/api/test/reload", ...testSession, async (_req, res) => {
       await notebookOf(res).reloadForTests();
+      res.json({ ok: true });
+    });
+    // Sends the reminders of notes that have fallen due now, rather than at the next minute's check.
+    app.post("/api/test/check-reminders", async (_req, res) => {
+      await push.checkDueForTests();
+      res.json({ ok: true });
+    });
+    // Google Calendar: syncs the logged-in user now (as the 5-minute check would), and waits until no sync is running.
+    app.post("/api/test/google-sync", ...testSession, async (_req, res) => {
+      await google?.syncNowForTests(userOf(res).id);
+      res.json({ ok: true });
+    });
+    app.post("/api/test/google-idle", async (_req, res) => {
+      await google?.idle();
       res.json({ ok: true });
     });
     // Makes the database unreachable (or reachable again), to test what the app does then.

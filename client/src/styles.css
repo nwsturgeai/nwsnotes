@@ -280,6 +280,15 @@ body:has(.app) {
   color: var(--text);
 }
 
+/* Edit-order mode: the tab a note is being dragged over, where letting go moves the note into it. */
+.tab.drop-target,
+.left-tab.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
 /* Blocked while a note is being edited. */
 .tab[aria-disabled],
 .cog.blocked {
@@ -383,6 +392,12 @@ body:has(.app) {
 .note-pending {
   margin-right: 0.25rem;
   color: var(--muted);
+}
+
+/* Before a due date that has no reminder, or that a Waiting note returns to Active at. */
+.note-no-reminder,
+.note-returns {
+  margin-right: 0.25rem;
 }
 
 .cog:hover:not(.blocked),
@@ -622,6 +637,14 @@ a:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+/* In place of Archived → Bin when none of the listed Archived notes may be binned: plain text, the button's height. */
+.list-lifetime-note {
+  padding: 0.3rem 0;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 /* Small text buttons, the height of the filter dropdowns. */
@@ -960,6 +983,21 @@ body:has(.note-list li.dragging) {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 1rem;
+}
+
+/* The due date's options ("Remind me?" and returning from Waiting), between the date and time boxes and the buttons. */
+.due-date-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: -0.25rem 0 1rem;
+}
+
+.due-date-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
 }
 
 .due-date-fields input {
@@ -1495,9 +1533,10 @@ body:has(.note-list li.dragging) {
 }
 
 /*
- * The typed details: the formatted text (.lf-text-display) underneath, and the real text box on top
- * with invisible text. The two must lay out every letter identically, so they share every setting that
- * affects layout, and the formatting never changes a letter's width (bold is an outline, italic a slant).
+ * The typed details: the formatted text (.lf-text-display) underneath, the real text box on top with
+ * invisible text, and above that the tickboxes to click on (.lf-text-targets, invisible plain text).
+ * They must lay out every letter identically, so they share every setting that affects layout, and the
+ * formatting never changes a letter's width (bold is an outline, italic a slant).
  */
 .lf-text {
   position: relative;
@@ -1509,6 +1548,7 @@ body:has(.note-list li.dragging) {
 }
 
 .lf-text-display,
+.lf-text-targets,
 .lf-details textarea {
   box-sizing: border-box;
   margin: 0;
@@ -1534,6 +1574,29 @@ body:has(.note-list li.dragging) {
   pointer-events: none;
 }
 
+.lf-text-targets {
+  position: absolute;
+  inset: 0;
+  overflow-y: hidden;
+  /* Seen through: only the tickboxes take clicks, the rest reaches the text box. */
+  border-color: transparent;
+  color: transparent;
+  pointer-events: none;
+}
+
+.fmt-tickbox-target {
+  position: relative;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* A bigger area to tap than the tickbox's few letters. */
+.fmt-tickbox-target::before {
+  content: "";
+  position: absolute;
+  inset: -0.35em -0.3em;
+}
+
 .lf-details textarea {
   position: relative;
   flex: 1;
@@ -1554,7 +1617,7 @@ body:has(.note-list li.dragging) {
   outline-offset: 2px;
 }
 
-/* Formatting: *bold*, _underline_ and /italic/. In the list, bold is the font's real bold. */
+/* Formatting: *bold*, _underline_, /italic/, -strikethrough- and #highlight#. In the list, bold is the font's real bold. */
 .fmt-bold {
   font-weight: 700;
 }
@@ -1568,10 +1631,68 @@ body:has(.note-list li.dragging) {
   font-style: italic;
 }
 
+.fmt-strikethrough {
+  text-decoration: line-through;
+}
+
+/* Underlined and struck through together: both lines. */
+.fmt-underline.fmt-strikethrough {
+  text-decoration: underline line-through;
+}
+
+.fmt-highlight {
+  background-color: #ffff00;
+  color: #000;
+}
+
 /* In the long-form text box bold mustn't change widths, so it's the normal letters with an outline. */
 .lf-text-display .fmt-bold {
   font-weight: inherit;
   -webkit-text-stroke: 0.045em currentColor;
+}
+
+/* A tickbox starting a line of long-form details, drawn over its "[ ]" or "[x]" (whose letters are hidden). */
+.fmt-tickbox {
+  position: relative;
+  color: transparent;
+}
+
+.fmt-tickbox::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 0.85em;
+  height: 0.85em;
+  border: 1.5px solid var(--text);
+  border-radius: 3px;
+  background: var(--surface);
+  transform: translate(-50%, -50%);
+}
+
+.fmt-tickbox.ticked::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* The tick. */
+.fmt-tickbox.ticked::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 0.28em;
+  height: 0.5em;
+  border: solid var(--accent-text);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -62%) rotate(45deg);
+}
+
+/* The rest of a ticked line is struck through. */
+.fmt-ticked {
+  text-decoration: line-through;
 }
 
 /* The markers themselves, shown (dimmed) only in the long-form text box. */
@@ -1601,7 +1722,7 @@ body:has(.note-list li.dragging) {
   pointer-events: none;
 }
 
-/* The editor's bottom row: the eraser, pen thicknesses and pages at the left; Export, Cancel and Finish at the right. */
+/* The editor's bottom row: the eraser, pen thicknesses and pages at the left; Export, the due date, Cancel and Finish at the right. */
 .lf-finish {
   display: flex;
   align-items: center;
@@ -1637,15 +1758,15 @@ body:has(.note-list li.dragging) {
 }
 
 /* Previous and Next go when the row is too narrow for everything (they're in the page menu too). */
-@container (max-width: 560px) {
+@container (max-width: 604px) {
   .lf-pages .lf-page-step {
     display: none;
   }
 }
 
-/* Narrower still (a phone), the pen-thickness buttons go too (Settings has them), so Cancel and Finish stay on the screen. */
-@container (max-width: 440px) {
-  .lf-finish .lf-pen-widths {
+/* Narrower still (a phone), the pen-thickness button goes too (Settings has the thicknesses), so Cancel and Finish stay on the screen. */
+@container (max-width: 484px) {
+  .lf-finish .lf-pen-menu {
     display: none;
   }
 }
@@ -1655,20 +1776,82 @@ body:has(.note-list li.dragging) {
   min-width: 13rem;
 }
 
-.lf-page-menu-list .tag-option:disabled {
+.lf-page-menu-list .tag-option:disabled,
+.lf-pen-menu-list .tag-option:disabled {
   color: var(--muted);
   cursor: default;
 }
 
-.lf-page-menu-list .tag-option:disabled:hover {
+.lf-page-menu-list .tag-option:disabled:hover,
+.lf-pen-menu-list .tag-option:disabled:hover {
   background: none;
 }
 
-/* A wider gap between the eraser and the pen thicknesses. */
-.lf-pen-widths {
-  display: flex;
-  gap: 4px;
+/* A wider gap between the eraser and the pen-thickness button. */
+.lf-pen-menu {
   margin-left: 12px;
+}
+
+/* The pen menu opens above its button: the thicknesses, a line, then Pen colour… and Black pen. */
+.lf-pen-menu-list {
+  min-width: 10rem;
+}
+
+.lf-pen-menu-divider {
+  margin: 0.35rem 0;
+  border-top: 1px solid var(--line);
+}
+
+/* A small circle of the colour, in line with the thickness samples. */
+.lf-pen-swatch {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-right: 18px;
+  border-radius: 50%;
+}
+
+/* The pen colour pop-up: a grid of colour circles, the chosen one ticked. */
+.pen-colours {
+  display: grid;
+  grid-template-columns: repeat(4, 44px);
+  gap: 12px;
+  margin-top: 1rem;
+}
+
+.pen-colour {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+/* Light colours (the highlighter's): a dark tick, and a faint edge so the palest show on white. */
+.pen-colours.light .pen-colour {
+  border-color: rgb(0 0 0 / 0.12);
+  color: #333;
+}
+
+.lf-pen-swatch.light {
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.15);
+}
+
+/* The pen button while the highlighter is in use: the highlighter's colour (set inline), with a dark icon. */
+.icon-button.lf-highlighting {
+  color: #333;
+}
+
+.pen-colour[aria-pressed="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 /* Export, pushed over to the right: a 24px gap (with the row's own 4px) before Cancel and Finish. */
@@ -1682,26 +1865,39 @@ body:has(.note-list li.dragging) {
   margin-left: 0;
 }
 
-/* Each pen button: a short line at its thickness, with its size in small text underneath. */
-.lf-pen-widths .icon-button {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
+/* The due date: just after Export (4px), or pushed over to the right when there's no Export (typed details). */
+.lf-due {
+  margin-left: auto;
+  margin-right: 20px;
 }
 
-/* The sample line, in the icon's colour (light when chosen). */
+/* With the due date after it, Export's gap before Cancel and Finish moves to the due date. */
+.lf-export:has(+ .lf-due) {
+  margin-right: 0;
+}
+
+.lf-export + .lf-due,
+.lf-due + .lf-finish-end {
+  margin-left: 0;
+}
+
+/* Each thickness in the menu: a tick if it's the one chosen, a short line at that thickness, then its size. */
+.lf-pen-check {
+  display: inline-flex;
+  justify-content: center;
+  width: 1em;
+}
+
 .lf-pen-sample {
   display: block;
-  width: 22px;
+  flex: none;
+  width: 32px;
   border-radius: 999px;
   background: currentColor;
 }
 
 .lf-pen-size {
-  font-size: 0.6rem;
-  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Cancel (when shown) and Finish, at the right-hand end. */
@@ -2943,6 +3139,48 @@ body:has(.dragging) {
   color: var(--text);
 }
 
+/* More in a confirmation, under its message (e.g. what deleting a category changes). */
+.confirm-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+/* The part of a confirmation most worth noticing. */
+.confirm-warning {
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--error);
+  border-radius: 6px;
+  background: var(--error-bg);
+}
+
+.confirm-warning ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.25rem;
+  font-weight: 700;
+}
+
+.confirm-dialog .confirm-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* Moving a note to another tab: the tag changes, one per line, and the auto-accept tickbox. */
+.tab-move-changes {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.tab-move-auto {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 /* ---- Login page --------------------------------------------------------- */
 
 .login-page {
@@ -3176,7 +3414,8 @@ body:has(.dragging) {
   color: var(--muted);
   font-size: 0.9rem;
 }
-.sms-code-digits {
+.sms-code-digits,
+.alexa-code-digits {
   font-size: 1.3rem;
   letter-spacing: 0.15em;
 }

@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   CLIENT_ID_MAX_LENGTH,
   detailsPagesOf,
+  isAllDayTime,
   isAncestor,
   isLifetimeTag,
   isLongForm,
@@ -17,6 +18,7 @@ import {
   LIFETIME_WAITING,
   mergeNoteOrders,
   sameTags,
+  tagsForTabMove,
   validateCategory,
   validateTab,
   validateTagIds,
@@ -54,6 +56,8 @@ import {
   oldTabOrders,
   revertedSnapshot,
   syncIdSequences,
+  nextCategoryId,
+  formerTagIds,
   withoutNoteOrder,
   writeChange,
   type ChangeRecord,
@@ -119,7 +123,6 @@ function inOrder<T extends { id: number }>(raw: unknown, items: T[], kind: strin
   return ordered as T[];
 }
 
-const LONG_FORM_NO_DUE_DATE = "Long-form notes can't have a due date.";
 
 /** A reminder is sent this late at most (e.g. when the server was down as the note fell due). */
 const REMINDER_LATEST_MS = 24 * 60 * 60 * 1000;
@@ -127,19 +130,61 @@ const REMINDER_LATEST_MS = 24 * 60 * 60 * 1000;
 /** Lifetimes that get reminders: not Archived or Bin. */
 const REMINDED_LIFETIMES = [LIFETIME_NEW, LIFETIME_ACTIVE, LIFETIME_WAITING];
 
+/** A due date's options: no reminder, and a Waiting note going back to Active when it's due. */
+interface DueOptions {
+  noReminder?: boolean;
+  returnWhenDue?: boolean;
+}
+
+/** A note's due-date options as they are, to keep them. */
+const dueOptionsOf = (note: Note): DueOptions => ({ noReminder: note.noReminder === true, returnWhenDue: note.returnWhenDue === true });
+
 /**
- * A note's due date and reminder record after an add or edit. An unchanged due date keeps its record;
- * a due date that's already past counts as reminded, since it didn't just pass.
+ * A note's due date, its options, and their records after an add or edit. An unchanged due date keeps its
+ * records; a due date that's already past counts as reminded (and returned), since it didn't just pass. So
+ * does one whose reminder (or return) is turned on after it passed: neither happens late.
  */
-function dueDateFields(dueDateTime: string | undefined, existing: Note | undefined, now: Date): Partial<Note> {
+function dueDateFields(
+  dueDateTime: string | undefined,
+  existing: Note | undefined,
+  now: Date,
+  allDay = existing?.allDay === true,
+  { noReminder = false, returnWhenDue = false }: DueOptions = {},
+): Partial<Note> {
   if (dueDateTime === undefined) return {};
-  const reminderSentFor =
-    existing?.dueDateTime === dueDateTime
-      ? existing.reminderSentFor
-      : Date.parse(dueDateTime) <= now.getTime()
-        ? dueDateTime
-        : undefined;
-  return { dueDateTime, ...(reminderSentFor !== undefined && { reminderSentFor }) };
+  const past = Date.parse(dueDateTime) <= now.getTime();
+  const sameDue = existing?.dueDateTime === dueDateTime;
+  const reminderTurnedOn = existing?.noReminder === true && !noReminder;
+  const reminderSentFor = sameDue && !reminderTurnedOn ? existing.reminderSentFor : past ? dueDateTime : undefined;
+  const returnedFor = !returnWhenDue ? undefined : sameDue && existing.returnWhenDue ? existing.returnedFor : past ? dueDateTime : undefined;
+  // An all-day note (from Google Calendar) stays all-day only while it's due at the all-day time.
+  return {
+    dueDateTime,
+    ...(noReminder && { noReminder: true as const }),
+    ...(returnWhenDue && { returnWhenDue: true as const }),
+    ...(reminderSentFor !== undefined && { reminderSentFor }),
+    ...(returnedFor !== undefined && { returnedFor }),
+    ...(allDay && isAllDayTime(dueDateTime) && { allDay: true as const }),
+  };
+}
+
+/** Where a change came from, for the History: texted in, or from Google Calendar. */
+type ChangeSource = "sms" | "alexa" | "calendar";
+const SOURCE_SUFFIX: Record<ChangeSource, string> = { sms: " by text message", alexa: " by Alexa", calendar: " from Google Calendar" };
+const sourceSuffix = (source: ChangeSource | undefined) => (source ? SOURCE_SUFFIX[source] : "");
+
+/** What a change from Google Calendar does to a note (see calendarUpdate). */
+export interface CalendarChange {
+  titleText?: string;
+  /** Typed details: a regular note given them becomes a long-form note. */
+  detailsText?: string;
+  /** A new due date, or null to clear it. */
+  dueDateTime?: string | null;
+  allDay?: boolean;
+  /** The note's user tags (without Lifetime). */
+  tagIds?: number[];
+  /** Moved to the Bin (the event was deleted). */
+  toBin?: boolean;
 }
 
 /** A time the page sent for something done offline, if it's valid and not after `now`; otherwise undefined. */
@@ -367,11 +412,16 @@ export class NoteStore {
       const result = await revertedSnapshot(this.db, this.userId, toChangeId as number, this.snapshot());
       if (!result) throw new RequestError(404, `There is no change ${String(toChangeId)} in the history (it may be over ${HISTORY_DAYS} days old).`);
       if (result.undone === 0) throw new RequestError(400, "That's the latest change, so there's nothing to undo.");
-      // A reminder already sent for a note's due date isn't sent again because the note came back.
+      // A reminder already sent for a note's due date isn't sent again because the note came back, nor does a
+      // note already returned from Waiting for it return again.
       const current = new Map(this.notes.map((note) => [note.id, note]));
-      const notes = result.snapshot.notes.map((note) => {
+      const notes = result.snapshot.notes.map((before) => {
+        let note = before;
         const sent = current.get(note.id)?.reminderSentFor;
-        return sent !== undefined && note.dueDateTime === sent && note.reminderSentFor !== sent ? { ...note, reminderSentFor: sent } : note;
+        if (sent !== undefined && note.dueDateTime === sent && note.reminderSentFor !== sent) note = { ...note, reminderSentFor: sent };
+        const returned = current.get(note.id)?.returnedFor;
+        if (returned !== undefined && note.dueDateTime === returned && note.returnedFor !== returned) note = { ...note, returnedFor: returned };
+        return note;
       });
       await this.save(this.nextSaveTime(), { ...result.snapshot, notes }, {
         record: {
@@ -504,7 +554,7 @@ export class NoteStore {
    * note unchanged (a retried add whose reply was lost). A valid `createdDateTime` that isn't in the
    * future (a note written offline) is kept as its created time, and likewise `tagsChangedDateTime`
    * (its tags changed offline before it was sent); without one, its tags were set when it was created.
-   * `dueDateTime` (already validated) is for regular notes only.
+   * `dueDateTime` (already validated) is optional, for any kind of note.
    */
   add(
     title: NoteTitle,
@@ -513,13 +563,17 @@ export class NoteStore {
     rawParentId: unknown,
     options: {
       dueDateTime?: string;
+      noReminder?: boolean;
+      returnWhenDue?: boolean;
       clientId?: unknown;
       createdDateTime?: unknown;
       tagsChangedDateTime?: unknown;
       noteLimit?: number;
       stylusNoteLimit?: number;
-      /** "sms": texted in, which the History says. */
-      source?: "sms";
+      /** "sms": texted in; "calendar": from Google Calendar. The History says so. */
+      source?: ChangeSource;
+      /** From an all-day event in Google Calendar (kept only while it's due at 20:00). */
+      allDay?: boolean;
       /** Set when someone a tag is shared with adds the note: this notebook's owner, for the limits' messages. */
       ownerName?: string;
       /** Who is adding it (the owner, or someone a tag is shared with). */
@@ -546,12 +600,11 @@ export class NoteStore {
         );
       }
       if (isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
-      const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
+      const tagIds = validateTagIds(await this.withoutDeletedTags(withoutLifetime(rawTagIds)), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       if (details && title.titleText === undefined) {
         throw new RequestError(400, "A long-form note's title must be typed text.");
       }
-      if (details && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const parentId = rawParentId === undefined || rawParentId === null ? undefined : this.parentFor(rawParentId);
 
       const now = this.nextSaveTime();
@@ -562,7 +615,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...dueDateFields(options.dueDateTime, undefined, now),
+        ...dueDateFields(options.dueDateTime, undefined, now, options.allDay === true, options),
         ...(options.createdByUserId !== undefined && { createdByUserId: options.createdByUserId }),
         createdDateTime,
         lastModifiedDateTime: timestamp,
@@ -572,7 +625,7 @@ export class NoteStore {
         ...(clientId !== undefined && { clientId }),
       };
       await this.save(now, { notes: [...this.notes, note] }, {
-        record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}${options.source === "sms" ? " by text message" : ""}` },
+        record: { summary: `Added ${details ? "long-form note " : ""}${label(note)}${sourceSuffix(options.source)}` },
       });
       return { note, created: true };
     });
@@ -597,8 +650,9 @@ export class NoteStore {
    * created time (so its place in the list) and its type: typed notes stay typed, handwritten stay handwritten.
    * Sending details for a regular note converts it to a long-form note ("Convert to long-form note").
    * If the tags really change, `tagsChangedDateTime` (an offline change's time) or now becomes their
-   * changed time. `dueDateTime` (already validated; regular notes only) replaces the note's, so
-   * leaving it out clears it.
+   * changed time. `dueDateTime` (already validated) replaces the note's, so
+   * leaving it out clears it; likewise `noReminder` and `returnWhenDue`, so leaving them out turns the reminder
+   * on and the return off.
    */
   updateNote(
     id: number,
@@ -607,6 +661,8 @@ export class NoteStore {
     details: NoteDetails | undefined,
     options: {
       dueDateTime?: string;
+      noReminder?: boolean;
+      returnWhenDue?: boolean;
       tagsChangedDateTime?: unknown;
       /** The note's lastModifiedDateTime when the edit started: refused (412) if it has changed since. */
       baseModifiedDateTime?: unknown;
@@ -662,8 +718,7 @@ export class NoteStore {
             : "This note's details are typed, so they must be updated with new text, not an image.",
         );
       }
-      if (details !== undefined && options.dueDateTime !== undefined) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
-      const tagIds = validateTagIds(withoutLifetime(rawTagIds), this.categories);
+      const tagIds = validateTagIds(await this.withoutDeletedTags(withoutLifetime(rawTagIds)), this.categories);
       if (!tagIds.ok) throw new RequestError(400, tagIds.error);
       // A typed note converted to a long-form note with handwritten details becomes a stylus note.
       if (!isStylusNote(existing) && isStylusNote({ ...title, ...details })) this.checkStylusNoteLimit(options.stylusNoteLimit, options.ownerName);
@@ -676,7 +731,7 @@ export class NoteStore {
         ...title,
         ...details,
         ...(parentId !== undefined && { parentId }),
-        ...dueDateFields(options.dueDateTime, existing, now),
+        ...dueDateFields(options.dueDateTime, existing, now, undefined, options),
         ...(existing.createdByUserId !== undefined && { createdByUserId: existing.createdByUserId }),
         createdDateTime: existing.createdDateTime,
         lastModifiedDateTime: now.toISOString(),
@@ -689,8 +744,7 @@ export class NoteStore {
         : details
           ? `Made ${label(note)} a long-form note`
           : `Edited ${label(note)}`;
-      // Only the parent changed (the Parent pop-up, say): just the move.
-      const onlyMoved =
+      const sameContent =
         note.titleText === existing.titleText &&
         note.titleImage === existing.titleImage &&
         note.detailsText === existing.detailsText &&
@@ -698,9 +752,21 @@ export class NoteStore {
         detailsPagesOf(note).join() === detailsPagesOf(existing).join() &&
         note.dueDateTime === existing.dueDateTime &&
         sameTags(note.tagIds, existing.tagIds);
+      const reminderChanged = note.dueDateTime !== undefined && (note.noReminder === true) !== (existing.noReminder === true);
+      const returnChanged = note.dueDateTime !== undefined && (note.returnWhenDue === true) !== (existing.returnWhenDue === true);
+      // Only the parent changed (the Parent pop-up, say): just the move.
+      const onlyMoved = sameContent && !reminderChanged && !returnChanged;
+      const optionsSummary =
+        reminderChanged && returnChanged
+          ? `Changed the due date options of ${label(note)}`
+          : reminderChanged
+            ? `Turned ${note.noReminder ? "off" : "on"} the reminder for ${label(note)}`
+            : `Turned ${note.returnWhenDue ? "on" : "off"} returning from Waiting when due for ${label(note)}`;
       const summary =
         parentId === existing.parentId
-          ? edited
+          ? sameContent && (reminderChanged || returnChanged)
+            ? optionsSummary
+            : edited
           : onlyMoved
             ? this.moveSummary(label(note), existing.parentId, parentId)
             : `${edited}, and ${this.moveSummary("it", existing.parentId, parentId).replace(/^M|^T/, (first) => first.toLowerCase())}`;
@@ -713,20 +779,74 @@ export class NoteStore {
   }
 
   /**
-   * Sets a regular note's due date (already validated), keeping everything else about it, and saves.
+   * Sets a note's due date (already validated), keeping everything else about it, and saves.
    * Used by "Due" texts; the page sets due dates with the rest of the note (updateNote).
    */
-  setDueDate(id: number, dueDateTime: string, options: { source?: "sms" } = {}): Promise<Note> {
+  setDueDate(id: number, dueDateTime: string, options: { source?: ChangeSource } = {}): Promise<Note> {
     return this.enqueue(async () => {
       const existing = this.notes.find((n) => n.id === id);
       if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
-      if (isLongForm(existing)) throw new RequestError(400, LONG_FORM_NO_DUE_DATE);
       const now = this.nextSaveTime();
-      const { reminderSentFor: _sent, ...rest } = existing;
+      // Always with a reminder, and not returning from Waiting (a text can't set either).
+      const { reminderSentFor: _sent, allDay: _allDay, noReminder: _noReminder, returnWhenDue: _return, returnedFor: _returned, ...rest } = existing;
       const note: Note = { ...rest, ...dueDateFields(dueDateTime, existing, now), lastModifiedDateTime: now.toISOString() };
       await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
-        record: { summary: `Set the due date of ${label(note)}${options.source === "sms" ? " by text message" : ""}` },
+        record: { summary: `Set the due date of ${label(note)}${sourceSuffix(options.source)}` },
       });
+      return note;
+    });
+  }
+
+  /** One note, if the notebook has it (for Google Calendar's sync). */
+  noteById(id: number): Note | undefined {
+    return this.notes.find((n) => n.id === id);
+  }
+
+  /** Every note, and the user categories in their order (for Google Calendar's sync). */
+  notesAndCategories(): { notes: readonly Note[]; categories: readonly Category[] } {
+    return { notes: this.notes, categories: this.categories };
+  }
+
+  /**
+   * A change made to a note's event in Google Calendar: any of its title, typed details (a regular
+   * typed note becomes long-form), due date, tags, or moving it to the Bin. In the History, as from
+   * Google Calendar. Returns the note, or undefined if it's gone or nothing changed.
+   */
+  calendarUpdate(id: number, change: CalendarChange): Promise<Note | undefined> {
+    return this.enqueue(async () => {
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) return undefined;
+      const now = this.nextSaveTime();
+      const { reminderSentFor: _sent, allDay: _allDay, dueDateTime: _due, noReminder: _noReminder, returnWhenDue: _return, returnedFor: _returned, ...rest } = existing;
+      let note: Note = { ...rest };
+      if (change.titleText !== undefined && existing.titleText !== undefined) note.titleText = change.titleText;
+      // Only typed notes take typed details: handwritten details stay as they are.
+      if (change.detailsText !== undefined && existing.titleText !== undefined && existing.detailsImage === undefined) {
+        note.detailsText = change.detailsText;
+      }
+      const due = change.dueDateTime === undefined ? existing.dueDateTime : (change.dueDateTime ?? undefined);
+      // A change in Google never changes the due date's options: they're only changed in nwsnotes.
+      note = { ...note, ...dueDateFields(due, existing, now, change.allDay ?? existing.allDay === true, dueOptionsOf(existing)) };
+      if (change.tagIds !== undefined) {
+        const valid = validateTagIds(change.tagIds.filter((tagId) => !isLifetimeTag(tagId)), this.categories);
+        if (valid.ok) note.tagIds = [...valid.value, lifetimeOf(existing)];
+      }
+      if (change.toBin) note.tagIds = withLifetime(note, LIFETIME_BIN);
+      const same = JSON.stringify(note) === JSON.stringify(existing);
+      if (same) return undefined;
+      note = {
+        ...note,
+        lastModifiedDateTime: now.toISOString(),
+        tagsChangedDateTime: this.tagsChangedTime(existing, note.tagIds, now),
+      };
+      const what = change.toBin
+        ? `Moved ${label(note)} to the Bin`
+        : !isLongForm(existing) && isLongForm(note)
+          ? `Made ${label(note)} a long-form note`
+          : change.titleText !== undefined && change.titleText !== existing.titleText
+            ? `Renamed ${label(existing)} to ${label(note)}`
+            : `Changed ${label(note)}`;
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, { record: { summary: `${what}${SOURCE_SUFFIX.calendar}` } });
       return note;
     });
   }
@@ -814,6 +934,46 @@ export class NoteStore {
     });
   }
 
+  /**
+   * Edit-order mode: a note dragged onto tab `toTabId` from `fromTabId` (undefined: "All") gets the tags
+   * that put it in that tab and take it out of the one it came from (see `tagsForTabMove`), Lifetime
+   * included, in one save. `baseModifiedDateTime`: refused (412) if the note has changed since.
+   */
+  moveToTab(id: number, raw: unknown): Promise<Note> {
+    return this.enqueue(async () => {
+      const body = (raw ?? {}) as Partial<Record<"toTabId" | "fromTabId" | "baseModifiedDateTime", unknown>>;
+      const existing = this.notes.find((n) => n.id === id);
+      if (!existing) throw new RequestError(404, `There is no note with id ${id}.`);
+      const tabOf = (tabId: unknown, name: string) => {
+        if (!Number.isInteger(tabId)) throw new RequestError(400, `"${name}" must be a tab id.`);
+        const tab = this.tabs.find((t) => t.id === tabId);
+        if (!tab) throw new RequestError(404, `There is no tab with id ${String(tabId)}.`);
+        return tab;
+      };
+      const to = tabOf(body.toTabId, "toTabId");
+      const from = body.fromTabId === undefined || body.fromTabId === null ? undefined : tabOf(body.fromTabId, "fromTabId");
+      const base = body.baseModifiedDateTime;
+      if (base !== undefined && base !== null) {
+        if (typeof base !== "string") throw new RequestError(400, `"baseModifiedDateTime" must be a date and time.`);
+        if (base !== existing.lastModifiedDateTime) throw new RequestError(NOTE_CHANGED_STATUS, NOTE_CHANGED_ELSEWHERE);
+      }
+      const move = tagsForTabMove(existing, [...this.categories, LIFETIME_CATEGORY], to, from);
+      if (!move.ok) throw new RequestError(400, move.error);
+      if (move.changes.length === 0) throw new RequestError(400, `That note is already in "${to.name}".`);
+      const now = this.nextSaveTime();
+      const note: Note = {
+        ...existing,
+        lastModifiedDateTime: now.toISOString(),
+        tagsChangedDateTime: this.tagsChangedTime(existing, move.tagIds, now),
+        tagIds: move.tagIds,
+      };
+      await this.save(now, { notes: this.notes.map((n) => (n.id === id ? note : n)) }, {
+        record: { summary: `Moved ${label(note)} to tab "${to.name}"` },
+      });
+      return note;
+    });
+  }
+
   /** The Settings "Reset New" button: every New note becomes Active (with `rawNoteIds`, only those). Returns how many changed. */
   resetNew(rawNoteIds?: unknown): Promise<number> {
     return this.changeLifetimes(LIFETIME_NEW, LIFETIME_ACTIVE, rawNoteIds);
@@ -869,14 +1029,62 @@ export class NoteStore {
 
   /**
    * Notes needing a reminder now: New, Active or Waiting, due at or before `now` (but less than a day
-   * ago), and not yet reminded for this due date.
+   * ago), not yet reminded for this due date, and not set to have no reminder.
    */
   dueForReminder(now: Date): Note[] {
     return this.notes.filter((note) => {
-      if (note.dueDateTime === undefined || note.reminderSentFor === note.dueDateTime) return false;
+      if (note.dueDateTime === undefined || note.reminderSentFor === note.dueDateTime || note.noReminder) return false;
       if (!REMINDED_LIFETIMES.includes(lifetimeOf(note))) return false;
       const late = now.getTime() - Date.parse(note.dueDateTime);
       return late >= 0 && late < REMINDER_LATEST_MS;
+    });
+  }
+
+  /** Notes whose due date has been reached that go back to Active if Waiting, and haven't been dealt with for it yet. */
+  dueToReturn(now: Date): Note[] {
+    return this.notes.filter(
+      (note) => note.returnWhenDue && note.dueDateTime !== undefined && note.returnedFor !== note.dueDateTime && Date.parse(note.dueDateTime) <= now.getTime(),
+    );
+  }
+
+  /**
+   * Puts these notes back to Active if they're still Waiting, and records that their due date has been
+   * dealt with, Waiting or not (so making one Waiting later doesn't send it back). Skips any whose due date
+   * or option changed meanwhile. Saves; a note that went back to Active is in the History.
+   */
+  returnDue(due: Note[]): Promise<Note[]> {
+    return this.enqueue(async () => {
+      const dueById = new Map(due.map((note) => [note.id, note.dueDateTime]));
+      const now = this.nextSaveTime();
+      const returned: Note[] = [];
+      let changed = false;
+      const notes = this.notes.map((note) => {
+        if (!note.returnWhenDue || note.dueDateTime === undefined || dueById.get(note.id) !== note.dueDateTime || note.returnedFor === note.dueDateTime) {
+          return note;
+        }
+        changed = true;
+        if (lifetimeOf(note) !== LIFETIME_WAITING) return { ...note, returnedFor: note.dueDateTime };
+        const tagIds = withLifetime(note, LIFETIME_ACTIVE);
+        const back: Note = {
+          ...note,
+          returnedFor: note.dueDateTime,
+          lastModifiedDateTime: now.toISOString(),
+          tagsChangedDateTime: this.tagsChangedTime(note, tagIds, now),
+          tagIds,
+        };
+        returned.push(back);
+        return back;
+      });
+      if (!changed) return [];
+      const summary =
+        returned.length === 1
+          ? `${label(returned[0]!)} returned from Waiting, as it was due`
+          : returned.length > 1
+            ? `${plural(returned.length, "note")} returned from Waiting, as they were due`
+            : undefined;
+      // Only bookkeeping (no note was Waiting) isn't in the History.
+      await this.save(now, { notes }, summary ? { record: { summary } } : undefined);
+      return returned;
     });
   }
 
@@ -980,7 +1188,8 @@ export class NoteStore {
       if (!check.ok) throw new RequestError(400, check.error);
 
       const category: Category = {
-        id: this.categories.reduce((max, c) => Math.max(max, c.id), 0) + 1,
+        // Never a deleted category's id, so nothing kept for that one (on a device, or in the History) applies to this.
+        id: await nextCategoryId(this.db),
         name: check.category.name,
         multiSelect: check.category.multiSelect,
         tags: await this.withTagIds(check.category.tags),
@@ -996,7 +1205,7 @@ export class NoteStore {
   updateCategory(id: number, raw: unknown): Promise<Category> {
     return this.enqueue(async () => {
       const existing = this.categories.find((c) => c.id === id);
-      if (!existing) throw new RequestError(404, `There is no category with id ${id}.`);
+      if (!existing) throw new RequestError(404, `There is no category with id ${id}. It may have been deleted on another page.`);
       const check = validateCategory(raw, this.categories, existing);
       if (!check.ok) throw new RequestError(400, check.error);
 
@@ -1040,6 +1249,32 @@ export class NoteStore {
       }));
       await this.save(this.nextSaveTime(), { categories, notes, tabs }, { record });
       return category;
+    });
+  }
+
+  /**
+   * Deletes a category: its tags come off every note (the notes stay, with their times unchanged, as for
+   * deleting a tag), and it's dropped from every tab's filter (a tab left with no filters shows every note).
+   */
+  deleteCategory(id: number): Promise<void> {
+    return this.enqueue(async () => {
+      // Lifetime and "Shared with me" have negative ids.
+      if (id < 0) throw new RequestError(400, "The built-in categories can't be deleted.");
+      const existing = this.categories.find((c) => c.id === id);
+      if (!existing) throw new RequestError(404, `There is no category with id ${id}. It may have been deleted on another page.`);
+      const deleted = new Set(existing.tags.map((tag) => tag.id));
+      const notes = this.notes.map((note) => {
+        const tagIds = note.tagIds.filter((tagId) => !deleted.has(tagId));
+        return tagIds.length === note.tagIds.length ? note : { ...note, tagIds };
+      });
+      const tabs = this.tabs.map((tab) =>
+        tab.categories.some((filter) => filter.categoryId === id) ? { ...tab, categories: tab.categories.filter((filter) => filter.categoryId !== id) } : tab,
+      );
+      await this.save(
+        this.nextSaveTime(),
+        { categories: this.categories.filter((c) => c.id !== id), notes, tabs },
+        { record: { summary: `Deleted category "${existing.name}"` } },
+      );
     });
   }
 
@@ -1130,6 +1365,19 @@ export class NoteStore {
       await this.save(this.nextSaveTime(), { tabs }, { record: { summary: "Changed the order of the tabs" } });
       return tabs;
     });
+  }
+
+  /**
+   * A note's tags without any this notebook used to have but has since deleted (with their category, say):
+   * a change made before the deletion, e.g. waiting offline, is saved without them rather than refused.
+   */
+  private async withoutDeletedTags(rawTagIds: unknown): Promise<unknown> {
+    if (!Array.isArray(rawTagIds)) return rawTagIds;
+    const exists = (id: unknown) => this.categories.some((category) => category.tags.some((tag) => tag.id === id));
+    const missing = rawTagIds.filter((id): id is number => Number.isInteger(id) && !exists(id));
+    if (missing.length === 0) return rawTagIds;
+    const deleted = await formerTagIds(this.db, this.userId, missing);
+    return rawTagIds.filter((id) => !deleted.has(id as number));
   }
 
   /** Gives new tags new ids, which are unique across all users' categories and never reused. */

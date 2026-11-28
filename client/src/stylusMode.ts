@@ -121,6 +121,54 @@ export function usePenWidth(): [number, (width: number) => void] {
   );
 }
 
+/** The pen's usual colour. */
+export const BLACK_PEN = "#000000";
+
+/** The other pen colours to choose from (for long-form notes' handwriting): each dark enough to read on white. */
+export const PEN_COLOURS = [
+  { name: "Blue", value: "#1f5fd1" },
+  { name: "Red", value: "#d0312d" },
+  { name: "Green", value: "#1e8a3c" },
+  { name: "Purple", value: "#7b3fbf" },
+  { name: "Orange", value: "#d96a00" },
+  { name: "Brown", value: "#8b5a2b" },
+  { name: "Teal", value: "#0f8585" },
+  { name: "Pink", value: "#d63384" },
+] as const;
+
+/**
+ * The colour long-form notes' handwriting is drawn in, remembered on this device (default black; an
+ * unknown saved value counts as black). Regular notes' handwritten titles are always black.
+ */
+export function usePenColour(): [string, (colour: string) => void] {
+  return useDeviceSetting(
+    "nwsnotes.penColour",
+    (stored) => (PEN_COLOURS.some((colour) => colour.value === stored) ? stored! : BLACK_PEN),
+    String,
+  );
+}
+
+/** The highlighter colours to choose from: light, so writing stays readable over them. */
+export const HIGHLIGHTER_COLOURS = [
+  { name: "Yellow", value: "#fff176" },
+  { name: "Green", value: "#b9f6ca" },
+  { name: "Blue", value: "#b3e5fc" },
+  { name: "Pink", value: "#f8bbd0" },
+  { name: "Orange", value: "#ffd8a8" },
+  { name: "Purple", value: "#e1bee7" },
+  { name: "Grey", value: "#e0e0e0" },
+  { name: "Teal", value: "#b2ebe4" },
+] as const;
+
+/** The last highlighter colour chosen, remembered on this device (default yellow). */
+export function useHighlighterColour(): [string, (colour: string) => void] {
+  return useDeviceSetting(
+    "nwsnotes.highlighterColour",
+    (stored) => (HIGHLIGHTER_COLOURS.some((colour) => colour.value === stored) ? stored! : HIGHLIGHTER_COLOURS[0].value),
+    String,
+  );
+}
+
 /** How the Parent pop-up lists the long-form notes: in the notes' own order, or by title. */
 export type ParentSort = "order" | "alphabetical";
 

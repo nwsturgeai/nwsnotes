@@ -187,7 +187,7 @@ export class Sharing {
     const visible = note.tagIds.filter((id) => shared.permissions.has(id));
     if (visible.length === 0) return undefined;
     const permission = visible.map((id) => shared.permissions.get(id)!).reduce(higherPermission);
-    const { reminderSentFor: _sent, ...rest } = note;
+    const { reminderSentFor: _sent, returnedFor: _returned, ...rest } = note;
     return {
       ...rest,
       tagIds: [...visible, lifetimeOf(note)],
@@ -308,7 +308,15 @@ export class Sharing {
     rawTagIds: unknown,
     details: NoteDetails | undefined,
     rawParentId: unknown,
-    options: { dueDateTime?: string; clientId?: unknown; createdDateTime?: unknown; tagsChangedDateTime?: unknown; source?: "sms" },
+    options: {
+      dueDateTime?: string;
+      noReminder?: boolean;
+      returnWhenDue?: boolean;
+      clientId?: unknown;
+      createdDateTime?: unknown;
+      tagsChangedDateTime?: unknown;
+      source?: "sms" | "alexa";
+    },
   ): Promise<{ note: Note; created: boolean; ownerId?: number }> {
     const { category, notebooks } = await this.sharedWith(user.id);
     const sharedTags = category?.tags ?? [];
@@ -375,7 +383,7 @@ export class Sharing {
     title: NoteTitle,
     rawTagIds: unknown,
     details: NoteDetails | undefined,
-    options: { dueDateTime?: string; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown; parentId?: number | null },
+    options: { dueDateTime?: string; noReminder?: boolean; returnWhenDue?: boolean; tagsChangedDateTime?: unknown; baseModifiedDateTime?: unknown; parentId?: number | null },
   ): Promise<Note> {
     const resolved = await this.resolve(user.id, id);
     // A note's parent must be in the same notebook: a child note always has the same owner as its parent.
@@ -401,12 +409,18 @@ export class Sharing {
     if (sent && !sameSet(sent, withoutLifetime(resolved.view.tagIds))) {
       throw new RequestError(400, `You can't change the tags of ${owner.displayName}'s notes.`);
     }
-    if (details === undefined && options.dueDateTime !== resolved.note.dueDateTime) {
+    if (
+      options.dueDateTime !== resolved.note.dueDateTime ||
+      (options.noReminder === true) !== (resolved.note.noReminder === true) ||
+      (options.returnWhenDue === true) !== (resolved.note.returnWhenDue === true)
+    ) {
       throw new RequestError(400, `Only ${owner.displayName} can change the due dates of their notes.`);
     }
     const note = await resolved.store.updateNote(id, title, withoutLifetime(resolved.note.tagIds), details, {
-      // Converting to a long-form note (details) needs no due date; otherwise it keeps the owner's.
-      dueDateTime: details === undefined ? resolved.note.dueDateTime : undefined,
+      // It keeps the owner's due date and its options, long-form notes included.
+      dueDateTime: resolved.note.dueDateTime,
+      noReminder: resolved.note.noReminder === true,
+      returnWhenDue: resolved.note.returnWhenDue === true,
       tagsChangedDateTime: options.tagsChangedDateTime,
       baseModifiedDateTime: options.baseModifiedDateTime,
       stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(owner)),
@@ -476,6 +490,13 @@ export class Sharing {
       summaries.push(await shared.store.undoChanges(changeIds, user.id, check));
     }
     return summaries;
+  }
+
+  /** Dragging a note onto another tab: only the user's own notes' tags can be changed. */
+  async moveToTab(user: User, id: number, raw: unknown): Promise<Note> {
+    const resolved = await this.resolve(user.id, id);
+    if (resolved.kind === "shared") throw new RequestError(400, `You can't change the tags of ${resolved.owner.displayName}'s notes.`);
+    return resolved.store.moveToTab(id, raw);
   }
 
   /** Multi-select: only the user's own notes' tags can be changed. */

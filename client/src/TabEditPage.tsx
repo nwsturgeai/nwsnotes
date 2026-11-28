@@ -144,7 +144,7 @@ function TabForm({
           onChange={(event) => setSpokenName(event.target.value)}
         />
         <p className="hint" id="tab-spoken-name-hint">
-          An easier name to say when sending notes by text message, e.g. "do it yourself" for "DIY".
+          An easier name to say when adding notes by text message or Alexa, e.g. "do it yourself" for "DIY".
         </p>
 
         <PlacementSwitch placement={placement} onChange={setPlacement} disabled={busy} />

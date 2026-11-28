@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { addArea, expect, filterRow, noteRow, openNotes, seed, setFilter, test } from "./fixtures";
+import { addArea, expect, filterRow, noteRow, openFilter, openNotes, seed, setFilter, test } from "./fixtures";
 
 const topTabs = (page: Page) => page.getByRole("tablist", { name: "Tabs", exact: true }).getByRole("tab");
 
@@ -222,6 +222,30 @@ test("when the filter row wraps, search follows the last dropdown and edit-order
   const row = (await filterRow(page).boundingBox())!;
   expect(Math.abs(editOrder.y + editOrder.height / 2 - (first.y + first.height / 2))).toBeLessThan(3);
   expect(row.x + row.width - (editOrder.x + editOrder.width)).toBeLessThan(12);
+});
+
+test("a filter dropdown near the window's right edge opens further left, as wide as its options need", async ({ page }) => {
+  const long = "Somewhere far, far away";
+  expect((await page.request.post("/api/categories", { data: { name: "Places", multiSelect: false, tags: [{ name: long }] } })).ok()).toBe(true);
+  // Narrow, so the Places dropdown is near the right edge.
+  await page.setViewportSize({ width: 340, height: 800 });
+  await page.reload();
+  const button = (await filterRow(page).getByRole("button", { name: /^Places: / }).boundingBox())!;
+  const list = await openFilter(page, "Places");
+  const box = (await list.boundingBox())!;
+  // Inside the window, with its 8px margin, and moved left of its button to make room.
+  expect(box.x + box.width).toBeLessThanOrEqual(340 - 8 + 0.5);
+  expect(box.x).toBeLessThan(button.x);
+  // The long tag's name isn't wrapped (as it would be if the list were squeezed between its button and the edge).
+  const option = list.locator("label", { hasText: long });
+  const lineHeight = await option.evaluate((element) => parseFloat(getComputedStyle(element).lineHeight));
+  expect((await option.boundingBox())!.height).toBeLessThan(2 * lineHeight);
+
+  // Where it fits, it's still left-aligned with its button.
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const wide = (await filterRow(page).getByRole("button", { name: /^Places: / }).boundingBox())!;
+  expect(Math.abs((await (await openFilter(page, "Places")).boundingBox())!.x - wide.x)).toBeLessThan(1);
 });
 
 test("with the long-form editor open, the whole chevron shows above it", async ({ page }) => {

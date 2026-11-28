@@ -1,5 +1,5 @@
 import type { APIRequestContext, Browser, Page } from "@playwright/test";
-import { addArea, expect, logIn, noteRow, openNotes, pills, shareTag, sharingRequestLink, test } from "./fixtures";
+import { addArea, expect, filterRow, logIn, noteRow, openNotes, pills, shareTag, sharingRequestLink, test } from "./fixtures";
 
 /*
  * Sharing tags, in the app: the owner's share dialog, and what a recipient sees and can do. The seed is
@@ -205,6 +205,25 @@ test("a recipient's buttons follow their permission, and they can't change tags 
   await sam.context().close();
 });
 
+test("in edit-order mode, Archived → Bin counts only the shared notes the recipient may bin", async ({ page, browser }) => {
+  const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "edit");
+  // The admin archives Buy milk (Shopping): Sam sees it, but can't bin it.
+  expect((await page.request.put("/api/notes/2/lifetime", { data: { lifetime: "Archived" } })).ok()).toBe(true);
+  await openNotes(sam);
+  await expect(noteRow(sam, "Buy milk").getByRole("button", { name: "Reinstate" })).toBeVisible();
+  await filterRow(sam).getByRole("button", { name: "Edit order" }).click();
+  const lifetimes = filterRow(sam).getByRole("group", { name: "Lifetime of the listed notes" });
+  await expect(lifetimes.getByRole("button", { name: /^Archived → Bin/ })).toHaveCount(0);
+  await expect(lifetimes).toHaveText("No permission to move to bin");
+
+  // With delete permission, the button is back, counting the note.
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "delete");
+  await expect(lifetimes.getByRole("button", { name: /^Archived → Bin/ })).toHaveText("Archived → Bin (1)");
+  await expect(lifetimes.getByText("No permission to move to bin")).toHaveCount(0);
+  await sam.context().close();
+});
+
 test("a recipient adds notes to a shared tag, and sets its colour and order for themselves", async ({ page, browser }) => {
   const sam = await newUserPage(page.request, browser, "Sam", "sam@example.com");
   await shareThroughApi(page.request, SHOPPING, "sam@example.com", "edit");
@@ -350,4 +369,18 @@ test("the owner's shared tags show the icon in the tag pickers", async ({ page, 
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("Errands");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.locator(".category-list a", { hasText: "Errands" }).getByRole("img", canEdit)).toBeVisible();
+});
+
+test("deleting a category warns who its shared tags are shared with, and ends the shares", async ({ page, browser }) => {
+  const sam = await newUserPage(page.request, browser, "Sam Smith", "sam@example.com");
+  await shareThroughApi(page.request, SHOPPING, "sam@example.com", "read");
+  await page.goto("/settings/categories/2");
+  await page.getByRole("button", { name: "Delete category" }).click();
+  const dialog = page.locator("dialog.confirm-dialog");
+  await expect(dialog).toContainText("Sam Smith will stop seeing your notes through its shared tags.");
+  await dialog.getByRole("button", { name: "Delete category" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  // Sam's page reloads without the shared tag.
+  await expect.poll(async () => ((await (await sam.request.get("/api/notes")).json()) as { categories: { shared?: boolean }[] }).categories.some((c) => c.shared)).toBe(false);
+  await sam.context().close();
 });

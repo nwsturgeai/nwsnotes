@@ -1,6 +1,7 @@
 import { forgetUndoFor, offerUndo } from "./undo";
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -14,12 +15,13 @@ import {
   faChevronRight,
   faCircleCheck,
   faEraser,
+  faHighlighter,
   faPen,
   faShareFromSquare,
   faTags,
   faX,
 } from "@fortawesome/free-solid-svg-icons";
-import { faCopy } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faCopy } from "@fortawesome/free-regular-svg-icons";
 import {
   DETAILS_TEXT_MAX_LENGTH,
   detailsPagesOf,
@@ -30,16 +32,21 @@ import {
   type Category,
   type Note,
   type NoteDetails,
+  type TextEdit,
+  tickboxSpacing,
+  tickboxToggle,
 } from "@nwsnotes/shared";
 import { ApiError } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { DueDateDialog, dueOf, dueRequest, dueTitle, sameDue, type Due } from "./DueDateDialog";
 import { ParentDialog, ParentPill } from "./ParentDialog";
 import { possibleParents } from "./parents";
-import { FormattedText } from "./FormattedText";
+import { FormattedText, TickboxTargets } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
 import { StylusPad, type StylusPadHandle } from "./StylusPad";
-import { PEN_WIDTHS, usePenWidth } from "./stylusMode";
+import { BLACK_PEN, HIGHLIGHTER_COLOURS, PEN_WIDTHS, useHighlighterColour, usePenColour, usePenWidth } from "./stylusMode";
+import { PenColourDialog } from "./PenColourDialog";
 import { selectedTagIds, TagPickers, type TagSelection } from "./TagPickers";
 
 /** Details and tag changes are sent at most this often (and once this long after the first change). */
@@ -113,6 +120,21 @@ function selectionFor(note: Note | undefined, categories: Category[]): TagSelect
   );
 }
 
+/** The formatting the details can use, shown under the first line of the empty text box's placeholder. */
+const FORMATTING_HELP = [
+  "",
+  "Formatting:",
+  "*text* for bold",
+  "_text_ for underline",
+  "/text/ for italic",
+  "-text- for strikethrough",
+  "#text# for a yellow highlight",
+  "[ ] or [] at the start of a line for a tickbox",
+].join("\n");
+const DETAILS_PLACEHOLDER = `Details\n${FORMATTING_HELP}`;
+/** While the text box is locked, it says what to do first. */
+const LOCKED_DETAILS_PLACEHOLDER = `Accept the title to write the details\n${FORMATTING_HELP}`;
+
 /**
  * Creating or editing a long-form note: a title, tags, and details (typed, or handwritten in stylus
  * mode). The title and the details are never editable at the same time: accepting the title (which
@@ -145,6 +167,9 @@ export function LongFormEditor({
   /** The note's parent, saved with the tags (a new note is created with it). */
   const [parentId, setParentId] = useState(initialParentId);
   const [choosingParent, setChoosingParent] = useState(false);
+  /** The note's due date, sent with every save (leaving it out would clear it). Only the owner can change it. */
+  const [dueDate, setDueDate] = useState<Due | undefined>(() => dueOf(note));
+  const [choosingDueDate, setChoosingDueDate] = useState(false);
   /** Typed or handwritten details: fixed for an existing note; for a new one, from stylus mode now. */
   const [kind] = useState<"text" | "image">(() =>
     note ? (note.detailsImage !== undefined ? "image" : "text") : stylusMode ? "image" : "text",
@@ -154,6 +179,7 @@ export function LongFormEditor({
   const detailsRef = useRef<HTMLTextAreaElement>(null);
   /** The formatted copy of the typed details, under the text box; it scrolls with it. */
   const displayRef = useRef<HTMLDivElement>(null);
+  const targetsRef = useRef<HTMLDivElement>(null);
   /** Set when the title is accepted (or on opening a converted note), so the typed details take the focus once enabled. */
   const focusDetails = useRef(startInDetails === true && kind === "text");
   const [busy, setBusy] = useState(false);
@@ -166,6 +192,13 @@ export function LongFormEditor({
   const [erasing, setErasing] = useState(false);
   /** The device's pen thickness, also chosen with the buttons beside the eraser. */
   const [penWidth, setPenWidth] = usePenWidth();
+  /** The device's pen colour for long-form notes, chosen from the pen menu. */
+  const [penColour, setPenColour] = usePenColour();
+  const [choosingPenColour, setChoosingPenColour] = useState(false);
+  /** The highlighter's colour (remembered on this device), and whether it's in use instead of the pen. */
+  const [highlighterColour, setHighlighterColour] = useHighlighterColour();
+  const [highlighting, setHighlighting] = useState(false);
+  const [choosingHighlighter, setChoosingHighlighter] = useState(false);
   /**
    * Handwritten details' pages. Each has its own canvas; they're all kept (stacked, only the current
    * one shown), so turning the page never redraws or moves what's written.
@@ -184,6 +217,10 @@ export function LongFormEditor({
   const [pageMenu, setPageMenu] = useState<{ bottom: number; left: number }>();
   const pageMenuRef = useRef<HTMLDivElement>(null);
   const pageMenuButton = useRef<HTMLButtonElement>(null);
+  /** Where the open pen-thickness menu sits on the window (above its button), if it's open. */
+  const [penMenu, setPenMenu] = useState<{ bottom: number; left: number }>();
+  const penMenuRef = useRef<HTMLDivElement>(null);
+  const penMenuButton = useRef<HTMLButtonElement>(null);
   /** "Next page" on the last page asks whether to add one. */
   const [confirmingAddPage, setConfirmingAddPage] = useState(false);
   const [confirmingDeletePage, setConfirmingDeletePage] = useState(false);
@@ -193,8 +230,8 @@ export function LongFormEditor({
   pagesRef.current = pages;
 
   // The latest values, for saves that run from a timer.
-  const latest = useRef({ selection, detailsText, parentId });
-  latest.current = { selection, detailsText, parentId };
+  const latest = useRef({ selection, detailsText, parentId, dueDate });
+  latest.current = { selection, detailsText, parentId, dueDate };
   const dirty = useRef(false);
   const timer = useRef<number>(undefined);
   const saving = useRef<Promise<void>>(Promise.resolve());
@@ -236,11 +273,12 @@ export function LongFormEditor({
 
   /** The note as it is now. An update says the parent either way (null for none); a new note only has one if chosen. */
   function request(titleText: string, update = true) {
-    const parent = latest.current.parentId;
+    const { parentId: parent, dueDate: due } = latest.current;
     return {
       titleText,
       tagIds: selectedTagIds(categories, latest.current.selection),
       ...currentDetails(),
+      ...dueRequest(due),
       ...(update ? { parentId: parent ?? null } : parent !== undefined && { parentId: parent }),
     };
   }
@@ -282,11 +320,140 @@ export function LongFormEditor({
     return saving.current;
   }
 
+  /** A due date chosen (or cleared, undefined) in the pop-up: saved straight away, not at the end of the window. */
+  function changeDueDate(value: Due | undefined) {
+    setChoosingDueDate(false);
+    if (sameDue(value, latest.current.dueDate)) return;
+    setDueDate(value);
+    latest.current.dueDate = value;
+    dirty.current = true;
+    void flush();
+  }
+
   /** A details or tag change: save it once the 30-second window ends. */
   function schedule() {
     dirty.current = true;
     if (conflictRef.current) return;
     if (timer.current === undefined) timer.current = window.setTimeout(() => void flush(), SAVE_DELAY_MS);
+  }
+
+  /** The typed details changed (by typing, or by a tickbox or its spacing). */
+  function changeDetails(text: string) {
+    setDetailsText(text);
+    latest.current.detailsText = text;
+    schedule();
+  }
+
+  /**
+   * A tickbox just typed at the start of a line: where it ends (after "[]" a space may follow), so the
+   * first thing typed after it can space it out ("[]Hello" becomes "[ ] Hello"). Anything else typed,
+   * deleted or undone clears it, so a space taken out on purpose doesn't come back.
+   */
+  const freshTickbox = useRef<{ lineStart: number; end: number }>(undefined);
+  /** The line whose tickbox needs spacing once the phone's keyboard has finished the word being typed. */
+  const spaceAfterComposing = useRef<number>(undefined);
+  /** Lines (where each starts) whose tickboxes are waiting to be spaced out. */
+  const tickboxesToSpace = useRef<number[]>([]);
+  /** Set while this editor changes the text box's text itself, so that change isn't taken as typing. */
+  const editing = useRef(false);
+  /**
+   * The text and cursor from before this editor's last change to the text box. Undo would put the cursor
+   * where the change was (in a tickbox), so when Undo brings this text back, the cursor goes back too.
+   */
+  const beforeEdit = useRef<{ text: string; start: number; end: number }>(undefined);
+  /**
+   * Makes a change to the typed details. While the text box has the focus, it's made as an edit of the
+   * text box, so Undo takes it back and the cursor stays where it was. Otherwise (a tickbox tapped on a
+   * phone, say) the text is just replaced, without focusing the box and bringing up the keyboard.
+   */
+  function editDetails({ from, to, insert }: TextEdit) {
+    const text = latest.current.detailsText;
+    if (text.length - (to - from) + insert.length > DETAILS_TEXT_MAX_LENGTH) return;
+    const shift = (at: number) => (at >= to ? at + insert.length - (to - from) : at);
+    // A tickbox being typed further on, while this one is spaced out, has moved along.
+    const fresh = freshTickbox.current;
+    if (fresh) freshTickbox.current = { lineStart: shift(fresh.lineStart), end: shift(fresh.end) };
+    if (spaceAfterComposing.current !== undefined) spaceAfterComposing.current = shift(spaceAfterComposing.current);
+    tickboxesToSpace.current = tickboxesToSpace.current.map(shift);
+    const box = detailsRef.current;
+    if (box && document.activeElement === box) {
+      const { selectionStart, selectionEnd } = box;
+      box.setSelectionRange(from, to);
+      editing.current = true;
+      const done = document.execCommand("insertText", false, insert);
+      editing.current = false;
+      if (done) {
+        box.setSelectionRange(shift(selectionStart), shift(selectionEnd));
+        beforeEdit.current = { text, start: selectionStart, end: selectionEnd };
+        return;
+      }
+    }
+    changeDetails(text.slice(0, from) + insert + text.slice(to));
+  }
+
+  function toggleTickbox(lineIndex: number) {
+    if (!detailsEditable) return;
+    const edit = tickboxToggle(latest.current.detailsText, lineIndex);
+    if (edit) editDetails(edit);
+  }
+
+  /** Queues the spacing of a line's tickbox, made once the typing that called for it is in the text box. */
+  function spaceTickbox(lineStart: number) {
+    tickboxesToSpace.current.push(lineStart);
+  }
+
+  function spaceTickboxes() {
+    for (let lineStart; (lineStart = tickboxesToSpace.current.shift()) !== undefined; ) {
+      const edit = tickboxSpacing(latest.current.detailsText, lineStart);
+      if (edit) editDetails(edit);
+    }
+  }
+  // Straight after the keystroke that called for it has been shown, before the next one (but not while
+  // React is still updating the page, which would put the text box's old text back).
+  useLayoutEffect(() => {
+    if (tickboxesToSpace.current.length > 0) queueMicrotask(spaceTickboxes);
+  }, [detailsText]);
+
+  function onDetailsInput(box: HTMLTextAreaElement, input: InputEvent | undefined) {
+    changeDetails(box.value);
+    if (editing.current) return;
+    const undone = beforeEdit.current;
+    beforeEdit.current = undefined;
+    if (input?.inputType === "historyUndo" && undone?.text === box.value) box.setSelectionRange(undone.start, undone.end);
+    const fresh = freshTickbox.current;
+    freshTickbox.current = undefined;
+    const type = input?.inputType ?? "";
+    const typed = type.startsWith("insert") && type !== "insertFromPaste" && type !== "insertFromDrop" && box.selectionStart === box.selectionEnd;
+    if (!typed) return;
+    const text = box.value;
+    const caret = box.selectionStart;
+    const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
+    const before = text.slice(lineStart, caret);
+    if (/^[ \t]*(\[[ xX]?\]|\[\] )$/.test(before)) {
+      freshTickbox.current = { lineStart, end: caret };
+      return;
+    }
+    // The first thing typed after a fresh tickbox, if it isn't a space or a new line.
+    if (!fresh || fresh.lineStart !== lineStart || caret <= fresh.end || !/\S/.test(text[fresh.end] ?? "")) return;
+    if (caret - (input?.data?.length ?? 1) !== fresh.end) return;
+    if (input?.isComposing) {
+      // A phone's keyboard is still working on this word: changing the text before it now can upset
+      // its suggestions and autocorrect, so wait until it's finished.
+      freshTickbox.current = fresh;
+      spaceAfterComposing.current = lineStart;
+      return;
+    }
+    spaceTickbox(lineStart);
+  }
+
+  function onDetailsCompositionEnd() {
+    const lineStart = spaceAfterComposing.current;
+    spaceAfterComposing.current = undefined;
+    freshTickbox.current = undefined;
+    if (lineStart === undefined) return;
+    spaceTickbox(lineStart);
+    // The keyboard may have finished without changing the text, so nothing else would make the change.
+    window.setTimeout(spaceTickboxes);
   }
 
   // Save straight away if the app goes into the background, and when the editor closes.
@@ -438,11 +605,43 @@ export function LongFormEditor({
     setErasing(!erasing);
   }
 
-  /** A pen-thickness button: chooses it (for every canvas on this device) and turns the eraser off. */
+  function togglePenMenu(event: ReactMouseEvent) {
+    if (ignoredTap(stylusMode, event)) return;
+    const rect = penMenuButton.current?.getBoundingClientRect();
+    if (penMenu || !rect) setPenMenu(undefined);
+    else setPenMenu({ bottom: window.innerHeight - rect.top + 4, left: rect.left });
+  }
+
+  useCloseOnOutside(penMenu !== undefined, penMenuRef, () => setPenMenu(undefined));
+
+  /**
+   * A pen-thickness menu item: chooses it (for every canvas on this device), goes back to the pen from
+   * the eraser or highlighter, and closes the menu.
+   */
   function onPenWidthClick(event: ReactMouseEvent, width: number) {
     if (ignoredTap(stylusMode, event)) return;
     setPenWidth(width);
     setErasing(false);
+    setHighlighting(false);
+    setPenMenu(undefined);
+  }
+
+  /** A pen colour (from the dialog, or black from the menu): drawn with from now on, back to the pen. */
+  function choosePenColour(colour: string) {
+    setPenColour(colour);
+    setErasing(false);
+    setHighlighting(false);
+    setChoosingPenColour(false);
+    setPenMenu(undefined);
+  }
+
+  /** A highlighter colour (from its dialog): the highlighter is used from now on, instead of the pen or eraser. */
+  function chooseHighlighter(colour: string) {
+    setHighlighterColour(colour);
+    setHighlighting(true);
+    setErasing(false);
+    setChoosingHighlighter(false);
+    setPenMenu(undefined);
   }
 
   /** Turns to another page (the menu closes). */
@@ -497,25 +696,7 @@ export function LongFormEditor({
     else setPageMenu({ bottom: window.innerHeight - rect.top + 4, left: rect.left });
   }
 
-  // The page menu closes when clicking elsewhere, pressing Escape or resizing.
-  useEffect(() => {
-    if (!pageMenu) return;
-    const close = () => setPageMenu(undefined);
-    const onPointerDown = (event: PointerEvent) => {
-      if (!pageMenuRef.current?.contains(event.target as Node)) close();
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", close);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", close);
-    };
-  }, [pageMenu]);
+  useCloseOnOutside(pageMenu !== undefined, pageMenuRef, () => setPageMenu(undefined));
 
   /** A page menu item: ignores finger taps in stylus mode, like the buttons. */
   function menuAction(action: () => void) {
@@ -525,7 +706,7 @@ export function LongFormEditor({
   }
 
   /**
-   * The handwritten details as one PNG (black on white): each page with writing, cropped to its ink,
+   * The handwritten details as one PNG (the ink on white): each page with writing, cropped to its ink,
    * one under another (lined up on the left), with a thin grey line between pages. Blank pages are left out.
    */
   function exportImage(): string | undefined {
@@ -713,31 +894,44 @@ export function LongFormEditor({
 
       <div className={detailsEditable ? "lf-details" : "lf-details locked"}>
         {kind === "text" ? (
-          // Two exactly overlapping layers: the formatted text underneath, and the real text box on top
-          // with invisible text, so typing, the cursor and selection work as usual. Every letter is the
-          // same width in both (see .lf-text in styles.css), so the cursor lines up with what's shown.
+          // Exactly overlapping layers: the formatted text underneath, the real text box on top with
+          // invisible text, so typing, the cursor and selection work as usual, and above that only the
+          // tickboxes, to click on. Every letter is the same width in all three (see .lf-text in
+          // styles.css), so the cursor lines up with what's shown.
           <div className="lf-text">
             <div className="lf-text-display" ref={displayRef} aria-hidden>
-              <FormattedText text={detailsText} showMarkers />
+              <FormattedText text={detailsText} showMarkers tickboxes />
               {/* A last empty line still takes its height, as it does in the text box. */}
               {detailsText.endsWith("\n") && " "}
             </div>
             <textarea
               ref={detailsRef}
               aria-label="Details"
-              placeholder={detailsEditable ? "Details" : "Accept the title to write the details"}
+              placeholder={detailsEditable ? DETAILS_PLACEHOLDER : LOCKED_DETAILS_PLACEHOLDER}
               value={detailsText}
               maxLength={DETAILS_TEXT_MAX_LENGTH}
               disabled={!detailsEditable}
-              onChange={(event) => {
-                setDetailsText(event.target.value);
-                latest.current.detailsText = event.target.value;
-                schedule();
-              }}
+              onChange={(event) => onDetailsInput(event.currentTarget, event.nativeEvent as InputEvent)}
+              onCompositionEnd={onDetailsCompositionEnd}
               onScroll={(event) => {
                 if (displayRef.current) displayRef.current.scrollTop = event.currentTarget.scrollTop;
+                if (targetsRef.current) targetsRef.current.scrollTop = event.currentTarget.scrollTop;
               }}
             />
+            {/* Above the text box: the tickboxes, to click on. */}
+            {detailsEditable && (
+              <div
+                className="lf-text-targets"
+                ref={(layer) => {
+                  targetsRef.current = layer;
+                  if (layer && detailsRef.current) layer.scrollTop = detailsRef.current.scrollTop;
+                }}
+                aria-hidden
+              >
+                <TickboxTargets text={detailsText} onToggle={toggleTickbox} />
+                {detailsText.endsWith("\n") && " "}
+              </div>
+            )}
           </div>
         ) : (
           pages.map((page, index) => (
@@ -751,6 +945,8 @@ export function LongFormEditor({
                 fill
                 label="Details of the long-form note"
                 disabled={!detailsEditable || index !== pageIndex}
+                colour={penColour}
+                highlighter={highlighting ? highlighterColour : undefined}
                 erasing={erasing}
                 initialImage={page.image}
                 onInk={schedule}
@@ -779,7 +975,7 @@ export function LongFormEditor({
       )}
 
       <div className="lf-finish">
-        {/* At the far left, then the pen thicknesses and the pages; Export, Cancel and Finish are at the far right. */}
+        {/* At the far left, then the pen thicknesses and the pages; Export, the due date, Cancel and Finish are at the far right. */}
         {kind === "image" && (
           <>
           <button
@@ -793,23 +989,91 @@ export function LongFormEditor({
           >
             <FontAwesomeIcon icon={faEraser} />
           </button>
-          <div className="lf-pen-widths" role="radiogroup" aria-label="Pen thickness">
-            {PEN_WIDTHS.map((width) => (
-              <button
-                key={width}
-                type="button"
-                role="radio"
-                aria-checked={penWidth === width}
-                aria-label={`Pen thickness ${width}px`}
-                title={`Pen thickness ${width}px`}
-                className={penWidth === width ? "icon-button primary" : "icon-button"}
-                disabled={busy || !detailsEditable}
-                onClick={(event) => onPenWidthClick(event, width)}
-              >
-                <span className="lf-pen-sample" style={{ height: width }} />
-                <span className="lf-pen-size">{width}px</span>
-              </button>
-            ))}
+          {/*
+           * One button (a scribble, or a highlighter while that's in use) that opens the pen menu above it:
+           * the pen thicknesses, then the pen colour, black, and the highlighter.
+           */}
+          <div className="lf-pen-menu" ref={penMenuRef}>
+            <button
+              ref={penMenuButton}
+              type="button"
+              className={highlighting ? "icon-button lf-highlighting" : "icon-button"}
+              style={highlighting ? { background: highlighterColour } : undefined}
+              aria-label="Pen thickness"
+              title={highlighting ? "Highlighter" : `Pen thickness: ${penWidth}px`}
+              aria-haspopup="menu"
+              aria-expanded={penMenu !== undefined}
+              disabled={busy || !detailsEditable}
+              onClick={togglePenMenu}
+            >
+              {highlighting ? (
+                <FontAwesomeIcon icon={faHighlighter} />
+              ) : (
+                <ScribbleIcon colour={penColour === BLACK_PEN ? undefined : penColour} />
+              )}
+            </button>
+            {penMenu && (
+              <div className="tag-dropdown-list lf-pen-menu-list" role="menu" aria-label="Pen thickness" style={penMenu}>
+                {PEN_WIDTHS.map((width) => (
+                  <button
+                    key={width}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={!highlighting && penWidth === width}
+                    aria-label={`Pen thickness ${width}px`}
+                    className={penWidth === width ? "tag-option chosen" : "tag-option"}
+                    onClick={(event) => onPenWidthClick(event, width)}
+                  >
+                    <span className="lf-pen-check" aria-hidden>
+                      {!highlighting && penWidth === width && <FontAwesomeIcon icon={faCheck} />}
+                    </span>
+                    <span className="lf-pen-sample" style={{ height: width }} />
+                    <span className="lf-pen-size">{width}px</span>
+                  </button>
+                ))}
+                <div className="lf-pen-menu-divider" role="separator" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tag-option"
+                  onClick={menuAction(() => {
+                    setPenMenu(undefined);
+                    setChoosingPenColour(true);
+                  })}
+                >
+                  <span className="lf-pen-check" aria-hidden />
+                  <span className="lf-pen-swatch" style={{ background: penColour }} aria-hidden />
+                  Pen colour…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tag-option"
+                  disabled={!highlighting && penColour === BLACK_PEN}
+                  onClick={menuAction(() => choosePenColour(BLACK_PEN))}
+                >
+                  <span className="lf-pen-check" aria-hidden />
+                  <span className="lf-pen-swatch" style={{ background: BLACK_PEN }} aria-hidden />
+                  Black pen
+                </button>
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={highlighting}
+                  className="tag-option"
+                  onClick={menuAction(() => {
+                    setPenMenu(undefined);
+                    setChoosingHighlighter(true);
+                  })}
+                >
+                  <span className="lf-pen-check" aria-hidden>
+                    {highlighting && <FontAwesomeIcon icon={faCheck} />}
+                  </span>
+                  <span className="lf-pen-swatch light" style={{ background: highlighterColour }} aria-hidden />
+                  Highlighter…
+                </button>
+              </div>
+            )}
           </div>
           <div className="lf-pages" role="group" aria-label="Pages">
             <span className="lf-page-count" title={`Page ${pageIndex + 1} of ${pages.length}`}>
@@ -904,6 +1168,19 @@ export function LongFormEditor({
           </button>
           </>
         )}
+        {/* The note's due date: after Export (or in its place, for typed details). Only its owner sets it. */}
+        {!note?.shared && (
+          <button
+            type="button"
+            className={dueDate ? "icon-button primary lf-due" : "icon-button lf-due"}
+            aria-label={dueDate ? "Change the long-form note's due date" : "Set the long-form note's due date"}
+            title={noteId === undefined ? "Accept the title first" : dueDate ? dueTitle(dueDate) : "Set due date"}
+            disabled={busy || noteId === undefined}
+            onClick={() => setChoosingDueDate(true)}
+          >
+            <FontAwesomeIcon icon={faAlarmClock} />
+          </button>
+        )}
         <div className="lf-finish-end">
         {isNew && (
           <button
@@ -931,6 +1208,9 @@ export function LongFormEditor({
         </div>
       </div>
 
+      {choosingDueDate && (
+        <DueDateDialog due={dueDate} onSet={changeDueDate} onCancel={() => setChoosingDueDate(false)} />
+      )}
       {choosingParent && (
         <ParentDialog
           notes={notes}
@@ -941,6 +1221,27 @@ export function LongFormEditor({
           owner={note?.shared ? { id: note.shared.ownerId, name: note.shared.ownerName } : sharedTagsOwner(categories, selection)}
           onSet={changeParent}
           onCancel={() => setChoosingParent(false)}
+        />
+      )}
+      {choosingPenColour && (
+        <PenColourDialog
+          colour={penColour}
+          onChoose={(colour, event) => {
+            if (!ignoredTap(stylusMode, event)) choosePenColour(colour);
+          }}
+          onCancel={() => setChoosingPenColour(false)}
+        />
+      )}
+      {choosingHighlighter && (
+        <PenColourDialog
+          title="Highlighter colour"
+          colours={HIGHLIGHTER_COLOURS}
+          light
+          colour={highlighting ? highlighterColour : undefined}
+          onChoose={(colour, event) => {
+            if (!ignoredTap(stylusMode, event)) chooseHighlighter(colour);
+          }}
+          onCancel={() => setChoosingHighlighter(false)}
         />
       )}
       {confirmingAddPage && (
@@ -1004,4 +1305,48 @@ function exportFileName(title: string, now = new Date()): string {
   // Characters that file names can't have (on Windows, the strictest), and control characters.
   const safe = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().slice(0, 80).trim();
   return `${safe ? `${safe} ` : ""}${date}.png`;
+}
+
+/** While a menu is open, it closes on a click outside `ref`, on Escape, or when the window is resized. */
+function useCloseOnOutside(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void) {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    const onClose = () => closeRef.current();
+    const onPointerDown = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [open, ref]);
+}
+
+/**
+ * A scribble (like Font Awesome Pro's fa-scribble, which the free icons don't have): one rounded line
+ * with two loops, rising from the bottom left and ending at the right. Sized like a Font Awesome icon;
+ * drawn in the pen colour when it isn't black (black follows the text colour, for dark mode).
+ */
+function ScribbleIcon({ colour = "currentColor" }: { colour?: string }) {
+  return (
+    <svg className="svg-inline--fa" viewBox="0 0 512 512" aria-hidden focusable="false">
+      <path
+        fill="none"
+        stroke={colour}
+        strokeWidth={44}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M40 400C110 360 190 250 190 150C190 70 110 90 120 190C130 300 230 380 300 300C350 240 340 150 290 170C240 190 280 330 360 360C420 380 450 330 472 300"
+      />
+    </svg>
+  );
 }

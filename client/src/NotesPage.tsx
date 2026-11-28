@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faAlarmClock, faCircle, faEye, faFileLines } from "@fortawesome/free-regular-svg-icons";
+import { faAlarmClock, faBellSlash, faCircle, faEye, faFileLines } from "@fortawesome/free-regular-svg-icons";
 import {
   faAnglesDown,
   faAnglesUp,
@@ -51,21 +51,25 @@ import {
   noteMatchesFilters,
   orderNotes,
   tagLabel,
+  tagsForTabMove,
   validateTitle,
   validateTitleImage,
   withoutMarkers,
   type Category,
   type LifetimeChange,
   type Note,
+  type NoteDetails,
   type NoteTitle,
   type Tab,
+  type TabMoveChange,
   NOTE_CHANGED_ELSEWHERE,
 } from "@nwsnotes/shared";
 import { ApiError, api } from "./api";
 import { isWaiting, offlineApi } from "./offline";
 import { noteBackground, noteHue } from "./colours";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { DueDateDialog } from "./DueDateDialog";
+import { DueDateDialog, dueOf, dueRequest, dueTitle, formatNoteDate, sameDue, type Due } from "./DueDateDialog";
+import { autoAcceptingTabMoves, describeTabMoveChange, TabMoveDialog } from "./TabMoveDialog";
 import { FormattedText } from "./FormattedText";
 import { flashIgnoredTap } from "./ignoredTap";
 import { useCollapsedCategories, useExtraFilters } from "./extraFilters";
@@ -113,6 +117,8 @@ interface Props {
   categories: Category[];
   /** The selected tab, or undefined for "All". Only matching notes are listed. */
   selectedTab: Tab | undefined;
+  /** Every tab (not "All"), so a note dragged onto one in edit-order mode can be moved into it. */
+  tabs: Tab[];
   /** The tabs set to "Left" ("All" first if it is), shown in a strip left of the filter row and list. */
   leftTabs: TabEntry[];
   onSelectTab: (id: number | undefined) => void;
@@ -183,6 +189,7 @@ export function NotesPage({
   notes,
   categories,
   selectedTab,
+  tabs,
   leftTabs,
   onSelectTab,
   tabsBlocked,
@@ -660,7 +667,11 @@ export function NotesPage({
 
   /** The list as it was when a drag started: live updates don't change what's shown until the drop. */
   const dragList = useRef<Note[]>(undefined);
-  const { drag, gripHandlers } = useNoteDrag(listRef, (noteId, target) => void dropNote(noteId, target));
+  const { drag, gripHandlers } = useNoteDrag(listRef, (noteId, target) => void dropNote(noteId, target), {
+    // Any tab but "All" (which has no data-drop-tab) and the one showing.
+    selector: '[data-drop-tab]:not([aria-selected="true"])',
+    onDrop: (noteId, zone) => dropNoteOnTab(noteId, Number(zone.dataset.dropTab)),
+  });
   const listedNotes = drag && dragList.current ? dragList.current : visibleNotes;
 
   /** Every note's id in the shared order (unordered notes after, oldest first), without `leaving`. */
@@ -695,6 +706,54 @@ export function NotesPage({
       onNotesChanged();
     }
   }
+  /** A note dragged onto another tab, waiting for OK in the dialog: the tag changes it would get. */
+  const [tabMove, setTabMove] = useState<{ note: Note; to: Tab; changes: TabMoveChange[] }>();
+
+  /**
+   * Edit-order mode: a note let go over another tab gets the tags that put it in that tab (and take it
+   * out of this one), after the dialog's OK, or straight away while auto-accepting.
+   */
+  function dropNoteOnTab(noteId: number, tabId: number) {
+    const note = notes.find((n) => n.id === noteId);
+    const to = tabs.find((tab) => tab.id === tabId);
+    if (!note || !to) return;
+    if (note.shared) {
+      setNotice({ text: `You can't change the tags of ${note.shared.ownerName}'s notes.`, error: true });
+      return;
+    }
+    const move = tagsForTabMove(note, categories, to, selectedTab);
+    if (!move.ok) {
+      setNotice({ text: move.error, error: true });
+      return;
+    }
+    if (move.changes.length === 0) {
+      setNotice({ text: "Already in that tab." });
+      return;
+    }
+    if (autoAcceptingTabMoves()) void moveNoteToTab(note, to, move.changes, true);
+    else setTabMove({ note, to, changes: move.changes });
+  }
+
+  async function moveNoteToTab(note: Note, to: Tab, changes: TabMoveChange[], auto: boolean) {
+    setBusyNoteId(note.id);
+    try {
+      const moved = await api.moveNoteToTab(note.id, { toTabId: to.id, fromTabId: selectedTab?.id, baseModifiedDateTime: note.lastModifiedDateTime });
+      offerUndo(moved);
+      onNoteUpdated(moved);
+      // Without the dialog, a notice says what changed.
+      if (auto) setNotice({ text: `Moved to "${to.name}": ${changes.map((change) => describeTabMoveChange(change, categories)).join("; ")}` });
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        onSessionExpired();
+        return;
+      }
+      const reason = error instanceof ApiError && error.isNoteChanged ? NOTE_CHANGED_ELSEWHERE : error instanceof Error ? error.message : String(error);
+      setNotice({ text: `The note wasn't moved: ${reason}`, error: true });
+    } finally {
+      setBusyNoteId(undefined);
+    }
+  }
+
   /** Edit-order mode's buttons: moves a note to the top or the bottom of the listed notes, and saves the order. */
   function moveToEnd(noteId: number, end: "top" | "bottom") {
     // Not a drag, so the order is worked out from the list as it is now.
@@ -780,8 +839,8 @@ export function NotesPage({
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  /** The due date of the note being added or edited (ISO), saved with it when Add or Update is tapped. */
-  const [dueDate, setDueDate] = useState<string>();
+  /** The due date of the note being added or edited, saved with it when Add or Update is tapped. */
+  const [dueDate, setDueDate] = useState<Due>();
   const [choosingDueDate, setChoosingDueDate] = useState(false);
 
   /**
@@ -825,21 +884,29 @@ export function NotesPage({
     setOrdering(false);
     // Any new note that was being typed or written is discarded.
     setTitle(note.titleText ?? "");
-    setDueDate(note.dueDateTime);
+    setDueDate(dueOf(note));
     setEditParent(note.parentId);
     setEditSelection(selectionFor(note, userCategories));
     setSaveError(undefined);
     // A handwritten note's writing is loaded into the canvas, so it starts with ink.
     setPadInked(note.titleImage !== undefined);
     onEditStart(note);
-    if (note.titleText !== undefined) {
-      requestAnimationFrame(() => {
-        const input = inputRef.current;
-        input?.focus();
-        input?.setSelectionRange(input.value.length, input.value.length);
-      });
-    }
+    focusTitleAtEnd.current = note.titleText !== undefined;
   }
+
+  /**
+   * Starting to edit a typed note puts the cursor at the end of its title. It's done as soon as the title
+   * is in the box, in the same update, not a frame later: then it can't land in the middle of something
+   * already being typed or pasted there (e.g. undoing a select-all just before the new text goes in).
+   */
+  const focusTitleAtEnd = useRef(false);
+  useLayoutEffect(() => {
+    if (!focusTitleAtEnd.current) return;
+    focusTitleAtEnd.current = false;
+    const input = inputRef.current;
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
+  });
 
   /** Back to adding notes, with an empty title box or canvas. */
   function finishEdit() {
@@ -889,9 +956,19 @@ export function NotesPage({
     }
   }
 
-  /** Edit-order mode's lifetime buttons: the listed notes that are Waiting, and those that are Archived. */
-  const listedWaiting = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_WAITING).map((note) => note.id);
-  const listedArchived = visibleNotes.filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED).map((note) => note.id);
+  /**
+   * Edit-order mode's lifetime buttons: the listed notes that are Waiting and may be archived, and those that
+   * are Archived and may be binned. Notes shared with you count only if their owner lets you do that (as on
+   * the server); `anyListedArchived` says whether there are Archived notes at all, binnable or not.
+   */
+  const mayChange = (note: Note, needed: "edit" | "delete") => !note.shared || allows(note.shared.permission, needed);
+  const listedWaiting = visibleNotes
+    .filter((note) => lifetimeOf(note) === LIFETIME_WAITING && mayChange(note, "edit"))
+    .map((note) => note.id);
+  const anyListedArchived = visibleNotes.some((note) => lifetimeOf(note) === LIFETIME_ARCHIVED);
+  const listedArchived = visibleNotes
+    .filter((note) => lifetimeOf(note) === LIFETIME_ARCHIVED && mayChange(note, "delete"))
+    .map((note) => note.id);
   const [listLifetimeBusy, setListLifetimeBusy] = useState(false);
 
   /** Moves the listed Waiting notes to Archived, or the listed Archived ones to the Bin, in one save. */
@@ -936,14 +1013,21 @@ export function NotesPage({
   const [listDueNote, setListDueNote] = useState<Note>();
 
   /** Saves a due date (or clears it: undefined) chosen by tapping a note's date in the list. */
-  async function setListDueDate(note: Note, dueDateTime: string | undefined) {
+  async function setListDueDate(note: Note, due: Due | undefined) {
     setListDueNote(undefined);
-    if (busyNoteId !== undefined || dueDateTime === note.dueDateTime) return;
+    if (busyNoteId !== undefined || sameDue(due, dueOf(note))) return;
     setBusyNoteId(note.id);
     try {
       const noteTitle: NoteTitle = note.titleImage !== undefined ? { titleImage: note.titleImage } : { titleText: note.titleText ?? "" };
       const base = isWaiting(note.id) ? undefined : note.lastModifiedDateTime;
-      const updated = await offlineApi.updateNote(note.id, { ...noteTitle, tagIds: note.tagIds, ...(dueDateTime && { dueDateTime }) }, base);
+      // A long-form note is updated with its details, as they are.
+      const details: NoteDetails | undefined =
+        note.detailsImage !== undefined
+          ? { detailsImage: note.detailsImage, ...(note.detailsMorePages && { detailsMorePages: note.detailsMorePages }) }
+          : note.detailsText !== undefined
+            ? { detailsText: note.detailsText }
+            : undefined;
+      const updated = await offlineApi.updateNote(note.id, { ...noteTitle, ...details, tagIds: note.tagIds, ...dueRequest(due) }, base);
       offerUndo(updated);
       onNoteUpdated(updated);
     } catch (error) {
@@ -985,8 +1069,7 @@ export function NotesPage({
 
   /** Why the note being edited can't become a long-form note, if it can't (as one couldn't be created that way). */
   const convertHint = editingNote?.titleImage !== undefined ? "Only typed notes can become long-form notes" : undefined;
-  /** Long-form notes can't have a due date, so converting one removes it. */
-  const convertTitle = convertHint ?? (dueDate ? "Convert to long-form note (removes its due date)" : "Convert to long-form note");
+  const convertTitle = convertHint ?? "Convert to long-form note";
 
   /**
    * Turns the note being edited into a long-form note: saved with its title and tags as they are now,
@@ -1007,7 +1090,8 @@ export function NotesPage({
       const details = stylusMode ? { detailsImage: "" } : { detailsText: "" };
       const note = await offlineApi.updateNote(
         editingNote.id,
-        { titleText: check.title, tagIds, ...details, parentId: editParent ?? null },
+        // It keeps its due date.
+        { titleText: check.title, tagIds, ...details, ...dueRequest(dueDate), parentId: editParent ?? null },
         editBase.current,
       );
       offerUndo(note);
@@ -1039,7 +1123,7 @@ export function NotesPage({
       const tagIds = selectedTagIds(userCategories, editSelection);
       const updated = await offlineApi.updateNote(
         editingNote.id,
-        { ...noteTitle, tagIds, ...(dueDate && { dueDateTime: dueDate }), parentId: editParent ?? null },
+        { ...noteTitle, tagIds, ...dueRequest(dueDate), parentId: editParent ?? null },
         editBase.current,
       );
       offerUndo(updated);
@@ -1099,7 +1183,7 @@ export function NotesPage({
           ...noteTitle,
           tagIds,
           ...(parentId !== undefined && { parentId }),
-          ...(dueDate && { dueDateTime: dueDate }),
+          ...dueRequest(dueDate),
         });
         offerUndo(note);
         // The due date doesn't carry over to the next note (unlike the tags).
@@ -1174,15 +1258,24 @@ export function NotesPage({
       event.stopPropagation();
       void saveEditRef.current().then((saved) => {
         if (!saved) return;
-        requestAnimationFrame(() => {
-          if (!control.isConnected) return;
-          replayingClick.current = true;
-          try {
-            control.click();
-          } finally {
-            replayingClick.current = false;
-          }
-        });
+        // The control is greyed out (aria-disabled) while the edit is being saved, and its click does
+        // nothing until the page has redrawn with the edit finished, which can take a few frames (e.g.
+        // while the header's Undo button appears): wait for that, then click it.
+        const replay = (framesLeft: number) =>
+          requestAnimationFrame(() => {
+            if (!control.isConnected) return;
+            if (control.getAttribute("aria-disabled") === "true" && framesLeft > 0) {
+              replay(framesLeft - 1);
+              return;
+            }
+            replayingClick.current = true;
+            try {
+              control.click();
+            } finally {
+              replayingClick.current = false;
+            }
+          });
+        replay(30);
       });
     };
     // On the document, before the page's own handlers.
@@ -1455,7 +1548,7 @@ export function NotesPage({
                     Waiting → Archive ({listedWaiting.length})
                   </button>
                 )}
-                {listedArchived.length > 0 && (
+                {listedArchived.length > 0 ? (
                   <button
                     type="button"
                     className="small-button"
@@ -1465,6 +1558,8 @@ export function NotesPage({
                   >
                     Archived → Bin ({listedArchived.length})
                   </button>
+                ) : (
+                  anyListedArchived && <span className="list-lifetime-note">No permission to move to bin</span>
                 )}
               </div>
             ) : (
@@ -1742,27 +1837,42 @@ export function NotesPage({
                       </div>
                       {/* The due date if the note has one, otherwise when it was created. */}
                       {(() => {
+                        // A Waiting note that goes back to Active when its due date (still to come) is reached.
+                        const returnsWhenDue =
+                          note.dueDateTime !== undefined && note.returnWhenDue === true && lifetimeOf(note) === LIFETIME_WAITING && Date.parse(note.dueDateTime) > now;
                         const date = (
                           <time
                             className={["note-date", note.dueDateTime && dueClass(note.dueDateTime, now)].filter(Boolean).join(" ")}
                             dateTime={note.dueDateTime ?? note.createdDateTime}
-                            title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}`}
+                            title={`${note.dueDateTime ? "Due" : "Created"} ${new Date(note.dueDateTime ?? note.createdDateTime).toLocaleString()}${note.dueDateTime && note.noReminder ? " (no reminder)" : ""}${returnsWhenDue ? " (returns from Waiting)" : ""}`}
                           >
                             {pendingIds.has(note.id) && (
                               <FontAwesomeIcon icon={faClock} className="note-pending" title="Waiting to be saved (offline)" />
                             )}
+                            {/* A due date with no reminder: a crossed-out bell before it. */}
+                            {note.dueDateTime && note.noReminder && (
+                              <FontAwesomeIcon icon={faBellSlash} className="note-no-reminder" title="No reminder" />
+                            )}
+                            {/* A Waiting note that goes back to Active when it's due. */}
+                            {returnsWhenDue && (
+                              <FontAwesomeIcon icon={faRotateLeft} className="note-returns" title="Returns from Waiting when due" />
+                            )}
                             {note.dueDateTime ? "Due " : "Cr. "}
-                            {formatNoteDate(note.dueDateTime ?? note.createdDateTime)}
+                            {formatNoteDate(note.dueDateTime ?? note.createdDateTime, note.dueDateTime !== undefined && note.allDay === true)}
                           </time>
                         );
-                        // Tapping it sets, changes or clears the due date. Only a note's owner can, and long-form
-                        // notes can't have one; not while selecting notes or ordering them either.
-                        if (note.shared || isLongForm(note) || bulk || ordering) return date;
+                        // Tapping it sets, changes or clears the due date. Only a note's owner can; not while
+                        // selecting notes or ordering them.
+                        if (note.shared || bulk || ordering) return date;
                         return (
                           <button
                             type="button"
                             className="note-date-button"
-                            aria-label={note.dueDateTime ? `Due ${formatNoteDate(note.dueDateTime)}: change due date` : "Set due date"}
+                            aria-label={
+                              note.dueDateTime
+                                ? `${dueTitle(dueOf(note)!, note.allDay === true)}${returnsWhenDue ? " (returns from Waiting)" : ""}: change due date`
+                                : "Set due date"
+                            }
                             // Another note being edited is saved first, as with the note's other buttons.
                             data-saves-edit={editing ? undefined : true}
                             disabled={editing ? saving : busy}
@@ -1782,6 +1892,18 @@ export function NotesPage({
         </div>
       </div>
 
+      {tabMove && (
+        <TabMoveDialog
+          tabName={tabMove.to.name}
+          changes={tabMove.changes}
+          categories={categories}
+          onConfirm={() => {
+            setTabMove(undefined);
+            void moveNoteToTab(tabMove.note, tabMove.to, tabMove.changes, false);
+          }}
+          onCancel={() => setTabMove(undefined)}
+        />
+      )}
       {confirmResetNew && (
         <ConfirmDialog
           message="Do you want to reset the New tags?"
@@ -1801,7 +1923,8 @@ export function NotesPage({
 
       {choosingDueDate && (
         <DueDateDialog
-          dueDate={dueDate}
+          due={dueDate}
+          newNote={!editingNote}
           onSet={(value) => {
             setDueDate(value);
             setChoosingDueDate(false);
@@ -1829,7 +1952,7 @@ export function NotesPage({
 
       {listDueNote && (
         <DueDateDialog
-          dueDate={listDueNote.dueDateTime}
+          due={dueOf(listDueNote)}
           onSet={(value) => void setListDueDate(listDueNote, value)}
           onCancel={() => setListDueNote(undefined)}
         />
@@ -2065,7 +2188,7 @@ export function NotesPage({
                   type="button"
                   className={dueDate ? "icon-button primary" : "icon-button"}
                   aria-label={dueDate ? "Change due date" : "Set due date"}
-                  title={dueDate ? `Due ${formatNoteDate(dueDate)}` : "Set due date"}
+                  title={dueDate ? dueTitle(dueDate) : "Set due date"}
                   disabled={saving}
                   onClick={() => setChoosingDueDate(true)}
                 >
@@ -2159,17 +2282,6 @@ function matchesSearch(note: Note, words: string[]): boolean {
   return words.every((word) => text.includes(word));
 }
 
-/**
- * A note's creation or due time in the device's local time, as "dd/MM HH:mm" (e.g. "26/10 14:05"),
- * with the year as "dd/MM/yy" when it isn't this year (e.g. "12/01/27 20:00").
- */
-function formatNoteDate(iso: string): string {
-  const date = new Date(iso);
-  const two = (n: number) => String(n).padStart(2, "0");
-  const year = date.getFullYear() === new Date().getFullYear() ? "" : `/${two(date.getFullYear() % 100)}`;
-  return `${two(date.getDate())}/${two(date.getMonth() + 1)}${year} ${two(date.getHours())}:${two(date.getMinutes())}`;
-}
-
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** How a due date stands out: red and bold once past; still to come, black (not grey), and bold within the next week. */
@@ -2194,7 +2306,7 @@ function tagsOwner(tagIds: number[], categories: Category[]): { id: number; name
  * owner's notebook, so it can only have tags shared by that one person, all ones you may edit, and no
  * due date (only the owner sets those). The server checks the same.
  */
-function sharedNoteProblem(tagIds: number[], categories: Category[], dueDate: string | undefined): string | undefined {
+function sharedNoteProblem(tagIds: number[], categories: Category[], dueDate: Due | undefined): string | undefined {
   const shared = categories.find((category) => category.shared)?.tags.filter((tag) => tagIds.includes(tag.id)) ?? [];
   if (shared.length === 0) return undefined;
   if (shared.length !== tagIds.filter((id) => !isLifetimeTag(id)).length) {

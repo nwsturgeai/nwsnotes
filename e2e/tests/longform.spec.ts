@@ -10,6 +10,12 @@ async function savedNote(page: Page, title: string) {
   return data.notes.find((note) => note.titleText === title);
 }
 
+/** The note once the server has it: the app saves in the background, so a single read can come too soon. */
+async function waitForSavedNote(page: Page, title: string) {
+  await expect.poll(async () => (await savedNote(page, title)) !== undefined).toBe(true);
+  return (await savedNote(page, title))!;
+}
+
 /** Opens a new long-form note (its button is in the expanded add area) and accepts a title. */
 async function startLongForm(page: Page, title: string) {
   await page.getByRole("button", { name: "Show all tags" }).click();
@@ -24,6 +30,20 @@ async function startLongForm(page: Page, title: string) {
 test.describe("with the page loaded", () => {
   test.beforeEach(async ({ page }) => {
     await openNotes(page);
+  });
+
+  test("the empty details box lists the formatting, and until the title is accepted says to accept it", async ({ page }) => {
+    const formatting = "\n\nFormatting:\n*text* for bold\n_text_ for underline\n/text/ for italic\n-text- for strikethrough\n#text# for a yellow highlight\n[ ] or [] at the start of a line for a tickbox";
+    await page.getByRole("button", { name: "Show all tags" }).click();
+    await addArea(page).getByRole("button", { name: "Create long-form note" }).click();
+    const details = editor(page).getByRole("textbox", { name: "Details" });
+    await expect(details).toHaveAttribute(
+      "placeholder",
+      `Accept the title to write the details${formatting}`,
+    );
+    await editor(page).getByRole("textbox", { name: "Long-form note title" }).fill("Trip to Rome");
+    await editor(page).getByRole("textbox", { name: "Long-form note title" }).press("Enter");
+    await expect(details).toHaveAttribute("placeholder", `Details${formatting}`);
   });
 
   test("a new long-form note is saved with its title, tags and details", async ({ page }) => {
@@ -63,7 +83,7 @@ test.describe("with the page loaded", () => {
     await editor(page).getByRole("textbox", { name: "Details" }).fill("Pack");
     await create.click();
     await startTitle("Flights");
-    const rome = await savedNote(page, "Trip to Rome");
+    const rome = await waitForSavedNote(page, "Trip to Rome");
     expect(rome?.detailsText).toBe("Pack");
     await expect(editor(page).getByRole("button", { name: /^Parent: Trip to Rome/ })).toBeVisible();
     await editor(page).getByRole("button", { name: "Finish" }).click();
@@ -107,8 +127,8 @@ test.describe("with the page loaded", () => {
     await expect(page).toHaveURL(/[?&]note=new$/);
     await titleBox.fill("Visa forms");
     await titleBox.press("Enter");
-    const visa = await savedNote(page, "Visa forms");
-    await expect(page).toHaveURL(new RegExp(`[?&]note=${visa?.id}$`));
+    const visa = await waitForSavedNote(page, "Visa forms");
+    await expect(page).toHaveURL(new RegExp(`[?&]note=${visa.id}$`));
     await page.goBack();
     await expect(titleBox).toHaveValue("Holiday plans");
     await page.goForward();
@@ -219,6 +239,79 @@ test.describe("with the page loaded", () => {
     await expect(editor(page).getByRole("button", { name: "Area: Work" })).toBeVisible();
     await editor(page).getByRole("button", { name: "Finish" }).click();
     await expect(noteRow(page, "Matched")).toBeVisible();
+  });
+
+  test("typing [] and then text spaces the tickbox out, once the text starts", async ({ page }) => {
+    await startLongForm(page, "Tickboxes");
+    const details = editor(page).getByRole("textbox", { name: "Details" });
+    await page.keyboard.type("[]");
+    await expect(details).toHaveValue("[]");
+    await page.keyboard.type("Hello world");
+    await expect(details).toHaveValue("[ ] Hello world");
+    await page.keyboard.type("\n[] Bread\n  [x]Done\n[ ]M");
+    await expect(details).toHaveValue("[ ] Hello world\n[ ] Bread\n  [x] Done\n[ ] M");
+    // Undo straight away takes out just the space, and typing on doesn't put it back.
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(details).toHaveValue("[ ] Hello world\n[ ] Bread\n  [x] Done\n[ ]M");
+    await page.keyboard.type("ilk");
+    await expect(details).toHaveValue("[ ] Hello world\n[ ] Bread\n  [x] Done\n[ ]Milk");
+    // A space deleted on purpose doesn't come back either, and [] elsewhere in a line is left alone.
+    await details.fill("[ ] Eggs");
+    await page.keyboard.press("End");
+    await page.keyboard.press("Home");
+    for (const _ of "[ ] ") await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type("X");
+    await expect(details).toHaveValue("[ ]XEggs");
+    await page.keyboard.press("End");
+    await page.keyboard.type(" list[]a");
+    await expect(details).toHaveValue("[ ]XEggs list[]a");
+  });
+
+  test("tickboxes in the details can be ticked and unticked, and a ticked line is struck through", async ({ page }) => {
+    await startLongForm(page, "Shopping");
+    const details = editor(page).getByRole("textbox", { name: "Details" });
+    await details.fill("[ ] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+    const display = editor(page).locator(".lf-text-display");
+    await expect(display.locator(".fmt-tickbox")).toHaveCount(3);
+    await expect(display.locator(".fmt-tickbox.ticked")).toHaveCount(1);
+    await expect(display.locator(".fmt-ticked")).toHaveText("*Milk*");
+    await expect(display.locator(".fmt-ticked")).toHaveCSS("text-decoration-line", "line-through");
+    await expect(display.locator(".fmt-ticked .fmt-bold:not(.fmt-marker)")).toHaveText("Milk");
+
+    const targets = editor(page).locator(".lf-text-targets .fmt-tickbox-target");
+    await expect(targets).toHaveCount(3);
+    // Each one to click is exactly over the tickbox drawn underneath.
+    for (let index = 0; index < 3; index++) {
+      expect(await targets.nth(index).boundingBox()).toEqual(await display.locator(".fmt-tickbox").nth(index).boundingBox());
+    }
+    await targets.nth(0).click();
+    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+    await targets.nth(1).click();
+    await targets.nth(2).click();
+    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[x] Eggs");
+    await expect(display.locator(".fmt-ticked")).toHaveText(["Bread", "Eggs"]);
+    // The text box kept the focus, and Undo takes back the last tick.
+    await expect(details).toBeFocused();
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[ ] *Milk*\n[] Eggs");
+
+    // Ticked without the text box having the focus: it stays without it (no keyboard popping up on a phone).
+    await editor(page).getByRole("textbox", { name: "Long-form note title" }).focus();
+    await targets.nth(1).click();
+    await expect(details).toHaveValue("[x] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+    await expect(details).not.toBeFocused();
+    await editor(page).getByRole("button", { name: "Finish" }).click();
+    await expect(editor(page)).toHaveCount(0);
+    await expect.poll(async () => (await savedNote(page, "Shopping"))?.detailsText).toBe("[x] Bread\nNot a tickbox [ ]\n[x] *Milk*\n[] Eggs");
+  });
+
+  test("tickboxes can't be ticked while the details are locked", async ({ page }) => {
+    await startLongForm(page, "Locked list");
+    await editor(page).getByRole("textbox", { name: "Details" }).fill("[ ] Bread");
+    await editor(page).getByRole("button", { name: "Edit title" }).click();
+    await expect(editor(page).locator(".lf-text-display .fmt-tickbox")).toHaveCount(1);
+    await expect(editor(page).locator(".lf-text-targets")).toHaveCount(0);
   });
 
   test("the formatted details line up exactly with the text being typed", async ({ page }) => {
