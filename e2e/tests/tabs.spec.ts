@@ -427,7 +427,12 @@ test("a single-select category's tags that no tab uses offer \"Create Tab for th
   await page.getByLabel("Name", { exact: true }).fill("Cities");
   await page.getByRole("textbox", { name: "Tag 1" }).fill("Paris, France");
   await page.getByRole("button", { name: "Add tag" }).click();
-  await page.getByRole("textbox", { name: "Tag 3" }).fill("Lisbon");
+  // Typed key by key: the link appears after the first letter, and the box keeps focus for the rest.
+  const lisbon = page.getByRole("textbox", { name: "Tag 3" });
+  await lisbon.click();
+  await page.keyboard.type("Lisbon");
+  await expect(lisbon).toHaveValue("Lisbon");
+  await expect(lisbon).toBeFocused();
   await expect(createLink("Lisbon")).toBeVisible();
   await createLink("Paris, France").click();
   await expect(page.getByRole("status")).toHaveText('Saved the category and made the tab "Paris, France".');
