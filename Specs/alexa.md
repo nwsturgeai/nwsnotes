@@ -1,6 +1,6 @@
-# Alexa: dictating notes to a smart speaker (proposal, not built)
+# Alexa: dictating notes to a smart speaker (agreed, not built yet)
 
-A proposal for review. The requirements and technical decisions below are suggestions until agreed; the questions still to decide are at the end.
+Agreed, not built yet.
 
 ## Requirements
 
@@ -11,7 +11,7 @@ This works like adding notes by text message (see [text-messages.md](text-messag
 ### A private skill, not a published one
 - nwsnotes has its own Alexa skill, made by the admin in Amazon's Alexa developer console. It's never published in the Alexa skill store, so Amazon never reviews it, and nobody outside nwsnotes can find or use it.
 - **On the admin's own Amazon account,** the skill works on every Echo registered to that account, as long as it stays in development mode.
-- **For other nwsnotes users** with their own Amazon accounts, the admin invites their Amazon email address to the skill's beta test. A beta test lasts at most 90 days and can't be extended, so the admin starts a new one every 90 days and testers accept it again (see "The beta test" below, and "Questions to decide").
+- **Only the admin's own Amazon account, for now.** Anyone speaking to an Echo on that account uses its one link (see Linking). Other people's Amazon accounts would need an Amazon beta test, renewed every 90 days, which is left for later (see "Later, not now").
 
 ### Its name: "Nick Notes"
 - People talk to the skill as "Nick Notes": "Alexa, ask Nick Notes to …". Alexa can't say "nwsnotes", so the skill's spoken name (Amazon calls it the "invocation name") is different from the app's name. Everywhere else, the app is still called nwsnotes.
@@ -54,7 +54,7 @@ This works like adding notes by text message (see [text-messages.md](text-messag
 ### Costs
 - Nothing: Alexa skills, the developer account and the requests to nwsnotes are free.
 
-## Proposed technical decisions
+## Agreed technical decisions
 
 ### The skill (set up once by the admin)
 - **In the Alexa developer console** (developer.amazon.com, signed in with the admin's Amazon account): create a custom skill, "Provision your own" as the backend, English (UK) as its language. The steps go in `README.md` ("Adding notes by Alexa").
@@ -99,20 +99,8 @@ Amazon requires every self-hosted skill to check each request, and its certifica
 - **Codes:** "Link Alexa" calls `POST /api/me/alexa/link-code`, which returns a 6-digit code, made, kept and expired as text-message codes are (15 minutes, memory only, works once). `LinkIntent` with that code links the Alexa account, says "Linked. You can now add notes to nwsnotes." and the Settings page changes to "Linked to Alexa" through the usual live updates.
 - **Guessing codes:** after 5 wrong codes from one Alexa account in 15 minutes, `LinkIntent` stops checking for that account until the 15 minutes are up ("Too many wrong codes. Wait a few minutes and make a new one in Settings.").
 - **Showing it:** `GET /api/me/alexa` returns `{ linked: false }` or `{ linked: true, linkedDateTime }`. "Unlink", after "Unlink Alexa? It will no longer add notes.", calls `DELETE /api/me/alexa`.
-- **A new userId:** Alexa gives an account a new `userId` if the skill is turned off and on again in the Alexa app, so it needs linking again. This may also happen to beta testers when a new beta test starts (to check when it's built). Either way, Alexa answers "This Alexa isn't linked to nwsnotes yet…", and Settings says under "Linked to Alexa": "If Alexa says it isn't linked, press Link Alexa again."
+- **A new userId:** Alexa gives an account a new `userId` if the skill is turned off and on again in the Alexa app, so it needs linking again. Alexa then answers "This Alexa isn't linked to nwsnotes yet…", and Settings says under "Linked to Alexa": "If Alexa says it isn't linked, press Link Alexa again."
 - **The users page** shows an "Alexa" label on the rows of users who have linked it. `UserSummary` gains `alexaLinked`.
-
-### The beta test (for other people's Amazon accounts)
-Amazon's own steps are in "Skill Beta Testing for Alexa Skills" in its developer documentation; `README.md` ("Adding notes by Alexa") gives them for nwsnotes. In short:
-- **Once, before the first beta test,** the console needs more than development mode does:
-  - **Distribution > Skill Preview:** a public name ("Nick Notes"), a one-line and a full description, example phrases (e.g. "Alexa, ask Nick Notes to add Shopping oat milk"), a small and a large icon (108 × 108 and 512 × 512 pixels, PNG), a category ("Productivity"), and a privacy policy URL. A new public help page, `https://nwsnotes.com/docs/alexa-privacy` (see [docs.md](docs.md)), says what the skill keeps (the notes said to it, and the Alexa account it's linked to) and that it's for nwsnotes users only.
-  - **Distribution > Privacy & Compliance:** the yes/no questions (no purchases, collects no personal information beyond the notes, not for children, no advertising, export compliance).
-  - **Certification > Validation** must pass. This is a check run in the console, not a review by Amazon, and it includes sending the endpoint badly signed requests, which is why the server checks them (see "Checking it's Alexa").
-- **Starting a test:** Distribution > Availability > Beta Test: enter the admin's email as the administrator, add each tester's email (the one on the Amazon account their Echo uses), and enable the test.
-- **Inviting testers:** Amazon no longer emails testers itself. The admin copies the invitation link from the Beta Test section ("Copy link") and sends it to each tester. On their phone, the tester opens the link, signs in to their Amazon account, accepts the beta terms, and enables "Nick Notes" in the Alexa app. Then they link it in nwsnotes Settings as usual.
-- **Adding someone later:** testers can be added or removed while a test is running, with the same link sent to the new tester.
-- **Renewing, every 90 days:** a test ends 90 days after it starts and can't be extended; when it ends, testers lose the skill (the admin's own account keeps it, as development mode isn't a beta test). To carry on, the admin starts a new test in the same place, adds the testers' emails again, and sends them the new link; each tester accepts and enables it again, and links it again in nwsnotes if Alexa says it isn't linked. The admin's own account is never affected.
-- **A reminder for the admin:** `deploy/set-alexa.sh` also asks for the date the current beta test started (optional) and stores it as `alexaBetaStarted`. From 80 days after it, the users page shows the admin "The Alexa beta test ends on <date>. Start a new one in the Alexa developer console and send testers the new link." Running `set-alexa.sh` again after renewing updates the date.
 
 ### Logging
 - **One line in the server's log for each request,** like texts: e.g. `Alexa …4f2a: AddIntent, saved as user 1's note 42, in tab 3.` The outcomes: refused (naming which check failed), not linked, linked, a wrong code, too many codes, too many commands, a turned-off account, and each command's outcomes as for texts.
@@ -128,7 +116,4 @@ Amazon's own steps are in "Skill Beta Testing for Alexa Skills" in its developer
 - Asking Alexa what's in a tab ("Alexa, ask Nick Notes what's on Shopping"), read out loud.
 - Telling apart the people in a household who share one Echo, by their Alexa voice profiles: Alexa can say which profile is speaking (`context.System.person.personId`), so each profile could be linked to its own nwsnotes user. Until then, everyone using an Echo shares its Amazon account's link.
 - Reminders spoken by the Echo when a note is due.
-
-## Questions to decide
-
-1. **Other people's Amazon accounts.** Is it enough that only the admin's own Amazon account (and so the Echos in the admin's home) can use the skill? If so, no beta test is needed: none of the Skill Preview, privacy policy or validation steps, and no renewing. Or should other users be invited, with the beta test renewed every 90 days?
+- **Other people's Amazon accounts,** through an Amazon beta test (see "Skill Beta Testing for Alexa Skills" in Amazon's developer documentation). It needs, once: the console's Distribution > Skill Preview filled in (public name, descriptions, example phrases, 108 × 108 and 512 × 512 icons, a category and a privacy policy URL, for which a public `/docs/alexa-privacy` page would be added), Distribution > Privacy & Compliance answered, and Certification > Validation passed (a check run in the console, not a review). Then, under Distribution > Availability > Beta Test, the admin adds each tester's Amazon email and sends them the link from "Copy link" (Amazon doesn't email testers); each tester accepts on their phone and turns the skill on in the Alexa app. A test lasts at most 90 days and can't be extended, so every 90 days the admin starts a new one, adds the emails again and sends the new link, and testers accept again and may need to link again in nwsnotes. A reminder for the admin, on the users page from day 80, would come with it.
