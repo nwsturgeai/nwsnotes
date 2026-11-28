@@ -173,7 +173,7 @@ export function Header({
       {showUpdateNotice && (
         <div className="update-notice" role="status">
           <span>A new version is ready.</span>
-          <button type="button" onClick={reloadToUpdate}>
+          <button type="button" onClick={() => void reloadToUpdate()}>
             Reload
           </button>
         </div>

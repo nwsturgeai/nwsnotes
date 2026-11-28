@@ -70,6 +70,26 @@ test("Check for updates finds a new version, and Reload switches to it", async (
   await expect(page.getByText("A new version is ready.")).toHaveCount(0);
 });
 
+test("Reload switches to a new version after a hard refresh", async ({ page }) => {
+  await openWithServiceWorker(page);
+  // Ctrl+F5 (or Ctrl+Shift+R) loads the page past the service worker, so nothing is in charge of it.
+  const cdp = await page.context().newCDPSession(page);
+  const hardReloaded = page.waitForEvent("load");
+  await cdp.send("Page.reload", { ignoreCache: true });
+  await hardReloaded;
+  expect(await page.evaluate(() => navigator.serviceWorker.controller)).toBeNull();
+  await openSettings(page);
+  publishNewVersion();
+  await versionSection(page).getByRole("button", { name: "Check for updates" }).click();
+  await expect(versionSection(page)).toContainText("A new version is ready.", { timeout: 15_000 });
+
+  const reloaded = page.waitForEvent("load");
+  await versionSection(page).getByRole("button", { name: "Reload" }).click();
+  await reloaded;
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect(page.getByText("A new version is ready.")).toHaveCount(0);
+});
+
 test("the app checks for a new version by itself once a day", async ({ page }) => {
   await page.clock.install();
   await openWithServiceWorker(page);

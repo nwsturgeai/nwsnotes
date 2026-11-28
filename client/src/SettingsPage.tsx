@@ -1236,7 +1236,7 @@ function AppVersion({ sectionRef }: { sectionRef: RefObject<HTMLElement | null> 
       ) : updateReady ? (
         <p className="lifetime-result update-ready">
           A new version is ready.
-          <button type="button" className="button" onClick={reloadToUpdate}>
+          <button type="button" className="button" onClick={() => void reloadToUpdate()}>
             Reload
           </button>
         </p>

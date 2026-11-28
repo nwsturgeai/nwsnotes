@@ -21,7 +21,6 @@ export const buildTime = new Date(__BUILD_TIME__);
 
 let updateReady = false;
 let registration: ServiceWorkerRegistration | undefined;
-let reloadWithUpdate: ((reloadPage?: boolean) => Promise<void>) | undefined;
 const listeners = new Set<() => void>();
 
 function setUpdateReady() {
@@ -40,10 +39,34 @@ export function useUpdateReady(): boolean {
   );
 }
 
-/** Switches to the downloaded new version, then reloads the page. */
-export function reloadToUpdate() {
-  if (reloadWithUpdate) void reloadWithUpdate(true);
-  else window.location.reload();
+/** How long Reload waits for the new version to take over before reloading anyway. */
+const SWITCH_TIMEOUT_MS = 5000;
+let reloading = false;
+
+/**
+ * Switches to the downloaded new version, then reloads the page. It doesn't rely on the page being
+ * in the service worker's charge (it isn't after a hard refresh, Ctrl+F5), so it tells the waiting
+ * version to take over itself, and reloads once it has, or after a few seconds whatever happens.
+ */
+export async function reloadToUpdate() {
+  if (reloading) return;
+  reloading = true;
+  const waiting = registration?.waiting ?? (await navigator.serviceWorker?.getRegistration())?.waiting;
+  if (waiting) {
+    await new Promise<void>((resolve) => {
+      const timer = window.setTimeout(resolve, SWITCH_TIMEOUT_MS);
+      const done = () => {
+        if (waiting.state === "activated" || waiting.state === "redundant") {
+          window.clearTimeout(timer);
+          resolve();
+        }
+      };
+      waiting.addEventListener("statechange", done);
+      waiting.postMessage({ type: "SKIP_WAITING" });
+      done();
+    });
+  }
+  window.location.reload();
 }
 
 function lastCheck(): number {
@@ -85,7 +108,9 @@ export async function checkForUpdate(): Promise<boolean> {
       done();
     });
   }
-  return updateReady || registration.waiting !== null;
+  // A page loaded past the service worker (a hard refresh) isn't told of the new version, so say so here.
+  if (registration.waiting && !updateReady) setUpdateReady();
+  return updateReady;
 }
 
 /** The daily check: only if the last one was a day or more ago, and not while offline. */
@@ -99,11 +124,13 @@ function checkIfDue() {
 /** Registers the service worker and starts the daily checks. Called once, at start-up. */
 export function initAppUpdates() {
   if (!updatesAvailable) return;
-  reloadWithUpdate = registerSW({
+  registerSW({
     immediate: true,
     onNeedRefresh: setUpdateReady,
     onRegisteredSW: (_url, registered) => {
       registration = registered;
+      // Downloaded earlier and still waiting (the page may not be told of it after a hard refresh).
+      if (registered?.waiting) setUpdateReady();
       checkIfDue();
     },
   });
