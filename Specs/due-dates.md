@@ -34,11 +34,11 @@ A note is due
 - **Who added it:** every note records `createdByUserId`, the id of the user who added it: the notebook's owner, or someone a tag is shared with who added it in the owner's notebook. Set by the server when the note is added (`POST /api/notes`, or by text message) and kept by every later change. Notes added before it existed have none. It's used by "Due" texts (see "Setting a due date" in [text-messages.md](text-messages.md)).
 - **Set by text message:** "Due tomorrow 3pm" sets the due date of the note the person added in the last 5 minutes (see [text-messages.md](text-messages.md)).
 - **Stored on the note:** optional `dueDateTime` (ISO 8601, UTC). It's sent in the body of `POST /api/notes` and `PUT /api/notes/:id`. Since a PUT replaces the note, leaving it out clears it.
-  - The server checks it's a valid date-time and refuses it on a long-form note.
-  - Converting a note to long-form removes its due date. The convert button's tooltip says so when the note has one.
+  - The server checks it's a valid date-time. Regular and long-form notes can both have one.
+  - Converting a note to long-form keeps its due date.
   - Lifetime changes and bulk tag updates keep it. It doesn't count as a tag change.
   - It works offline like the rest of the note.
-- **The due-date button:** `fa-alarm-clock`, the outline ("regular") version, in the expanded new-note area, below the other buttons. It's there when adding a new regular note and when editing one, child notes included. It isn't shown in multi-select, or for long-form notes, which are edited in their own editor.
+- **The due-date button:** `fa-alarm-clock`, the outline ("regular") version, in the expanded new-note area, below the other buttons. It's there when adding a new regular note and when editing one, child notes included. It isn't shown in multi-select. Long-form notes have their own button in their editor (see "Long-form notes" below).
   - While the note being added or edited has a due date, the button is filled in green, like an active button. Its tooltip then says e.g. "Due 12/11 20:00"; otherwise "Set due date".
 - **The dialog:** the app's own pop-up, titled "Due date", with a date box and a time box (the device's own pickers).
   - With no due date yet, it starts at 20:00 today, or tomorrow if it's already 20:00 or later.
@@ -49,6 +49,16 @@ A note is due
   - The year is added when it isn't this year, e.g. "Due 12/01/27 20:00".
   - Still to come: the label and date are in the text colour (black), not the grey of a creation date. Due within the next 7 days: also bold. Already past: bold and red.
   - The list re-checks once a minute, so dates turn bold, then red, without a reload.
+
+### Long-form notes
+- **The button:** in the long-form editor's bottom row, an `fa-alarm-clock` button (outline, 40px like the row's other buttons), just after Export (4px) for handwritten details, or in Export's place for typed ones, then the usual 24px gap before Cancel and Finish. Its accessible label is "Set the long-form note's due date", or "Change the long-form note's due date" while it has one. Like the regular button, it's filled in green while the note has a due date, with the tooltip e.g. "Due 12/11 20:00", otherwise "Set due date". It opens the same "Due date" pop-up.
+  - **Greyed out** until the title is first accepted (the note doesn't exist yet), with the tooltip "Accept the title first", and while a save is under way.
+  - **Only the owner** sets it: it isn't shown on a note shared with you. Someone a tag is shared with who edits a long-form note keeps the owner's due date; sending a different one, or none, is refused ("Only <owner> can change the due dates of their notes.").
+  - In stylus mode, finger taps on it work (it only opens the pop-up).
+- **Saved straight away** when "Set Due Date" or "Clear Due Date" is chosen, with any pending details and tag changes, rather than at the end of the 30-second window. Every later save of the note sends it too, since leaving it out would clear it.
+- **In the list,** a long-form note's date can be tapped to set it, as for a regular note; the note is saved with its details unchanged.
+- **By text message,** "Due <when>" counts a long-form note just added, like any other.
+- **Child notes** keep their own due dates; a long-form note doesn't show anything about its children's.
 
 ### Reminders (push notifications)
 - **Web Push:** reminders reach a device even when the app is closed, using the browser's push service (Google's on Android Chrome). The notification is encrypted, so the push service can't read it. The server uses the `web-push` package.

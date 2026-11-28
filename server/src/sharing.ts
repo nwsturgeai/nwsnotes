@@ -399,12 +399,12 @@ export class Sharing {
     if (sent && !sameSet(sent, withoutLifetime(resolved.view.tagIds))) {
       throw new RequestError(400, `You can't change the tags of ${owner.displayName}'s notes.`);
     }
-    if (details === undefined && options.dueDateTime !== resolved.note.dueDateTime) {
+    if (options.dueDateTime !== resolved.note.dueDateTime) {
       throw new RequestError(400, `Only ${owner.displayName} can change the due dates of their notes.`);
     }
     const note = await resolved.store.updateNote(id, title, withoutLifetime(resolved.note.tagIds), details, {
-      // Converting to a long-form note (details) needs no due date; otherwise it keeps the owner's.
-      dueDateTime: details === undefined ? resolved.note.dueDateTime : undefined,
+      // It keeps the owner's due date, long-form notes included.
+      dueDateTime: resolved.note.dueDateTime,
       tagsChangedDateTime: options.tagsChangedDateTime,
       baseModifiedDateTime: options.baseModifiedDateTime,
       stylusNoteLimit: stylusNoteLimitOf(noteLimitOf(owner)),

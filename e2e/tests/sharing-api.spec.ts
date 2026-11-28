@@ -281,3 +281,27 @@ test("a recipient stops viewing a tag shared with them, and its owner is emailed
   expect(emails[0]!.text).toContain('Sam (sam@example.com) has stopped viewing your shared tag "Shopping" on nwsnotes.');
   await sam.dispose();
 });
+
+test("editing a shared long-form note keeps the owner's due date, which only the owner can change", async ({ page, baseURL }) => {
+  const admin = page.request;
+  const due = "2030-03-01T18:00:00.000Z";
+  const made = await admin.post("/api/notes", { data: { titleText: "Party plans", tagIds: [SHOPPING], detailsText: "Cake", dueDateTime: due } });
+  expect(made.ok(), await made.text()).toBe(true);
+  const sam = await userSession(admin, baseURL!, "Sam Smith", "sam@example.com");
+  await share(admin, SHOPPING, [{ loginName: "sam@example.com", permission: "edit" }]);
+  const party = (await data(sam)).notes.find((n) => n.titleText === "Party plans")!;
+  expect(party.dueDateTime).toBe(due);
+
+  // Sam's details edit (sent with the due date as it is) keeps it.
+  const edited = await edit(sam, party, { detailsText: "Cake and candles" } as Partial<ApiNote>);
+  expect(edited.ok(), await edited.text()).toBe(true);
+  expect((await edited.json()) as ApiNote & { detailsText: string }).toMatchObject({ detailsText: "Cake and candles", dueDateTime: due });
+
+  // Changing or clearing it is refused.
+  for (const dueDateTime of ["2030-04-01T18:00:00.000Z", undefined]) {
+    const refused = await edit(sam, party, { detailsText: "Cake", dueDateTime } as Partial<ApiNote>);
+    expect(refused.status()).toBe(400);
+    expect(((await refused.json()) as { error: string }).error).toBe("Only Admin can change the due dates of their notes.");
+  }
+  expect((await data(admin)).notes.find((n) => n.titleText === "Party plans")?.dueDateTime).toBe(due);
+});

@@ -1647,7 +1647,7 @@ body:has(.note-list li.dragging) {
   pointer-events: none;
 }
 
-/* The editor's bottom row: the eraser, pen thicknesses and pages at the left; Export, Cancel and Finish at the right. */
+/* The editor's bottom row: the eraser, pen thicknesses and pages at the left; Export, the due date, Cancel and Finish at the right. */
 .lf-finish {
   display: flex;
   align-items: center;
@@ -1683,14 +1683,14 @@ body:has(.note-list li.dragging) {
 }
 
 /* Previous and Next go when the row is too narrow for everything (they're in the page menu too). */
-@container (max-width: 560px) {
+@container (max-width: 604px) {
   .lf-pages .lf-page-step {
     display: none;
   }
 }
 
 /* Narrower still (a phone), the pen-thickness button goes too (Settings has the thicknesses), so Cancel and Finish stay on the screen. */
-@container (max-width: 440px) {
+@container (max-width: 484px) {
   .lf-finish .lf-pen-menu {
     display: none;
   }
@@ -1772,6 +1772,22 @@ body:has(.note-list li.dragging) {
 
 /* Export has already taken the free space, so Cancel and Finish sit just after it. */
 .lf-export + .lf-finish-end {
+  margin-left: 0;
+}
+
+/* The due date: just after Export (4px), or pushed over to the right when there's no Export (typed details). */
+.lf-due {
+  margin-left: auto;
+  margin-right: 20px;
+}
+
+/* With the due date after it, Export's gap before Cancel and Finish moves to the due date. */
+.lf-export:has(+ .lf-due) {
+  margin-right: 0;
+}
+
+.lf-export + .lf-due,
+.lf-due + .lf-finish-end {
   margin-left: 0;
 }
 

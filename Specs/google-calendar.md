@@ -42,7 +42,7 @@ Nothing is built or installed on Google's side; it's a registration that gives t
 - **Titles:** renames go both ways. Handwritten notes have no text title, so the event says e.g. "nwsnotes note".
 - **Shared notes:** whose calendar a shared note goes in (owner's, or `createdByUserId`'s).
 - **Duplicate alerts:** turn off the calendar's own alerts on these events, since the app's reminders already go out.
-- **Long-form notes**, if they gain due dates.
+- **Long-form notes** can now have due dates, so they would sync too (the event could include their typed details).
 - **Tests:** a fake Google Calendar server for the e2e tests.
 
 ## Size
