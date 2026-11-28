@@ -1,0 +1,121 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "nick notes",
+      "intents": [
+        {
+          "name": "AddIntent",
+          "slots": [
+            {
+              "name": "words",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "add {words}",
+            "to add {words}",
+            "add to {words}"
+          ]
+        },
+        {
+          "name": "NewIntent",
+          "slots": [
+            {
+              "name": "words",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "new {words}",
+            "note {words}",
+            "new note {words}",
+            "to note {words}"
+          ]
+        },
+        {
+          "name": "DueIntent",
+          "slots": [
+            {
+              "name": "words",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "due {words}",
+            "due date {words}",
+            "it's due {words}",
+            "it is due {words}"
+          ]
+        },
+        {
+          "name": "EmailTabIntent",
+          "slots": [
+            {
+              "name": "words",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "email tab {words}",
+            "email {words}",
+            "to email {words}",
+            "to email tab {words}"
+          ]
+        },
+        {
+          "name": "ResetNewIntent",
+          "samples": [
+            "reset new",
+            "reset new notes",
+            "to reset new"
+          ]
+        },
+        {
+          "name": "LinkIntent",
+          "slots": [
+            {
+              "name": "code",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "link {code}",
+            "to link {code}",
+            "link code {code}"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": [
+            "that's all",
+            "that is all",
+            "nothing else",
+            "i'm done",
+            "that's it"
+          ]
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NoIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        }
+      ],
+      "types": []
+    }
+  }
+}

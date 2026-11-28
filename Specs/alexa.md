@@ -1,6 +1,4 @@
-# Alexa: dictating notes to a smart speaker (agreed, not built yet)
-
-Agreed, not built yet.
+# Alexa: dictating notes to a smart speaker
 
 ## Requirements
 
@@ -10,8 +8,7 @@ This works like adding notes by text message (see [text-messages.md](text-messag
 
 ### A private skill, not a published one
 - nwsnotes has its own Alexa skill, made by the admin in Amazon's Alexa developer console. It's never published in the Alexa skill store, so Amazon never reviews it, and nobody outside nwsnotes can find or use it.
-- **On the admin's own Amazon account,** the skill works on every Echo registered to that account, as long as it stays in development mode.
-- **Only the admin's own Amazon account, for now.** Anyone speaking to an Echo on that account uses its one link (see Linking). Other people's Amazon accounts would need an Amazon beta test, renewed every 90 days, which is left for later (see "Later, not now").
+- **Only the admin's own Amazon account, for now:** the skill works on every Echo registered to that account, as long as it stays in development mode. Anyone speaking to an Echo on that account uses its one link (see Linking). Other people's Amazon accounts would need an Amazon beta test, renewed every 90 days, which is left for later (see "Later, not now").
 
 ### Its name: "Nick Notes"
 - People talk to the skill as "Nick Notes": "Alexa, ask Nick Notes to …". Alexa can't say "nwsnotes", so the skill's spoken name (Amazon calls it the "invocation name") is different from the app's name. Everywhere else, the app is still called nwsnotes.
@@ -76,11 +73,11 @@ Amazon requires every self-hosted skill to check each request, and its certifica
 
 ### Answering
 - **Alexa's JSON format:** `{ version: "1.0", response: { outputSpeech: { type: "PlainText", text }, shouldEndSession } }`, with a `reprompt` when the session stays open ("Anything else?").
-- **One go or several:** a `LaunchRequest` ("open Nick Notes") opens a session. An `IntentRequest` with `session.new` true is a one-go command and ends the session; one inside an open session keeps it open. `SessionEndedRequest` gets an empty answer.
+- **One go or several:** a `LaunchRequest` ("open Nick Notes") opens a session. An `IntentRequest` with `session.new` true is a one-go command and ends the session; one inside an open session keeps it open. `SessionEndedRequest` gets an empty answer, and "stop", "cancel", "no" and "that's all" (`AMAZON.StopIntent` with extra samples, `CancelIntent`, `NoIntent`, `NavigateHomeIntent`) end the session with nothing said.
 - **Within 8 seconds:** Alexa gives up after 8. So the tab email is answered "Emailing <tab name>." as soon as the tab is found, and sent after the answer; whether it was sent comes as the notification texts already get ("Emailed <tab name>" or "Not emailed").
 
 ### The name in the code
-- **One constant,** `ALEXA_NAME = "Nick Notes"` in `shared/src/alexa.ts`, used in everything the app says or shows about the skill (Settings, help, what Alexa says, the help page). Changing the name is that constant plus `invocationName` in `deploy/alexa-model.json` (lower case there, "nick notes", as Amazon requires).
+- **One constant,** `ALEXA_NAME = "Nick Notes"` in `shared/src/alexa.ts`, used in everything the app shows about the skill (Settings). Changing the name is that constant, `invocationName` in `deploy/alexa-model.json` (lower case there, "nick notes", as Amazon requires), and the help page `docs/alexa.md`, which is plain Markdown. Nothing Alexa says names the skill.
 
 ### Reading back
 - **The title as saved,** after the tab's words and any punctuation in front are removed, so "Saved to Shopping: oat milk and bin bags", not "…Shopping oat milk…". It's spoken as plain text, without formatting markers.
@@ -88,8 +85,8 @@ Amazon requires every self-hosted skill to check each request, and its certifica
 
 ### Reusing the text-message code
 - **The words become a text:** each intent's fixed word and its `words` slot are put back together ("add" + "shopping oat milk" → "add shopping oat milk") and handled by the same code as a text, from `readSmsCommand` on: the tab matching, spoken names, `readSpokenDue`, Reset New and tab emails all come for free.
-- **One shared core:** the part of `SmsNotes.received` after the phone is identified (turned-off accounts, the rate limit, reading the command and carrying it out) moves into a module both use, which returns what happened (saved to which tab, cut short, due set, failed and why) rather than a text. Text messages turn that into their reply text and notifications as now; Alexa turns it into speech. Text messages behave exactly as before.
-- **The rate limit:** the same 20 commands in 10 minutes, counted for each Alexa account.
+- **One shared core:** the part of `SmsNotes.received` after the phone is identified (turned-off accounts, reading the command and carrying it out) is `DictatedCommands` in `server/src/dictation.ts`, which both use. It returns what happened (saved to which tab, cut short, due set, failed and why) rather than a text. Each channel keeps its own rate limit, as texts and Alexa answer it differently. Text messages turn that into their reply text and notifications as now; Alexa turns it into speech. Text messages behave exactly as before.
+- **The rate limit:** the same 20 commands in 10 minutes, counted for each Alexa account. Past it, Alexa always says so: "Not done: too many in the last few minutes. Wait a few minutes and try again." (Texts reply only once, to keep the cost down; Alexa's answers are free.)
 - **The History** says "by Alexa" (e.g. "Added "Oat milk and bin bags" by Alexa"), a new `ChangeSource`, `alexa`.
 - **Capital letters:** Alexa sends the words in lower case. The title's first letter is put in upper case, as for texts, but the rest stays as heard, so names lose their capitals ("Ring dave").
 - **Opt-out words** (STOP etc.) are a Twilio matter, so they're not checked for Alexa.
@@ -107,9 +104,9 @@ Amazon requires every self-hosted skill to check each request, and its certifica
 - **Never the words,** and only the last 4 characters of the Alexa `userId`.
 
 ### Tests
-- **A fake Alexa:** in test mode the route is on, with a test skill ID, and trusts a test certificate made for the tests instead of Amazon's: requests are signed with its key, and its `SignatureCertChainUrl` is served by the test server itself. Every other check is the same.
+- **A fake Alexa:** in test mode (and development) the route is on, with a test skill ID, and trusts a certificate authority made for the tests instead of the usual roots (`server/src/fakeAlexa.ts`). Requests are signed with the key of a certificate it signed (in `e2e/tests/alexaKeys.ts`; nothing outside the tests trusts it), and its `SignatureCertChainUrl` is served by the test server itself, at `/api/test/alexa-certs/`. Certificates from that address are accepted as well as Amazon's; every other check is the same.
 - **New `alexa.spec.ts`:** linking from Settings (a wrong, expired or reused code; too many wrong codes); unlinking; an unlinked account gets the "isn't linked" answer and adds nothing; each command (add to a tab, by spoken name, no match, new, note, due, reset new, email tab) with what Alexa says and the History entry; a session opened with "open Nick Notes" staying open, and a one-go command ending; help and fallback; the failure answers and their notifications; the rate limit; and refusals for a wrong signature, a certificate URL that isn't Amazon's, an old timestamp and another skill's ID.
-- **Unit tests** for the certificate URL rules and for putting the intent's words back together.
+- **Unit tests** (in `alexa.spec.ts`, desktop only) for the certificate URL rules, putting the intent's words back together, and due dates as spoken.
 - **`text-messages.spec.ts`** is run after the shared core is moved, to show texts are unchanged.
 
 ### Later, not now

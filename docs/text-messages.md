@@ -45,7 +45,7 @@ This adds the note "Call the garage about the tyres", with no tags, so it shows 
 
 ### Spoken names
 
-Some tab names are hard to say, or Google keeps mishearing them. Give such a tab a **spoken name**: an extra name for it, used only for texts. Edit the tab in **Settings**, fill in **Spoken name**, and save. For example, a tab called "DIY" could have the spoken name "do it yourself". After "Add" or "Email tab", you can use either name.
+Some tab names are hard to say, or Google keeps mishearing them. Give such a tab a **spoken name**: an extra name for it, used only for texts and [Alexa](alexa.md). Edit the tab in **Settings**, fill in **Spoken name**, and save. For example, a tab called "DIY" could have the spoken name "do it yourself". After "Add" or "Email tab", you can use either name.
 
 ## Knowing it worked
 

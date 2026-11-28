@@ -63,7 +63,8 @@ function sentence(text: string): string {
 /** A reason from the shared commands ("you've reached …") as Alexa says it: capitalised, to be heard. */
 function spokenReason(reason: string): string {
   const said = reason.replace("Please send it again later.", "Please try again later.");
-  return said.charAt(0).toUpperCase() + said.slice(1);
+  // "nwsnotes" keeps its lower case.
+  return said.startsWith("nwsnotes") ? said : said.charAt(0).toUpperCase() + said.slice(1);
 }
 
 /** Notes counted as Alexa says them: "1 note", "3 notes". */
@@ -190,14 +191,19 @@ export class AlexaNotes {
     return { code, expiresDateTime: new Date(expires).toISOString() };
   }
 
-  /** Alexa's JSON for an answer: what it says, and (when it keeps listening) what it asks if nothing's said. */
+  /**
+   * Alexa's JSON for an answer. While it keeps listening, it asks "Anything else?" after what it says
+   * (unless that's already a question), and asks again if nothing's said.
+   */
   private answerJson({ speech, keepListening = false }: Answer): object {
-    const said = speech === undefined ? undefined : keepListening ? `${speech} ${speech === WHAT_TO_ADD ? "" : ANYTHING_ELSE}`.trim() : speech;
+    const asks = speech?.endsWith("?") === true;
+    const said = speech !== undefined && keepListening && !asks ? `${speech} ${ANYTHING_ELSE}` : speech;
+    const again = speech?.endsWith(WHAT_TO_ADD) ? WHAT_TO_ADD : ANYTHING_ELSE;
     return {
       version: "1.0",
       response: {
         ...(said !== undefined && { outputSpeech: { type: "PlainText", text: said } }),
-        ...(keepListening && { reprompt: { outputSpeech: { type: "PlainText", text: speech === WHAT_TO_ADD ? WHAT_TO_ADD : ANYTHING_ELSE } } }),
+        ...(keepListening && { reprompt: { outputSpeech: { type: "PlainText", text: again } } }),
         shouldEndSession: !keepListening,
       },
     };
